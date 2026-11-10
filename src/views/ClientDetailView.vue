@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import ClientMovement from '@/components/ClientMovement.vue'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
 import { CONTRAINDICATIONS, EQUIPMENT, GROUPS, STATUSES, label } from '@/lib/vocab'
@@ -27,12 +28,14 @@ const booking = ref(false)
 const openSession = ref<string | null>(null)
 const progress = useProgressStore()
 const live = useLiveStore()
-type Tab = 'overview' | 'progress' | 'history'
-const tab = ref<Tab>('overview')
+type Tab = 'overview' | 'progress' | 'history' | 'ruch'
+const route = useRoute()
+const tab = ref<Tab>(route.query.tab === 'ruch' ? 'ruch' : 'overview')
 const TABS: [Tab, string][] = [
   ['overview', 'Przegląd'],
   ['progress', 'Postępy'],
   ['history', 'Historia'],
+  ['ruch', 'Ruch'],
 ]
 
 /** Sesja bez terminu w grafiku (np. dodatkowy trening) – zaczyna się pusta. */
@@ -75,7 +78,7 @@ async function newPlan() {
         <h1 class="min-w-0 flex-1 truncate font-display text-2xl font-bold">{{ c.full_name }}</h1>
         <RouterLink :to="`/klienci/${c.id}/edycja`" class="icon-btn" aria-label="Edytuj klienta"><Icon name="edit" class="size-6" /></RouterLink>
       </div>
-      <div class="mx-2 grid grid-cols-3 rounded-xl bg-surface-2 p-1" role="tablist">
+      <div class="mx-2 grid grid-cols-4 rounded-xl bg-surface-2 p-1" role="tablist">
         <button
           v-for="[k, l] in TABS"
           :key="k"
@@ -93,6 +96,7 @@ async function newPlan() {
     <div class="space-y-4 px-4 pt-2">
       <ClientProgress v-if="tab === 'progress'" :client-id="c.id" />
       <ClientHistory v-else-if="tab === 'history'" :client-id="c.id" />
+      <ClientMovement v-else-if="tab === 'ruch'" :client-id="c.id" />
 
       <template v-else>
       <button class="btn-primary w-full" @click="startLive"><Icon name="dumbbell" class="size-5" />Sesja teraz (bez terminu)</button>

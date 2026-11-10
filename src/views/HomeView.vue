@@ -167,6 +167,15 @@ onMounted(async () => {
           <p class="text-xs text-muted">gotowe programy</p>
         </RouterLink>
       </section>
+
+      <RouterLink to="/analiza" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
+        <Icon name="video" class="size-7 shrink-0 text-primary-fg" />
+        <div class="min-w-0 flex-1">
+          <h2 class="text-xl font-bold">Analiza ruchu</h2>
+          <p class="text-sm text-muted">Nagraj ćwiczenie – licznik powtórzeń, kąty, tempo i porównanie ze wzorcem.</p>
+        </div>
+        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
+      </RouterLink>
     </template>
 
     <RouterLink v-if="!auth.isTrainer && auth.profile" to="/terminy" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
