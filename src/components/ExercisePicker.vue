@@ -35,7 +35,10 @@ const list = computed(() =>
       <li v-for="e in list" :key="e.id">
         <button class="card flex w-full items-center gap-3 p-2 text-left" @click="emit('pick', e.id)">
           <ExerciseThumb :exercise="e" />
-          <span class="flex-1 font-medium">{{ e.name_pl }}</span>
+          <span class="min-w-0 flex-1">
+            <span class="block font-medium">{{ e.name_pl }}</span>
+            <span v-if="e.name_en && e.name_en !== e.name_pl" class="block truncate text-xs text-subtle" lang="en">{{ e.name_en }}</span>
+          </span>
           <Icon v-if="warn(e.contraindications)" name="alert" class="size-5 shrink-0 text-warn-fg" aria-label="Przeciwwskazanie" />
         </button>
       </li>
