@@ -1,17 +1,39 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useExercisesStore } from '@/stores/exercises'
 import { useProgramsStore } from '@/stores/programs'
 import { useClientsStore } from '@/stores/clients'
+import { useScheduleStore } from '@/stores/schedule'
+import { addDays, dayLabel, hm } from '@/lib/dates'
 import Icon from '@/components/Icon.vue'
 import ProgressRing from '@/components/ProgressRing.vue'
+import SessionCard from '@/components/SessionCard.vue'
+import SessionSheet from '@/components/SessionSheet.vue'
 
 const auth = useAuthStore()
 const ex = useExercisesStore()
 const programs = useProgramsStore()
 const clients = useClientsStore()
-onMounted(() => Promise.all([ex.load(), programs.loadList(), auth.isTrainer ? clients.load() : null]))
+const schedule = useScheduleStore()
+const openId = ref<string | null>(null)
+const startOfToday = new Date(new Date().setHours(0, 0, 0, 0))
+onMounted(() =>
+  Promise.all([
+    ex.load(),
+    programs.loadList(),
+    auth.isTrainer ? clients.load() : null,
+    // Trenerka: dziś; klient: najbliższe 60 dni (RLS zwraca tylko jego sesje).
+    schedule.loadRange(startOfToday, addDays(startOfToday, auth.isTrainer ? 1 : 60)).catch(() => null),
+  ]),
+)
+
+const todaySessions = computed(() =>
+  schedule.sessions.filter((s) => s.starts_at >= startOfToday.toISOString() && s.starts_at < addDays(startOfToday, 1).toISOString()),
+)
+const nextSession = computed(() =>
+  schedule.sessions.find((s) => s.ends_at >= new Date().toISOString() && ['pending', 'confirmed'].includes(s.status)),
+)
 
 // Dla klienta RLS zwraca tylko jego plany, które nie są szkicem.
 const myPlans = computed(() => (auth.isTrainer ? [] : programs.list.filter((p) => !p.is_template && p.status !== 'draft')))
@@ -47,6 +69,19 @@ const GOAL = 30
     </header>
 
     <template v-if="auth.isTrainer">
+      <section>
+        <div class="mb-2 flex items-baseline justify-between">
+          <h2 class="text-xl font-bold">Dziś</h2>
+          <RouterLink to="/grafik" class="text-sm font-semibold text-primary-fg">Cały grafik</RouterLink>
+        </div>
+        <p v-if="!todaySessions.length" class="card p-4 text-sm text-muted">Dziś bez sesji.</p>
+        <ul v-else class="space-y-2">
+          <li v-for="s in todaySessions" :key="s.id">
+            <SessionCard :session="s" :title="clients.byId(s.client_id)?.full_name ?? 'Klient'" @open="openId = s.id" />
+          </li>
+        </ul>
+      </section>
+
       <section class="card flex items-center gap-4 p-4">
         <ProgressRing :value="own.length" :max="GOAL" :label="`${own.length} z ${GOAL} ćwiczeń w bazie`" />
         <div class="min-w-0 flex-1">
@@ -74,7 +109,20 @@ const GOAL = 30
       </section>
     </template>
 
-    <section v-else-if="myPlans.length" class="space-y-2">
+    <RouterLink v-if="!auth.isTrainer && auth.profile" to="/terminy" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
+      <div class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary"><Icon name="calendar" class="size-7" /></div>
+      <div class="min-w-0 flex-1">
+        <p class="eyebrow">Najbliższa sesja</p>
+        <template v-if="nextSession">
+          <p class="font-display text-2xl leading-tight font-bold first-letter:uppercase">{{ dayLabel(new Date(nextSession.starts_at)) }}</p>
+          <p class="text-muted">godz. {{ hm(nextSession.starts_at) }}{{ nextSession.status === 'pending' ? ' · czeka na potwierdzenie' : '' }}</p>
+        </template>
+        <p v-else class="font-semibold">Brak – zarezerwuj termin</p>
+      </div>
+      <Icon name="chevron" class="size-5 text-subtle" />
+    </RouterLink>
+
+    <section v-if="!auth.isTrainer && myPlans.length" class="space-y-2">
       <h2 class="text-xl font-bold">Twój plan</h2>
       <RouterLink v-for="p in myPlans" :key="p.id" :to="`/plany/${p.id}/druk`" class="card pressable flex items-center justify-between gap-3 p-4 hover:bg-surface-2">
         <div class="min-w-0">
@@ -87,9 +135,10 @@ const GOAL = 30
       </RouterLink>
     </section>
 
-    <section v-else-if="auth.profile" class="card p-5">
+    <section v-else-if="!auth.isTrainer && auth.profile" class="card p-5">
       <h2 class="mb-1 text-xl font-bold">Twój plan pojawi się tutaj</h2>
       <p class="text-sm text-muted">Trenerka przygotowuje plany w aplikacji. Do tego czasu możesz przejrzeć bazę ćwiczeń.</p>
     </section>
+    <SessionSheet v-if="openId" :id="openId" @close="openId = null" />
   </main>
 </template>

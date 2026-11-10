@@ -107,3 +107,14 @@ export const STATUSES: Record<string, string> = {
   active: 'Aktywny',
   archived: 'Zakończony',
 }
+
+export const SESSION_STATUSES: Record<string, string> = {
+  pending: 'Do akceptacji',
+  confirmed: 'Potwierdzona',
+  cancelled: 'Odwołana',
+  completed: 'Odbyta',
+  no_show: 'Nieobecność',
+}
+
+export const WEEKDAYS = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela']
+export const WEEKDAYS_SHORT = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd']

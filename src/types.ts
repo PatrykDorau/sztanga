@@ -108,3 +108,62 @@ export interface Program {
 export interface ProgramTree extends Program {
   program_weeks: ProgramWeek[]
 }
+
+export type SessionStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'
+
+export interface Session {
+  id: string
+  client_id: string
+  starts_at: string
+  ends_at: string
+  status: SessionStatus
+  workout_id: string | null
+  series_id: string | null
+  notes: string | null
+  booked_by_client: boolean
+  cancelled_at: string | null
+  cancel_reason: string | null
+}
+
+export interface BookingSettings {
+  session_minutes: number
+  slot_step_minutes: number
+  min_notice_hours: number
+  cancel_limit_hours: number
+  booking_horizon_days: number
+  require_approval: boolean
+}
+
+export interface AvailabilityRule {
+  id: string
+  weekday: number
+  start_time: string
+  end_time: string
+}
+
+export interface AvailabilityException {
+  id: string
+  day: string
+  start_time: string | null
+  end_time: string | null
+  is_extra: boolean
+  reason: string | null
+}
+
+export interface ConsultationRequest {
+  id: string
+  full_name: string
+  email: string | null
+  phone: string | null
+  preferred_at: string | null
+  message: string | null
+  status: 'new' | 'contacted' | 'converted' | 'rejected'
+  created_at: string
+}
+
+export interface WaitlistEntry {
+  id: string
+  client_id: string
+  day: string
+  notified_at: string | null
+}

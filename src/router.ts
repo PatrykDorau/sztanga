@@ -18,6 +18,13 @@ const router = createRouter({
     { path: '/plany', name: 'programs', component: () => import('@/views/ProgramsView.vue'), meta: { trainer: true } },
     { path: '/plany/:id', name: 'program', component: () => import('@/views/ProgramEditorView.vue'), props: true, meta: { trainer: true } },
     { path: '/plany/:id/druk', name: 'program-print', component: () => import('@/views/ProgramPrintView.vue'), props: true, meta: { bare: true } }, // klient też: RLS pokazuje mu tylko jego nie-szkicowe plany
+    { path: '/grafik', name: 'schedule', component: () => import('@/views/ScheduleView.vue'), meta: { trainer: true } },
+    { path: '/grafik/dostepnosc', name: 'availability', component: () => import('@/views/AvailabilityView.vue'), meta: { trainer: true } },
+    { path: '/grafik/zgloszenia', name: 'requests', component: () => import('@/views/RequestsView.vue'), meta: { trainer: true } },
+    { path: '/grafik/raport', name: 'report', component: () => import('@/views/ReportView.vue'), meta: { trainer: true } },
+    { path: '/terminy', name: 'my-sessions', component: () => import('@/views/MySessionsView.vue') },
+    // Publiczny formularz dla nowych klientów – bez logowania.
+    { path: '/konsultacja', name: 'consultation', component: () => import('@/views/ConsultationView.vue'), meta: { public: true } },
     { path: '/profil', name: 'profile', component: () => import('@/views/ProfileView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
@@ -30,6 +37,7 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return auth.session && to.name === 'login' ? { name: 'home' } : true
   if (!auth.session) return { name: 'login', query: { next: to.fullPath } }
   if (to.meta.trainer && !auth.isTrainer) return { name: 'home' }
+  if (to.name === 'my-sessions' && auth.isTrainer) return { name: 'schedule' }
   return true
 })
 
