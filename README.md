@@ -68,13 +68,30 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Zbiorczy widok klientów (postęp / bez zmian / dawno nie był) i raport tygodnia na Starcie.
 - Do zrobienia z fazą 5: dyktowanie i podsumowania pisane przez AI (Claude przez Edge Function), wysyłka raportu e-mailem/push.
 
+## Faza 5 – analiza ruchu (MediaPipe na telefonie)
+
+- `/analiza`: heatmapa „wzorce vs klienci” (kolor = odchylenie od wzorca, niebieski mniej / czerwony więcej,
+  przerywana ramka = pomiaru nie da się zrobić z tego ujęcia) i ostatnie nagrania z flagami.
+- `/analiza/nowa`: nagranie lub film z galerii → MediaPipe Pose (wersja 0.10.21, model *full*) klatka po klatce
+  na urządzeniu → szkielet 17 punktów, powtórzenia, pomiary, flagi. Wideo nie wychodzi z telefonu, chyba że trenerka
+  zaznaczy „Zachowaj nagranie” (prywatny bucket `analysis-videos`, usuwane po 90 dniach przy otwarciu listy).
+- `/analiza/:id`: odtwarzacz ze szkieletem (krok o klatkę, 0,25×–1×, oś z powtórzeniami, rysowanie linii i kątów),
+  poprawka liczby powtórzeń, porównanie ze wzorcem lub wcześniejszym nagraniem (uśredniona sylwetka z torem,
+  tempo faz, heatmapa powtórzeń, tabela pomiarów).
+- `/analiza/progi`: progi flagowania do kalibracji i dokładność licznika (cel: < 1 błąd na 20 powtórzeń).
+- Zakładka „Ruch” u klienta: nagrania po kolei na tle wzorca.
+- Ćwiczenia: przysiad (kolano/biodro w dole, pochylenie, rozstaw kolan, asymetria, biodra w bok, tempo);
+  martwy ciąg i pompka w wersji beta.
+- Logika w `src/lib/pose/` (czysty TS); test na syntetycznych danych: `npm run test:pose`.
+- Do zrobienia: kalibracja na 20–30 prawdziwych nagraniach, generator planów i asystent AI (klucz Anthropic).
+
 ## Dostęp do bazy dla Claude
 
 Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego projektu jest w `.mcp.json` (`supabase-sztanga`) i działa po restarcie sesji w tym folderze (przy pierwszym użyciu logowanie i wybór organizacji Sztanga).
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`, wszystkie (001–006) zastosowane na projekcie w chmurze.
+Migracje w `supabase/migrations/`, wszystkie (001–007) zastosowane na projekcie w chmurze.
 
 Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).

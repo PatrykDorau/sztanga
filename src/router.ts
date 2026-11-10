@@ -23,6 +23,10 @@ const router = createRouter({
     { path: '/grafik/zgloszenia', name: 'requests', component: () => import('@/views/RequestsView.vue'), meta: { trainer: true } },
     { path: '/grafik/google', name: 'google', component: () => import('@/views/GoogleCalendarView.vue'), meta: { trainer: true } },
     { path: '/grafik/raport', name: 'report', component: () => import('@/views/ReportView.vue'), meta: { trainer: true } },
+    { path: '/analiza', name: 'analysis', component: () => import('@/views/AnalysisHomeView.vue'), meta: { trainer: true } },
+    { path: '/analiza/nowa', name: 'analysis-new', component: () => import('@/views/AnalysisNewView.vue'), meta: { trainer: true } },
+    { path: '/analiza/progi', name: 'analysis-settings', component: () => import('@/views/AnalysisSettingsView.vue'), meta: { trainer: true } },
+    { path: '/analiza/:id', name: 'analysis-view', component: () => import('@/views/AnalysisView.vue'), props: true, meta: { trainer: true } },
     { path: '/sesja/:id', name: 'live', component: () => import('@/views/LiveSessionView.vue'), props: true, meta: { trainer: true, bare: true } },
     // Plan pod linkiem – bez logowania, dane tylko przez funkcję get_shared_plan(token).
     { path: '/p/:token', name: 'shared-plan', component: () => import('@/views/SharedPlanView.vue'), props: true, meta: { public: true } },

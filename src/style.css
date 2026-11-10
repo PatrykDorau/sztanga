@@ -31,6 +31,11 @@
   /* Kolor serii na wykresach – zwalidowany skryptem dataviz (kontrast >=3:1, pasmo jasności) w obu motywach. */
   --chart-1: #ea580c;
   --chart-grid: #e7e4df;
+  /* Rozbieżna skala porównania ze wzorcem: niebieski (niżej) – szary środek – czerwony (wyżej); zwalidowana skryptem dataviz. */
+  --div-neg: #2a5bd7;
+  --div-pos: #c8342e;
+  --div-mid: #ebe8e3;
+  --ref-ink: #8a8580;
 }
 .dark {
   --bg: #0b0d10;
@@ -56,6 +61,10 @@
   --scrim: rgb(0 0 0 / 0.7);
   --chart-1: #ea580c;
   --chart-grid: #252a31;
+  --div-neg: #4c7ef0;
+  --div-pos: #e0524b;
+  --div-mid: #2a2f37;
+  --ref-ink: #7d8694;
 }
 
 @theme {
