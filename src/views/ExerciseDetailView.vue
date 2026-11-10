@@ -7,6 +7,7 @@ import { CONTRAINDICATIONS, EQUIPMENT, LEVELS, MUSCLES, PATTERNS, label } from '
 import ExercisePicker from '@/components/ExercisePicker.vue'
 import ExerciseThumb from '@/components/ExerciseThumb.vue'
 import Icon from '@/components/Icon.vue'
+import ExerciseMedia from '@/components/ExerciseMedia.vue'
 
 const props = defineProps<{ id: string }>()
 const auth = useAuthStore()
@@ -83,19 +84,29 @@ async function remove() {
     </header>
 
     <div class="space-y-4 px-4">
-      <div v-if="videoSrc || e.image_url" class="overflow-hidden rounded-2xl bg-black">
-        <video v-if="videoSrc" :src="videoSrc" controls playsinline loop muted autoplay class="aspect-[4/5] w-full object-contain sm:aspect-video" />
-        <img v-else-if="e.image_url" :src="e.image_url" alt="" class="w-full bg-white object-contain" />
-      </div>
+      <ExerciseMedia :video-src="videoSrc" :images="e.image_urls?.length ? e.image_urls : e.image_url ? [e.image_url] : []" :name-en="e.name_en" :name-pl="e.name_pl" />
 
-      <p v-if="e.name_en && e.name_en !== e.name_pl" class="text-sm text-muted">{{ e.name_en }}</p>
+      <p v-if="e.name_en && e.name_en !== e.name_pl" class="text-sm text-muted" lang="en">{{ e.name_en }}</p>
+      <p v-if="e.description" class="text-[15px] leading-relaxed">{{ e.description }}</p>
 
-      <div class="flex flex-wrap gap-1.5">
-        <span class="tag">{{ label(LEVELS, e.level) }}</span>
-        <span v-if="e.movement_pattern" class="tag">{{ label(PATTERNS, e.movement_pattern) }}</span>
-        <span v-for="m in e.muscle_groups" :key="m" class="tag">{{ label(MUSCLES, m) }}</span>
-        <span v-for="m in e.equipment" :key="m" class="tag">{{ label(EQUIPMENT, m) }}</span>
-      </div>
+      <dl class="card grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 p-4 text-sm">
+        <dt class="text-muted">Mięsień główny</dt>
+        <dd class="flex flex-wrap gap-1.5">
+          <span v-for="m in e.primary_muscles?.length ? e.primary_muscles : e.muscle_groups.slice(0, 1)" :key="m" class="tag !bg-primary-soft font-semibold !text-primary-fg">{{ label(MUSCLES, m) }}</span>
+        </dd>
+        <template v-if="(e.secondary_muscles ?? []).length">
+          <dt class="text-muted">Pomocnicze</dt>
+          <dd class="flex flex-wrap gap-1.5"><span v-for="m in e.secondary_muscles" :key="m" class="tag">{{ label(MUSCLES, m) }}</span></dd>
+        </template>
+        <dt class="text-muted">Sprzęt</dt>
+        <dd class="flex flex-wrap gap-1.5"><span v-for="m in e.equipment" :key="m" class="tag">{{ label(EQUIPMENT, m) }}</span><span v-if="!e.equipment.length">—</span></dd>
+        <dt class="text-muted">Typ</dt>
+        <dd class="flex flex-wrap gap-1.5">
+          <span class="tag">{{ label(LEVELS, e.level) }}</span>
+          <span v-if="e.movement_pattern" class="tag">{{ label(PATTERNS, e.movement_pattern) }}</span>
+          <span v-if="e.mechanic" class="tag">{{ e.mechanic === 'compound' ? 'wielostawowe' : 'izolowane' }}</span>
+        </dd>
+      </dl>
 
       <div v-if="e.contraindications.length" class="flex gap-2 warn-box">
         <Icon name="alert" class="size-5 shrink-0" />
@@ -103,7 +114,7 @@ async function remove() {
       </div>
 
       <section v-if="e.cues" class="card p-4">
-        <h2 class="mb-2 font-semibold">Wskazówki techniczne</h2>
+        <h2 class="mb-2 font-semibold">{{ e.source === 'free-exercise-db' ? 'Technika krok po kroku (EN)' : 'Wskazówki techniczne' }}</h2>
         <p class="text-sm whitespace-pre-line text-fg">{{ e.cues }}</p>
       </section>
 
@@ -154,6 +165,9 @@ async function remove() {
       </section>
 
       <button v-if="auth.isTrainer" class="btn-danger w-full" @click="remove"><Icon name="trash" class="size-4" />Usuń ćwiczenie</button>
+      <p v-if="e.attribution || e.source === 'free-exercise-db'" class="text-xs text-muted">
+        Źródło: {{ [e.source === 'free-exercise-db' ? 'free-exercise-db (domena publiczna)' : null, e.attribution].filter(Boolean).join('; ') }}{{ e.attribution ? ' – użyte zgodnie z licencją Creative Commons' : '' }}.
+      </p>
     </div>
 
     <ExercisePicker v-if="picking" :title="pickerTitle[picking]" :exclude="linked" @pick="onPick" @close="picking = null" />

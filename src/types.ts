@@ -20,13 +20,20 @@ export interface Exercise {
   cues: string | null
   video_path: string | null
   image_url: string | null
+  primary_muscles: string[] // mięsień główny (kategoria ćwiczenia)
+  secondary_muscles: string[] // mięśnie pomocnicze
+  description: string | null // krótki opis
+  mechanic: 'compound' | 'isolation' | null
+  force: 'push' | 'pull' | 'static' | null
+  image_urls: string[] // klatki ruchu (start / koniec)
+  attribution: string | null // autor i licencja dla ćwiczeń z zewnętrznych baz
   source: string
   external_id: string | null
   created_at: string
   updated_at: string
 }
 
-export type ExerciseInput = Omit<Exercise, 'id' | 'created_at' | 'updated_at' | 'source' | 'external_id'>
+export type ExerciseInput = Omit<Exercise, 'id' | 'created_at' | 'updated_at' | 'source' | 'external_id' | 'image_urls' | 'attribution' | 'mechanic' | 'force'>
 
 export interface ExerciseRelation {
   from_exercise: string

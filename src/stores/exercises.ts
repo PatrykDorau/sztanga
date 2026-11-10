@@ -4,7 +4,7 @@ import { MEDIA_BUCKET, supabase } from '@/lib/supabase'
 import type { Exercise, ExerciseInput, ExerciseRelation, RelationKind } from '@/types'
 
 const COLUMNS =
-  'id, name_pl, name_en, muscle_groups, equipment, movement_pattern, level, contraindications, cues, video_path, image_url, source, external_id, created_at, updated_at'
+  'id, name_pl, name_en, muscle_groups, equipment, movement_pattern, level, contraindications, cues, video_path, image_url, primary_muscles, secondary_muscles, description, mechanic, force, image_urls, attribution, source, external_id, created_at, updated_at'
 
 export const useExercisesStore = defineStore('exercises', () => {
   const all = ref<Exercise[]>([])
@@ -103,10 +103,14 @@ export const useExercisesStore = defineStore('exercises', () => {
     relations.value.filter((r) => r.kind === 'progression' && r.from_exercise === id).map((r) => r.to_exercise)
   const regressionsOf = (id: string) =>
     relations.value.filter((r) => r.kind === 'progression' && r.to_exercise === id).map((r) => r.from_exercise)
-  const alternativesOf = (id: string) =>
-    relations.value
-      .filter((r) => r.kind === 'alternative' && (r.from_exercise === id || r.to_exercise === id))
-      .map((r) => (r.from_exercise === id ? r.to_exercise : r.from_exercise))
+  // Alternatywy są zapisane w obie strony – bez powtórzeń.
+  const alternativesOf = (id: string) => [
+    ...new Set(
+      relations.value
+        .filter((r) => r.kind === 'alternative' && (r.from_exercise === id || r.to_exercise === id))
+        .map((r) => (r.from_exercise === id ? r.to_exercise : r.from_exercise)),
+    ),
+  ]
 
   /** Pełny łańcuch od najłatwiejszej regresji do najtrudniejszej progresji (po pierwszej gałęzi). */
   function chainOf(id: string): string[] {

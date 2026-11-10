@@ -17,6 +17,9 @@ const form = reactive({
   name_pl: '',
   name_en: '',
   muscle_groups: [] as string[],
+  primary: [] as string[],
+  secondary: [] as string[],
+  description: '',
   equipment: [] as string[],
   pattern: [] as string[],
   level: ['beginner'] as string[],
@@ -44,6 +47,9 @@ onMounted(async () => {
     name_pl: e.name_pl,
     name_en: e.name_en ?? '',
     muscle_groups: [...e.muscle_groups],
+    primary: [...(e.primary_muscles?.length ? e.primary_muscles : e.muscle_groups.slice(0, 1))],
+    secondary: [...(e.primary_muscles?.length ? e.secondary_muscles : e.muscle_groups.slice(1))],
+    description: e.description ?? '',
     equipment: [...e.equipment],
     pattern: e.movement_pattern ? [e.movement_pattern] : [],
     level: [e.level],
@@ -94,7 +100,10 @@ async function submit() {
     const input: ExerciseInput = {
       name_pl: form.name_pl.trim(),
       name_en: form.name_en.trim() || null,
-      muscle_groups: form.muscle_groups,
+      muscle_groups: [...new Set([...form.primary, ...form.secondary])],
+      primary_muscles: form.primary,
+      secondary_muscles: form.secondary.filter((m) => !form.primary.includes(m)),
+      description: form.description.trim() || null,
       equipment: form.equipment,
       movement_pattern: form.pattern[0] ?? null,
       level: (form.level[0] ?? 'beginner') as ExerciseLevel,
@@ -156,8 +165,17 @@ async function submit() {
       </section>
 
       <section>
-        <p class="label">Partie mięśniowe</p>
-        <ChipSelect v-model="form.muscle_groups" :options="MUSCLES" />
+        <p class="label">Mięsień główny (kategoria)</p>
+        <ChipSelect v-model="form.primary" :options="MUSCLES" />
+        <p class="mt-1 text-xs text-muted">Zwykle jeden – np. wyciskanie leżąc: klatka piersiowa.</p>
+      </section>
+      <section>
+        <p class="label">Mięśnie pomocnicze</p>
+        <ChipSelect v-model="form.secondary" :options="MUSCLES" />
+      </section>
+      <section>
+        <label class="label" for="desc">Krótki opis</label>
+        <textarea id="desc" v-model="form.description" rows="2" maxlength="400" class="input py-2" placeholder="np. Wyciskanie hantli leżąc – niezależna praca rąk, większy zakres ruchu niż sztangą." />
       </section>
       <section>
         <p class="label">Sprzęt</p>
