@@ -40,14 +40,14 @@ async function submit() {
     <div class="mb-8 flex items-center gap-3">
       <img src="/icon.svg" alt="" class="size-12" />
       <div>
-        <h1 class="text-2xl font-bold">Trener</h1>
-        <p class="text-sm text-stone-500">Plany, grafik i postępy w jednym miejscu</p>
+        <h1 class="page-title">Trener</h1>
+        <p class="text-sm text-muted">Plany, grafik i postępy w jednym miejscu</p>
       </div>
     </div>
 
     <div v-if="sent" class="card p-5">
       <h2 class="mb-1 font-semibold">Sprawdź skrzynkę</h2>
-      <p class="text-sm text-stone-600 dark:text-stone-400">
+      <p class="text-sm text-muted">
         Wysłaliśmy link logowania na <strong>{{ email }}</strong>. Otwórz go na tym urządzeniu.
       </p>
       <button class="btn-ghost mt-4 w-full" @click="sent = false">Wróć</button>
@@ -62,11 +62,11 @@ async function submit() {
         <label class="label" for="pw">Hasło</label>
         <input id="pw" v-model="password" type="password" required autocomplete="current-password" class="input" />
       </div>
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
       <button class="btn-primary w-full" :disabled="busy">
         {{ busy ? 'Chwila…' : mode === 'link' ? 'Wyślij link logowania' : 'Zaloguj' }}
       </button>
-      <button type="button" class="w-full text-sm text-stone-500 underline" @click="mode = mode === 'link' ? 'password' : 'link'">
+      <button type="button" class="w-full text-sm text-muted underline" @click="mode = mode === 'link' ? 'password' : 'link'">
         {{ mode === 'link' ? 'Zaloguj hasłem' : 'Zaloguj linkiem z e-maila' }}
       </button>
     </form>

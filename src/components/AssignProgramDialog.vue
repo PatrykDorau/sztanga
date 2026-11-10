@@ -42,11 +42,11 @@ async function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex items-end bg-black/40 sm:items-center sm:justify-center" @click.self="emit('close')">
-    <form class="card w-full space-y-4 rounded-b-none p-5 sm:max-w-md sm:rounded-2xl" style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))" @submit.prevent="submit">
+  <div class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" @click.self="emit('close')" @keydown.esc="emit('close')">
+    <form class="sheet space-y-4 sm:max-w-md" @submit.prevent="submit">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Przypisz plan z szablonu</h2>
-        <button type="button" class="p-1" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
+        <button type="button" class="icon-btn -m-2" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
       </div>
       <div v-if="!props.templateId">
         <label class="label" for="t">Szablon</label>
@@ -54,7 +54,7 @@ async function submit() {
           <option value="" disabled>Wybierz…</option>
           <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
         </select>
-        <p v-if="!templates.length" class="mt-1 text-xs text-stone-500">Nie masz jeszcze szablonów – utwórz go w zakładce Plany.</p>
+        <p v-if="!templates.length" class="mt-1 text-xs text-muted">Nie masz jeszcze szablonów – utwórz go w zakładce Plany.</p>
       </div>
       <div v-if="!props.clientId">
         <label class="label" for="c">Klient</label>
@@ -67,8 +67,8 @@ async function submit() {
         <label class="label" for="s">Start</label>
         <input id="s" v-model="start" type="date" class="input" />
       </div>
-      <p class="text-xs text-stone-500">Klient dostaje własną kopię – zmiany w jego planie nie ruszają szablonu.</p>
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <p class="text-xs text-muted">Klient dostaje własną kopię – zmiany w jego planie nie ruszają szablonu.</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
       <button class="btn-primary w-full" :disabled="busy || !templateId || !clientId">{{ busy ? 'Kopiowanie…' : 'Przypisz i otwórz' }}</button>
     </form>
   </div>

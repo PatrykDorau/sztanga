@@ -20,7 +20,13 @@ const paths: Record<string, string> = {
   x: 'M6 6l12 12M18 6 6 18',
   filter: 'M3 5h18l-7 9v5l-4 2v-7z',
   download: 'M12 3v12M7 10l5 5 5-5M5 21h14',
-  alert: 'M12 3 2 21h20zM12 10v5M12 18h.01',
+  grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
+  calendar: 'M4 6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 10h16M8 3v4M16 3v4',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  check: 'M5 12l5 5L20 7',
+  chevron: 'M9 6l6 6-6 6',
+  bell: 'M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4',
+  alert:'M12 3 2 21h20zM12 10v5M12 18h.01',
 }
 </script>
 

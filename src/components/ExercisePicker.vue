@@ -23,9 +23,9 @@ const list = computed(() =>
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex flex-col bg-stone-50 dark:bg-stone-950" role="dialog" :aria-label="title">
-    <header class="flex items-center gap-2 border-b border-stone-200 px-4 py-3 dark:border-stone-800">
-      <button class="-ml-2 p-2" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
+  <div class="fixed inset-0 z-30 flex flex-col bg-bg" role="dialog" aria-modal="true" :aria-label="title" @keydown.esc="emit('close')">
+    <header class="flex items-center gap-2 border-b border-line px-4 py-3">
+      <button class="icon-btn -ml-2" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
       <h2 class="font-semibold">{{ title }}</h2>
     </header>
     <div class="p-4 pb-2">
@@ -36,10 +36,10 @@ const list = computed(() =>
         <button class="card flex w-full items-center gap-3 p-2 text-left" @click="emit('pick', e.id)">
           <ExerciseThumb :exercise="e" />
           <span class="flex-1 font-medium">{{ e.name_pl }}</span>
-          <Icon v-if="warn(e.contraindications)" name="alert" class="size-5 shrink-0 text-amber-500" aria-label="Przeciwwskazanie" />
+          <Icon v-if="warn(e.contraindications)" name="alert" class="size-5 shrink-0 text-warn-fg" aria-label="Przeciwwskazanie" />
         </button>
       </li>
-      <li v-if="!list.length" class="py-8 text-center text-stone-500">Brak wyników</li>
+      <li v-if="!list.length" class="py-8 text-center text-muted">Brak wyników</li>
     </ul>
   </div>
 </template>

@@ -67,17 +67,17 @@ async function remove() {
 <template>
   <main v-if="e" class="pb-6">
     <header class="flex items-center gap-1 px-2 pt-4">
-      <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
+      <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
       <h1 class="min-w-0 flex-1 truncate text-lg font-bold">{{ e.name_pl }}</h1>
       <button
-        class="p-2"
-        :class="ex.favorites.has(e.id) ? 'text-amber-500' : 'text-stone-400'"
+        class="icon-btn"
+        :class="ex.favorites.has(e.id) ? 'text-warn-fg' : 'text-subtle'"
         :aria-label="ex.favorites.has(e.id) ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'"
         @click="ex.toggleFavorite(e.id)"
       >
         <Icon name="star" class="size-6" :class="ex.favorites.has(e.id) ? 'fill-current' : ''" />
       </button>
-      <RouterLink v-if="auth.isTrainer" :to="`/cwiczenia/${e.id}/edycja`" class="p-2" aria-label="Edytuj">
+      <RouterLink v-if="auth.isTrainer" :to="`/cwiczenia/${e.id}/edycja`" class="icon-btn" aria-label="Edytuj">
         <Icon name="edit" class="size-6" />
       </RouterLink>
     </header>
@@ -88,7 +88,7 @@ async function remove() {
         <img v-else-if="e.image_url" :src="e.image_url" alt="" class="w-full bg-white object-contain" />
       </div>
 
-      <p v-if="e.name_en && e.name_en !== e.name_pl" class="text-sm text-stone-500">{{ e.name_en }}</p>
+      <p v-if="e.name_en && e.name_en !== e.name_pl" class="text-sm text-muted">{{ e.name_en }}</p>
 
       <div class="flex flex-wrap gap-1.5">
         <span class="tag">{{ label(LEVELS, e.level) }}</span>
@@ -97,46 +97,46 @@ async function remove() {
         <span v-for="m in e.equipment" :key="m" class="tag">{{ label(EQUIPMENT, m) }}</span>
       </div>
 
-      <div v-if="e.contraindications.length" class="flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+      <div v-if="e.contraindications.length" class="flex gap-2 warn-box">
         <Icon name="alert" class="size-5 shrink-0" />
         <p><strong>Uwaga przy:</strong> {{ e.contraindications.map((c) => label(CONTRAINDICATIONS, c)).join(', ') }}</p>
       </div>
 
       <section v-if="e.cues" class="card p-4">
         <h2 class="mb-2 font-semibold">Wskazówki techniczne</h2>
-        <p class="text-sm whitespace-pre-line text-stone-700 dark:text-stone-300">{{ e.cues }}</p>
+        <p class="text-sm whitespace-pre-line text-fg">{{ e.cues }}</p>
       </section>
 
       <section class="card p-4">
         <h2 class="mb-3 font-semibold">Łańcuch regresji i progresji</h2>
         <ol v-if="chain.length > 1" class="space-y-1">
           <li v-for="(cid, i) in chain" :key="cid" class="flex items-center gap-2">
-            <span class="w-5 text-center text-xs text-stone-400">{{ i + 1 }}</span>
+            <span class="w-5 text-center text-xs text-subtle">{{ i + 1 }}</span>
             <RouterLink
               v-if="cid !== e.id"
               :to="`/cwiczenia/${cid}`"
-              class="flex-1 rounded-lg px-3 py-2 text-sm hover:bg-stone-100 dark:hover:bg-stone-800"
+              class="flex-1 rounded-lg px-3 py-2 text-sm hover:bg-surface-2"
             >{{ ex.byId(cid)?.name_pl }}</RouterLink>
-            <span v-else class="flex-1 rounded-lg bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-900 dark:bg-brand-900/40 dark:text-brand-100">{{ e.name_pl }}</span>
+            <span v-else class="flex-1 rounded-lg bg-primary-soft px-3 py-2 text-sm font-semibold text-fg">{{ e.name_pl }}</span>
           </li>
         </ol>
-        <p v-else class="text-sm text-stone-500">Brak powiązań. {{ auth.isTrainer ? 'Dodaj łatwiejszą lub trudniejszą wersję.' : '' }}</p>
+        <p v-else class="text-sm text-muted">Brak powiązań. {{ auth.isTrainer ? 'Dodaj łatwiejszą lub trudniejszą wersję.' : '' }}</p>
 
-        <div v-if="regressions.length + progressions.length + alternatives.length" class="mt-4 space-y-3 border-t border-stone-200 pt-3 dark:border-stone-800">
+        <div v-if="regressions.length + progressions.length + alternatives.length" class="mt-4 space-y-3 border-t border-line pt-3">
           <template v-for="grp in [
             { title: 'Regresje (łatwiejsze)', ids: regressions, icon: 'down' },
             { title: 'Progresje (trudniejsze)', ids: progressions, icon: 'up' },
             { title: 'Alternatywy', ids: alternatives, icon: 'swap' },
           ]" :key="grp.title">
             <div v-if="grp.ids.length">
-              <p class="mb-1 text-xs font-medium tracking-wide text-stone-500 uppercase">{{ grp.title }}</p>
+              <p class="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{{ grp.title }}</p>
               <ul class="space-y-1">
                 <li v-for="oid in grp.ids" :key="oid" class="flex items-center gap-2">
-                  <RouterLink :to="`/cwiczenia/${oid}`" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1 hover:bg-stone-100 dark:hover:bg-stone-800">
+                  <RouterLink :to="`/cwiczenia/${oid}`" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1 hover:bg-surface-2">
                     <ExerciseThumb v-if="ex.byId(oid)" :exercise="ex.byId(oid)!" class="!size-10" />
                     <span class="truncate text-sm">{{ ex.byId(oid)?.name_pl }}</span>
                   </RouterLink>
-                  <button v-if="auth.isTrainer" class="p-2 text-stone-400 hover:text-red-600" aria-label="Usuń powiązanie" @click="unlink(oid)">
+                  <button v-if="auth.isTrainer" class="icon-btn text-subtle hover:text-danger" aria-label="Usuń powiązanie" @click="unlink(oid)">
                     <Icon name="x" class="size-4" />
                   </button>
                 </li>
@@ -150,7 +150,7 @@ async function remove() {
           <button class="btn-ghost !px-2 text-xs" @click="picking = 'progression'"><Icon name="up" class="size-4" />Progresja</button>
           <button class="btn-ghost !px-2 text-xs" @click="picking = 'alternative'"><Icon name="swap" class="size-4" />Alternatywa</button>
         </div>
-        <p v-if="error" class="mt-2 text-sm text-red-600">{{ error }}</p>
+        <p v-if="error" class="mt-2 text-sm text-danger">{{ error }}</p>
       </section>
 
       <button v-if="auth.isTrainer" class="btn-danger w-full" @click="remove"><Icon name="trash" class="size-4" />Usuń ćwiczenie</button>
@@ -159,7 +159,7 @@ async function remove() {
     <ExercisePicker v-if="picking" :title="pickerTitle[picking]" :exclude="linked" @pick="onPick" @close="picking = null" />
   </main>
 
-  <main v-else class="px-4 pt-10 text-center text-stone-500">
+  <main v-else class="px-4 pt-10 text-center text-muted">
     {{ ex.loaded ? 'Nie znaleziono ćwiczenia.' : 'Ładowanie…' }}
   </main>
 </template>

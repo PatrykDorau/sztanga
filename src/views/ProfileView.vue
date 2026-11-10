@@ -34,10 +34,10 @@ async function logout() {
 
 <template>
   <main class="space-y-4 px-4 pt-6">
-    <h1 class="text-2xl font-bold">Profil</h1>
+    <h1 class="page-title">Profil</h1>
 
     <section class="card space-y-3 p-4">
-      <p class="text-sm text-stone-500">
+      <p class="text-sm text-muted">
         {{ auth.session?.user.email }} · <span class="tag">{{ auth.profile ? ROLE[auth.profile.role] : '—' }}</span>
       </p>
       <div>
