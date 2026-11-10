@@ -28,7 +28,8 @@ async function copy() {
 }
 
 function toClient(r: ConsultationRequest) {
-  router.push({ path: '/klienci/nowy', query: { name: r.full_name, email: r.email ?? '', phone: r.phone ?? '', notes: r.message ?? '', req: r.id } })
+  // W adresie tylko id zgłoszenia – dane osobowe (i zdrowotne z wiadomości) nie trafiają do URL ani historii.
+  router.push({ path: '/klienci/nowy', query: { req: r.id } })
 }
 </script>
 

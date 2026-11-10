@@ -5,8 +5,8 @@
 import { computed, ref } from 'vue'
 
 const props = withDefaults(
-  defineProps<{ points: { x: string; y: number }[]; unit: string; title: string; height?: number; higherIsBetter?: boolean }>(),
-  { height: 180, higherIsBetter: true },
+  defineProps<{ points: { x: string; y: number }[]; unit: string; title: string; height?: number; higherIsBetter?: boolean; markBest?: boolean }>(),
+  { height: 180, higherIsBetter: true, markBest: true },
 )
 
 const W = 340
@@ -98,7 +98,7 @@ function onMove(ev: PointerEvent) {
 
           <!-- Etykiety selektywnie: ostatni punkt i rekord (jeśli inny) -->
           <text :x="pts.at(-1)!.x + 7" :y="pts.at(-1)!.y + 4" class="fill-fg text-[11px] font-semibold">{{ fmt(ys.at(-1)!) }}</text>
-          <text v-if="bestIdx !== pts.length - 1" :x="pts[bestIdx].x" :y="pts[bestIdx].y - 9" text-anchor="middle" class="fill-muted text-[10px]">
+          <text v-if="markBest && bestIdx !== pts.length - 1" :x="pts[bestIdx].x" :y="pts[bestIdx].y - 9" text-anchor="middle" class="fill-muted text-[10px]">
             rekord {{ fmt(ys[bestIdx]) }}
           </text>
 

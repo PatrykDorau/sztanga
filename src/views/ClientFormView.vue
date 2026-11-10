@@ -33,9 +33,12 @@ onMounted(async () => {
   await clients.load()
   const c = clients.byId(props.id)
   if (!c) {
-    // Nowy klient ze zgłoszenia na konsultację – dane z formularza.
-    const q = route.query
-    if (q.name) Object.assign(form, { full_name: String(q.name), email: String(q.email ?? ''), phone: String(q.phone ?? ''), notes: String(q.notes ?? '') })
+    // Nowy klient ze zgłoszenia na konsultację – dane pobierane z bazy po id (nie z adresu URL).
+    if (route.query.req) {
+      if (!schedule.requests.length) await schedule.loadRequests().catch(() => null)
+      const r = schedule.requests.find((x) => x.id === route.query.req)
+      if (r) Object.assign(form, { full_name: r.full_name, email: r.email ?? '', phone: r.phone ?? '', notes: r.message ?? '' })
+    }
     return
   }
   Object.assign(form, {

@@ -115,11 +115,21 @@ export const useScheduleStore = defineStore('schedule', () => {
     return row
   }
 
-  const setStatus = (id: string, status: SessionStatus, reason?: string) =>
-    updateSession(id, {
+  /** Zwolniony termin – lista oczekujących na ten dzień dostaje informację (klient: "kto pierwszy, ten lepszy"). */
+  async function notifyWaitlist(startsAt: string) {
+    const d = new Date(startsAt)
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    await supabase.from('waitlist').update({ notified_at: new Date().toISOString() }).eq('day', day).is('notified_at', null)
+  }
+
+  async function setStatus(id: string, status: SessionStatus, reason?: string) {
+    const row = await updateSession(id, {
       status,
       ...(status === 'cancelled' ? { cancelled_at: new Date().toISOString(), cancel_reason: reason ?? null } : {}),
     })
+    if (status === 'cancelled') await notifyWaitlist(row.starts_at).catch(() => null)
+    return row
+  }
 
   async function removeSession(id: string) {
     ok(await supabase.from('sessions').delete().eq('id', id))

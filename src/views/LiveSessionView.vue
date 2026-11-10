@@ -19,7 +19,9 @@ const ex = useExercisesStore()
 const clients = useClientsStore()
 
 const d = computed(() => live.drafts[props.id])
-const client = computed(() => clients.byId(d.value?.client_id))
+// Po zakończeniu szkic znika z magazynu – id klienta zapamiętujemy, żeby ekran wyniku miał link do karty.
+const finishedClientId = ref<string | null>(null)
+const client = computed(() => clients.byId(d.value?.client_id ?? finishedClientId.value))
 const picking = ref(false)
 const finishing = ref(false)
 const saving = ref(false)
@@ -94,6 +96,7 @@ function openFinish() {
   finishing.value = true
 }
 async function finish() {
+  finishedClientId.value = d.value!.client_id
   saving.value = true
   const synced = await live.finish(props.id).catch(() => false)
   saving.value = false
@@ -115,6 +118,12 @@ function discard() {
     </p>
     <RouterLink v-if="client" :to="`/klienci/${client.id}`" class="btn-primary mt-2">Karta klienta</RouterLink>
     <RouterLink to="/grafik" class="btn-ghost">Grafik</RouterLink>
+  </main>
+
+  <main v-else-if="saving" class="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center" role="status">
+    <Icon name="clock" class="size-12 text-muted" />
+    <p class="page-title">Zapisywanie…</p>
+    <p class="text-muted">Bez zasięgu sesja zostanie na telefonie i wyśle się później.</p>
   </main>
 
   <main v-else-if="d" class="pb-32">

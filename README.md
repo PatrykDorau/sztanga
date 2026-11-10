@@ -75,7 +75,7 @@ Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego proje
 ## Baza danych
 
 Migracje w `supabase/migrations/`. Zastosowane na projekcie w chmurze: 001–003 (Fazy 1–2).
-Czekają na zastosowanie: 004 (Faza 3) i 005 (Faza 4).
+Zastosowane też 004 (Faza 3) i 005 (Faza 4) – wklejone ręcznie w SQL Editor.
 
 | Tabela | Zawartość |
 | --- | --- |

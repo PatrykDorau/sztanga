@@ -73,6 +73,8 @@ async function addMeasurement() {
   }
 }
 const lowerIsBetter = (k: string | null) => k === 'waist' || k === 'hips'
+// Rekord ma sens tylko w testach sprawności – przy masie ciała i obwodach kierunek zależy od celu klienta.
+const isPerformanceTest = (k: string | null) => ['sit_reach', 'plank', 'pushups', 'broad_jump'].includes(k ?? '')
 </script>
 
 <template>
@@ -161,7 +163,7 @@ const lowerIsBetter = (k: string | null) => k === 'waist' || k === 'hips'
       <div v-if="kinds.length" class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
         <button v-for="k in kinds" :key="k" :class="mKind === k ? 'chip-on' : 'chip-off'" class="shrink-0" @click="mKind = k">{{ MEASUREMENTS[k]?.label ?? k }}</button>
       </div>
-      <LineChart v-if="mKind" :points="mPoints" :unit="MEASUREMENTS[mKind]?.unit ?? ''" :title="MEASUREMENTS[mKind]?.label ?? mKind" :higher-is-better="!lowerIsBetter(mKind)" />
+      <LineChart v-if="mKind" :points="mPoints" :unit="MEASUREMENTS[mKind]?.unit ?? ''" :title="MEASUREMENTS[mKind]?.label ?? mKind" :higher-is-better="!lowerIsBetter(mKind)" :mark-best="isPerformanceTest(mKind)" />
     </section>
   </div>
 </template>
