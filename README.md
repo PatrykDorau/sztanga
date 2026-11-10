@@ -54,15 +54,15 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Grafik tygodnia/dnia, sesje pojedyncze i cykliczne (co tydzień), trening z planu przypisany do sesji.
 - Statusy: do akceptacji, potwierdzona, odbyta, nieobecność, odwołana (także cała seria od danej daty).
 - Dostępność: szablon tygodnia + wyjątki (dzień wolny / dodatkowe godziny), zasady rezerwacji.
-- Klient: wolne terminy (), rezerwacja (), odwołanie w limicie godzin (), lista oczekujących.
-- Publiczny formularz  dla nowych osób + lista zgłoszeń, raport miesięczny.
+- Klient: wolne terminy (`free_slots`), rezerwacja (`book_slot`), odwołanie w limicie godzin (`cancel_my_session`), lista oczekujących.
+- Publiczny formularz `/konsultacja` dla nowych osób + lista zgłoszeń, raport miesięczny.
 - Do zrobienia później: przypomnienia push/e-mail/SMS i synchronizacja z Google Calendar (wymagają kluczy i serwera powiadomień).
 
 ## Faza 4 – sesje na żywo i udostępnianie (kod gotowy, migracja do zastosowania)
 
-- Sesja na żywo (): serie, ciężar, powtórzenia, timer przerw (superserie po ostatnim ćwiczeniu), podmiana na regresję/progresję.
+- Sesja na żywo (`/sesja/:id`): serie, ciężar, powtórzenia, timer przerw (superserie po ostatnim ćwiczeniu), podmiana na regresję/progresję.
 - Praca offline: sesja zapisuje się na telefonie, wysyła po zakończeniu, a bez zasięgu czeka w kolejce.
-- Udostępnianie planu linkiem () bez konta, z filmikami, PDF i zatwierdzonymi podsumowaniami; dostęp można cofnąć.
+- Udostępnianie planu linkiem (`/p/:token`) bez konta, z filmikami, PDF i zatwierdzonymi podsumowaniami; dostęp można cofnąć.
 - Dashboard klienta: statystyki miesiąca vs poprzedni, wykres 1RM/maks./objętość, rekordy, serie na partię, pomiary i testy.
 - Historia z podsumowaniami po sesji (szkic → akceptacja trenerki → widoczne dla klienta).
 - Zbiorczy widok klientów (postęp / bez zmian / dawno nie był) i raport tygodnia na Starcie.
@@ -70,11 +70,12 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 
 ## Dostęp do bazy dla Claude
 
-Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego projektu jest w () i działa po restarcie sesji w tym folderze (przy pierwszym użyciu logowanie i wybór organizacji Sztanga).
+Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego projektu jest w `.mcp.json` (`supabase-sztanga`) i działa po restarcie sesji w tym folderze (przy pierwszym użyciu logowanie i wybór organizacji Sztanga).
 
 ## Baza danych
 
-Migracje w `supabase/migrations/` (zastosowane już na projekcie w chmurze).
+Migracje w `supabase/migrations/`. Zastosowane na projekcie w chmurze: 001–003 (Fazy 1–2).
+Czekają na zastosowanie: 004 (Faza 3) i 005 (Faza 4).
 
 | Tabela | Zawartość |
 | --- | --- |
