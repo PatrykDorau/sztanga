@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 import { useAnalysisStore, type AnalysisFull, type AnalysisRow } from '@/stores/analysis'
 import { useClientsStore } from '@/stores/clients'
 import { analyze, averageRep, flagsFor, PHASES, refStats, summarize, zScore, type AvgRep, type P2, type RefStats } from '@/lib/pose/analysis'
-import { decodeTrack, type Track } from '@/lib/pose/skeleton'
+import { unpackTrack, type Track } from '@/lib/pose/skeleton'
 import { fmtMetric, PROFILES, VIEW_LABEL } from '@/lib/pose/profiles'
 import { refStatsByExercise, shortDate, type HeatRow } from '@/lib/pose/heat'
 import PosePlayer from '@/components/PosePlayer.vue'
@@ -31,7 +31,7 @@ async function load() {
   try {
     await Promise.all([store.loaded ? null : store.load(), clients.load()])
     a.value = await store.get(props.id)
-    track.value = decodeTrack(a.value.frames)
+    track.value = await unpackTrack(a.value.frames)
     videoUrl.value = a.value.video_path ? await store.videoUrl(a.value.video_path) : null
   } catch (e) {
     error.value = (e as Error).message
@@ -100,7 +100,7 @@ watch(
       await Promise.all(
         rows.map(async (r) => {
           const full = await store.get(r.id)
-          return full.reps.length ? averageRep(decodeTrack(full.frames), full.reps, PROFILES[full.exercise_key]) : null
+          return full.reps.length ? averageRep(await unpackTrack(full.frames), full.reps, PROFILES[full.exercise_key]) : null
         }),
       )
     ).filter((x): x is AvgRep => !!x)

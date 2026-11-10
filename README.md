@@ -72,10 +72,14 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 
 - `/analiza`: heatmapa „wzorce vs klienci” (kolor = odchylenie od wzorca, niebieski mniej / czerwony więcej,
   przerywana ramka = pomiaru nie da się zrobić z tego ujęcia) i ostatnie nagrania z flagami.
-- `/analiza/nowa`: nagranie lub film z galerii → MediaPipe Pose (wersja 0.10.21, model *full*) klatka po klatce
-  na urządzeniu → szkielet 17 punktów, powtórzenia, pomiary, flagi. Wideo nie wychodzi z telefonu, chyba że trenerka
-  zaznaczy „Zachowaj nagranie” (prywatny bucket `analysis-videos`, usuwane po 90 dniach przy otwarciu listy).
-- `/analiza/:id`: odtwarzacz ze szkieletem (krok o klatkę, 0,25×–1×, oś z powtórzeniami, rysowanie linii i kątów),
+- `/analiza/nowa`: **kamera na żywo** (szkielet nakładany na obraz w czasie rzeczywistym, licznik powtórzeń i kąt,
+  odliczanie 3 s, przełącznik obrazu – same kreski i kropki) albo film z aparatu / galerii. MediaPipe Pose (0.10.21,
+  model *full*) działa na urządzeniu: szkielet 17 punktów, powtórzenia, ujęcie (przód / bok / pod kątem) osobno dla
+  każdego powtórzenia, pomiary, flagi.
+- Zapis: domyślnie tylko szkielet (binarnie + gzip, ok. 220 KB na minutę – ponad 50× mniej niż wideo). Wideo wyłącznie
+  po zaznaczeniu „Zachowaj też wideo” (prywatny bucket `analysis-videos`, usuwane po 90 dniach przy otwarciu listy).
+- `/analiza/:id`: odtwarzacz ze szkieletem (krok o klatkę, 0,25×–1×, oś z powtórzeniami, wyłączanie obrazu,
+  rysowanie: pisak, linia, kąt – rysunki zostają podczas odtwarzania),
   poprawka liczby powtórzeń, porównanie ze wzorcem lub wcześniejszym nagraniem (uśredniona sylwetka z torem,
   tempo faz, heatmapa powtórzeń, tabela pomiarów).
 - `/analiza/progi`: progi flagowania do kalibracji i dokładność licznika (cel: < 1 błąd na 20 powtórzeń).

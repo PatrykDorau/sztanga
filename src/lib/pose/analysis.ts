@@ -153,9 +153,10 @@ export const sd = (a: number[]) => {
 
 // ===================== Ujęcie kamery =====================
 /** Przód: szerokość barków w kadrze porównywalna z długością tułowia; bok: barki prawie się pokrywają. */
-export function detectView(tr: Track): View {
+/** Ujęcie całego nagrania albo fragmentu [from, to] (np. jednego powtórzenia – klient może się obrócić). */
+export function detectView(tr: Track, from = 0, to = tr.poses.length - 1): View {
   const ratios: number[] = []
-  for (const p of tr.poses) {
+  for (const p of tr.poses.slice(from, to + 1)) {
     if (!p || vis(p, J.lSh, J.rSh, J.lHip, J.rHip) < VIS_MIN) continue
     const W = tr.width || 1
     const H = tr.height || 1
@@ -173,6 +174,7 @@ export interface Rep {
   start: number // indeks klatki: ruszenie z góry
   bottom: number // najniższy punkt
   end: number // powrót na górę
+  view?: View // ujęcie tego powtórzenia
   metrics: Record<string, number | null>
 }
 
@@ -224,9 +226,10 @@ export function segmentReps(sig: number[], t: number[], minRange: number): Omit<
     }
     const returned = i < n
     if (!(sig[bottom] < deep)) continue // za płytko – drgnięcie, nie powtórzenie
-    // 3) góra przed powtórzeniem: maksimum od poprzedniego końca do wejścia; ruszenie = ostatnia klatka blisko tej góry
-    let topBefore = prevEnd
-    for (let k = prevEnd; k <= cross; k++) if (sig[k] > sig[topBefore]) topBefore = k
+    // 3) góra przed powtórzeniem: maksimum w oknie ~1,5 s przed wejściem (nie dalej niż poprzedni koniec) –
+    //    pojedyncza zawyżona klatka sprzed kilku sekund nie może przesunąć startu; ruszenie = ostatnia klatka blisko tej góry
+    let topBefore = Math.max(prevEnd, firstAfter(t, t[cross] - TOP_WINDOW))
+    for (let k = topBefore; k <= cross; k++) if (sig[k] > sig[topBefore]) topBefore = k
     let start = cross
     while (start > topBefore && !(sig[start] >= sig[topBefore] - near)) start--
     // Nagranie zaczęte w dole (np. martwy ciąg z podłogi) – start w pierwszej klatce.
@@ -235,15 +238,29 @@ export function segmentReps(sig: number[], t: number[], minRange: number): Omit<
     // 4) koniec: maksimum po powrocie, do kolejnego zejścia; powrót = pierwsza klatka blisko tej góry
     let nextCross = i
     while (nextCross < n && !(sig[nextCross] < enter)) nextCross++
+    // Góra po powtórzeniu: maksimum w oknie ~1,5 s po powrocie (stanie po serii bywa wyższe o kilka stopni).
+    const winEnd = Math.min(nextCross, firstAfter(t, t[i] + TOP_WINDOW))
     let topAfter = i
-    for (let k = i; k < nextCross; k++) if (sig[k] > sig[topAfter]) topAfter = k
+    for (let k = i; k < winEnd; k++) if (sig[k] > sig[topAfter]) topAfter = k
     let end = bottom
     while (end < topAfter && !(sig[end] >= sig[topAfter] - near)) end++
     reps.push({ start, bottom, end })
     prevEnd = end
   }
-  void t
   return reps
+}
+
+const TOP_WINDOW = 1.5 // s
+/** Pierwszy indeks klatki z czasem ≥ tt. */
+function firstAfter(t: number[], tt: number) {
+  let lo = 0
+  let hi = t.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (t[mid] < tt) lo = mid + 1
+    else hi = mid
+  }
+  return lo
 }
 
 // ===================== Pomiary powtórzenia =====================
@@ -316,8 +333,14 @@ export function analyze(tr: Track, ex: ExerciseKey, forceView?: View): AnalysisR
   const series = Object.fromEntries(Object.entries(raw).map(([k, a]) => [k, smooth(fillGaps(a, maxGap), win)])) as unknown as Series
   const signal = signalOf(profile, series, view)
   const segs = segmentReps(signal, tr.t, profile.minRange)
-  const reps = segs.map((r) => ({ ...r, metrics: repMetrics(profile, series, signal, tr.t, r, view) }))
-  return { view, reps, series, signal }
+  const reps = segs.map((r) => {
+    const rv = forceView ?? detectView(tr, r.start, r.end)
+    const v = rv === 'unknown' ? view : rv
+    return { ...r, view: v, metrics: repMetrics(profile, series, signal, tr.t, r, v) }
+  })
+  // Wszystkie powtórzenia z jednego ujęcia → to jest ujęcie nagrania.
+  const repViews = new Set(reps.map((r) => r.view))
+  return { view: repViews.size === 1 && reps.length ? reps[0].view! : view, reps, series, signal }
 }
 
 /** Średnie pomiarów ze wszystkich powtórzeń. */

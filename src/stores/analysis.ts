@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
-import type { EncodedTrack } from '@/lib/pose/skeleton'
+import type { StoredTrack } from '@/lib/pose/skeleton'
 import type { ExerciseKey, Thresholds, View } from '@/lib/pose/profiles'
 
 export const ANALYSIS_BUCKET = 'analysis-videos'
@@ -11,6 +11,7 @@ export interface StoredRep {
   start: number
   bottom: number
   end: number
+  view?: View
   metrics: Record<string, number | null>
 }
 
@@ -36,7 +37,7 @@ export interface AnalysisRow {
 export interface AnalysisFull extends AnalysisRow {
   width: number | null
   height: number | null
-  frames: EncodedTrack
+  frames: StoredTrack
 }
 
 const LIST_COLS = 'id, client_id, exercise_key, session_id, label, recorded_at, view, fps, duration, reps, is_reference, reps_actual, notes, video_path, video_expires_at, created_at'

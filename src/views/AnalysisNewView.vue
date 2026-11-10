@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Nowa analiza: klient + ćwiczenie → nagranie (aparat lub galeria) → szkielet klatka po klatce na telefonie
+// Nowa analiza: klient + ćwiczenie → kamera na żywo albo nagranie (aparat / galeria) → szkielet klatka po klatce na telefonie
 // → powtórzenia, pomiary, flagi → podgląd → zapis (szkielet zawsze, wideo tylko na życzenie, 90 dni).
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -7,10 +7,11 @@ import { useClientsStore } from '@/stores/clients'
 import { useAnalysisStore, VIDEO_KEEP_DAYS } from '@/stores/analysis'
 import { analyze, flagsFor, type AnalysisResult } from '@/lib/pose/analysis'
 import { extractTrack, loadPose, loadVideo, MAX_SECONDS } from '@/lib/pose/extract'
-import { encodeTrack, type Track } from '@/lib/pose/skeleton'
+import { packTrack, type Track } from '@/lib/pose/skeleton'
 import { EXERCISE_KEYS, PROFILES, VIEW_LABEL, type ExerciseKey, type View } from '@/lib/pose/profiles'
 import { compressVideo } from '@/lib/video'
 import PosePlayer from '@/components/PosePlayer.vue'
+import LiveCamera from '@/components/LiveCamera.vue'
 import Icon from '@/components/Icon.vue'
 
 const route = useRoute()
@@ -23,7 +24,7 @@ const ex = ref<ExerciseKey>((EXERCISE_KEYS as string[]).includes(String(route.qu
 const viewChoice = ref<'auto' | View>('auto')
 const profile = computed(() => PROFILES[ex.value])
 
-type Stage = 'pick' | 'loading' | 'processing' | 'result'
+type Stage = 'pick' | 'live' | 'loading' | 'processing' | 'result'
 const stage = ref<Stage>('pick')
 const progress = ref(0)
 const error = ref('')
@@ -78,6 +79,17 @@ async function onFile(e: Event) {
   }
 }
 
+/** Koniec nagrania z kamery na żywo – ta sama analiza co dla filmu. */
+function onLive(tr: Track, video: Blob | null) {
+  if (import.meta.env.DEV) Object.assign(window, { __live: { tr, video } })
+  track.value = tr
+  if (url.value) URL.revokeObjectURL(url.value)
+  url.value = video ? URL.createObjectURL(video) : null
+  file.value = video ? new File([video], `kamera.${video.type.includes('mp4') ? 'mp4' : 'webm'}`, { type: video.type, lastModified: Date.now() }) : null
+  rerun()
+  stage.value = 'result'
+}
+
 function rerun() {
   if (!track.value) return
   result.value = analyze(track.value, ex.value, viewChoice.value === 'auto' ? undefined : viewChoice.value)
@@ -107,8 +119,8 @@ async function save() {
         duration: track.value.t.at(-1) ?? 0,
         width: track.value.width,
         height: track.value.height,
-        frames: encodeTrack(track.value),
-        reps: result.value.reps.map(({ start, bottom, end, metrics }) => ({ start, bottom, end, metrics })),
+        frames: await packTrack(track.value),
+        reps: result.value.reps.map(({ start, bottom, end, view, metrics }) => ({ start, bottom, end, view, metrics })),
         is_reference: isRef.value,
         notes: null,
       } as Parameters<typeof store.create>[0],
@@ -138,7 +150,9 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
     </header>
 
     <div class="space-y-5 px-4">
-      <template v-if="stage === 'pick' || stage === 'loading' || stage === 'processing'">
+      <LiveCamera v-if="stage === 'live'" :exercise="ex" @done="onLive" @cancel="stage = 'pick'" />
+
+      <template v-else-if="stage === 'pick' || stage === 'loading' || stage === 'processing'">
         <div>
           <label class="label" for="cl">Kto ćwiczy</label>
           <select id="cl" v-model="clientId" class="input" :disabled="stage !== 'pick'" @change="isRef = !clientId">
@@ -164,16 +178,19 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
         </div>
         <p class="card flex gap-3 p-4 text-sm"><Icon name="video" class="size-5 shrink-0 text-primary-fg" />{{ profile.hint }}</p>
 
-        <div v-if="stage === 'pick'" class="grid grid-cols-2 gap-3">
-          <label class="btn-primary cursor-pointer">
-            <Icon name="video" class="size-5" />Nagraj
-            <input type="file" accept="video/*" capture="environment" class="sr-only" @change="onFile" />
-          </label>
-          <label class="btn-ghost cursor-pointer border border-line-strong">
-            <Icon name="download" class="size-5" />Z galerii
-            <input type="file" accept="video/*" class="sr-only" @change="onFile" />
-          </label>
-        </div>
+        <template v-if="stage === 'pick'">
+          <button class="btn-primary w-full" @click="stage = 'live'"><Icon name="video" class="size-5" />Kamera na żywo</button>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="btn-ghost cursor-pointer border border-line-strong">
+              <Icon name="video" class="size-5" />Nagraj film
+              <input type="file" accept="video/*" capture="environment" class="sr-only" @change="onFile" />
+            </label>
+            <label class="btn-ghost cursor-pointer border border-line-strong">
+              <Icon name="download" class="size-5" />Z galerii
+              <input type="file" accept="video/*" class="sr-only" @change="onFile" />
+            </label>
+          </div>
+        </template>
         <p v-if="stage === 'pick'" class="text-xs text-muted">
           Nagranie analizuje telefon – nie jest wysyłane, dopóki sama nie zdecydujesz. Maks. {{ MAX_SECONDS }} s.
         </p>
@@ -231,7 +248,7 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
           </label>
           <label class="flex items-start gap-3 text-sm">
             <input v-model="keepVideo" type="checkbox" class="mt-0.5 size-5 accent-primary" />
-            <span><strong>Zachowaj nagranie</strong> na {{ VIDEO_KEEP_DAYS }} dni (prywatnie, tylko dla Ciebie). Bez tego zapisuje się sam szkielet i pomiary.</span>
+            <span><strong>Zachowaj też wideo</strong> na {{ VIDEO_KEEP_DAYS }} dni (prywatnie, tylko dla Ciebie). Domyślnie zapisuje się samo nagranie kresek i kropek z pomiarami – ok. {{ Math.max(1, Math.round(((track?.t.at(-1) ?? 0) / 60) * 220)) }} KB zamiast kilku MB wideo – i da się je odtwarzać, rysować po nim i porównywać.</span>
           </label>
           <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
           <div class="grid grid-cols-2 gap-3">

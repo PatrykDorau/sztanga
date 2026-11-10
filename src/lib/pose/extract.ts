@@ -1,5 +1,5 @@
 // Wykrywanie pozy na urządzeniu (MediaPipe Pose Landmarker). Wideo nie opuszcza telefonu.
-import type { PoseLandmarker } from '@mediapipe/tasks-vision'
+import type { PoseLandmarker, PoseLandmarkerResult } from '@mediapipe/tasks-vision'
 import { KEEP, type Pose, type Track } from './skeleton'
 
 const VERSION = '0.10.21'
@@ -34,6 +34,26 @@ export function loadPose(): Promise<PoseLandmarker> {
     throw e
   })
   return landmarker
+}
+
+// MediaPipe w trybie VIDEO wymaga ściśle rosnących znaczników czasu przez cały czas życia modelu –
+// także między kolejnymi nagraniami i kamerą. Jeden wspólny zegar [ms].
+let clock = 0
+const tick = (ms = 0) => (clock = Math.max(clock + 1, Math.round(ms)))
+
+export const toPose = (r: PoseLandmarkerResult): Pose | null => {
+  const img = r.landmarks[0]
+  const world = r.worldLandmarks[0]
+  return img && world ? KEEP.map((k) => ({ x: img[k].x, y: img[k].y, v: img[k].visibility ?? 1, wx: world[k].x, wy: world[k].y, wz: world[k].z })) : null
+}
+
+/**
+ * Detektor dla kamery na żywo: znaczniki czasu = rzeczywisty upływ czasu (MediaPipe wygładza ruch wg odstępów),
+ * przesunięte tak, żeby były późniejsze niż wszystko, co model już widział.
+ */
+export function liveDetector(pose: PoseLandmarker) {
+  const offset = Math.max(0, clock + 1 - performance.now())
+  return (source: HTMLVideoElement): Pose | null => toPose(pose.detectForVideo(source, tick(performance.now() + offset)))
 }
 
 function seek(video: HTMLVideoElement, t: number) {
@@ -72,22 +92,13 @@ export async function extractTrack(video: HTMLVideoElement, onProgress?: (p: num
   const n = Math.floor(duration * FPS)
   const t: number[] = []
   const poses: (Pose | null)[] = []
-  let lastTs = -1
+  const base = clock + 1
   for (let i = 0; i < n; i++) {
     if (signal?.aborted) throw new DOMException('Przerwano', 'AbortError')
     const tt = i / FPS
     await seek(video, tt)
-    const ts = Math.max(lastTs + 1, Math.round(tt * 1000))
-    lastTs = ts
-    const r = pose.detectForVideo(video, ts)
-    const img = r.landmarks[0]
-    const world = r.worldLandmarks[0]
     t.push(tt)
-    poses.push(
-      img && world
-        ? KEEP.map((k) => ({ x: img[k].x, y: img[k].y, v: img[k].visibility ?? 1, wx: world[k].x, wy: world[k].y, wz: world[k].z }))
-        : null,
-    )
+    poses.push(toPose(pose.detectForVideo(video, tick(base + tt * 1000))))
     if (i % 3 === 0) onProgress?.(i / n)
   }
   onProgress?.(1)
