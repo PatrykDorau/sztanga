@@ -5,7 +5,8 @@ import { matches } from '@/lib/search'
 import ExerciseThumb from './ExerciseThumb.vue'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ title: string; exclude?: string[] }>()
+const props = defineProps<{ title: string; exclude?: string[]; limitations?: string[] }>()
+const warn = (c: string[]) => !!props.limitations?.some((l) => c.includes(l))
 const emit = defineEmits<{ pick: [id: string]; close: [] }>()
 const ex = useExercisesStore()
 const q = ref('')
@@ -31,7 +32,8 @@ const list = computed(() =>
       <li v-for="e in list" :key="e.id">
         <button class="card flex w-full items-center gap-3 p-2 text-left" @click="emit('pick', e.id)">
           <ExerciseThumb :exercise="e" />
-          <span class="font-medium">{{ e.name_pl }}</span>
+          <span class="flex-1 font-medium">{{ e.name_pl }}</span>
+          <Icon v-if="warn(e.contraindications)" name="alert" class="size-5 shrink-0 text-amber-500" aria-label="Przeciwwskazanie" />
         </button>
       </li>
       <li v-if="!list.length" class="py-8 text-center text-stone-500">Brak wyników</li>

@@ -4,5 +4,6 @@ declare module 'vue-router' {
   interface RouteMeta {
     public?: boolean
     trainer?: boolean
+    bare?: boolean
   }
 }

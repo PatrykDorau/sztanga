@@ -44,10 +44,22 @@ const GOAL = 30
       <p class="text-sm text-stone-600 dark:text-stone-400">Trenerka przygotowuje plany w aplikacji. Do tego czasu możesz przejrzeć bazę ćwiczeń.</p>
     </section>
 
+    <section v-if="auth.isTrainer" class="grid grid-cols-2 gap-3">
+      <RouterLink to="/klienci" class="card p-4">
+        <Icon name="users" class="mb-2 size-6 text-brand-700 dark:text-brand-500" />
+        <p class="font-semibold">Klienci</p>
+        <p class="text-xs text-stone-500">profile i plany</p>
+      </RouterLink>
+      <RouterLink to="/plany" class="card p-4">
+        <Icon name="clipboard" class="mb-2 size-6 text-brand-700 dark:text-brand-500" />
+        <p class="font-semibold">Szablony</p>
+        <p class="text-xs text-stone-500">gotowe programy</p>
+      </RouterLink>
+    </section>
+
     <section class="card p-5">
       <h2 class="mb-3 font-semibold">Wkrótce w aplikacji</h2>
       <ul class="space-y-2 text-sm text-stone-600 dark:text-stone-400">
-        <li>• Kreator planów i szablony (faza 2)</li>
         <li>• Grafik i rezerwacje klientów (faza 3)</li>
         <li>• Prowadzenie sesji na żywo i dashboard klienta (faza 4)</li>
       </ul>

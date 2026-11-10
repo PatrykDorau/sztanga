@@ -37,6 +37,18 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Import ~870 ćwiczeń z free-exercise-db (osobno od własnych, bez duplikatów).
 - PWA (instalacja na telefonie), nawigacja dolna, tryb ciemny.
 
+## Co jest zrobione (Faza 2)
+
+- Klienci: grupa (amator / sportowiec / dziecko), cele, ograniczenia, dostępny sprzęt, notatki, archiwum.
+- Kreator planu: tygodnie z fazą periodyzacji, treningi (dni), ćwiczenia z seriami / powtórzeniami / ciężarem / tempem / przerwą / RPE.
+- Superserie i obwody (litera grupy), przeciąganie ćwiczeń i dni (także między treningami, działa dotykiem).
+- Podmiana ćwiczenia na regresję / progresję / alternatywę jednym kliknięciem.
+- Ostrzeżenie, gdy przeciwwskazanie ćwiczenia pasuje do ograniczenia klienta (w kreatorze i przy wyborze ćwiczenia).
+- Szablony programów; przypisanie klientowi z datą startu tworzy niezależną kopię (`copy_program`), plan klienta można zapisać jako szablon.
+- Reguły progresji (+kg lub +powtórzenia na tydzień); „Kopiuj z progresją” tworzy kolejny tydzień jako szkic do przejrzenia.
+- Wersja do druku / PDF (`/plany/:id/druk`).
+- Klient z kontem widzi tylko swoje plany, i to dopiero gdy nie są szkicem.
+
 ## Baza danych
 
 Migracje w `supabase/migrations/` (zastosowane już na projekcie w chmurze).
@@ -47,11 +59,14 @@ Migracje w `supabase/migrations/` (zastosowane już na projekcie w chmurze).
 | `exercises` | baza ćwiczeń |
 | `exercise_relations` | `progression` (from → trudniejsze to) i `alternative`; regresja = progresja czytana odwrotnie |
 | `exercise_favorites` | ulubione per użytkownik |
+| `clients` | klienci (konto opcjonalne – `user_id`) |
+| `programs` | szablony (`is_template`) i plany klientów, status szkic / aktywny / zakończony |
+| `program_weeks` → `workouts` → `workout_exercises` | tygodnie z fazą, treningi, ćwiczenia z dawką i regułą progresji |
 | storage `exercise-media` | wideo ćwiczeń (prywatny, odczyt przez podpisane linki) |
 
 ## Do zrobienia w kolejnych fazach
 
-Faza 2 kreator planów · Faza 3 grafik i rezerwacje · Faza 4 sesje na żywo, udostępnianie, dashboard ·
+Faza 3 grafik i rezerwacje · Faza 4 sesje na żywo, udostępnianie, dashboard ·
 Faza 5 AI i analiza wideo · Faza 6 sportowcy i dzieci. Szczegóły w dokumencie planu projektu.
 
 Otwarte z Fazy 1: CI/CD (deploy na Netlify/Vercel) – do podpięcia po założeniu repo na GitHubie;

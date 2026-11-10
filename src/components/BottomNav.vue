@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import Icon from './Icon.vue'
 
 const route = useRoute()
-// Kolejne fazy dołożą tu: Plany (2), Grafik (3), Klienci (4).
-const items = [
-  { to: '/', label: 'Start', icon: 'home', match: (p: string) => p === '/' },
-  { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p: string) => p.startsWith('/cwiczenia') },
-  { to: '/profil', label: 'Profil', icon: 'user', match: (p: string) => p.startsWith('/profil') },
-] as const
+const auth = useAuthStore()
+// Faza 3 dołoży tu Grafik.
+const all = [
+  { to: '/', label: 'Start', icon: 'home', match: (p: string) => p === '/', trainer: false },
+  { to: '/klienci', label: 'Klienci', icon: 'users', match: (p: string) => p.startsWith('/klienci'), trainer: true },
+  { to: '/plany', label: 'Plany', icon: 'clipboard', match: (p: string) => p.startsWith('/plany'), trainer: true },
+  { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p: string) => p.startsWith('/cwiczenia'), trainer: false },
+  { to: '/profil', label: 'Profil', icon: 'user', match: (p: string) => p.startsWith('/profil'), trainer: false },
+]
+const items = computed(() => all.filter((i) => !i.trainer || auth.isTrainer))
 const path = computed(() => route.path)
 </script>
 
