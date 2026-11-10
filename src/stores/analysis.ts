@@ -34,7 +34,18 @@ export interface AnalysisRow {
   video_expires_at: string | null
   created_at: string
 }
+/** Uwaga trenerska zapisana przy analizie (skrót Finding z lib/pose/coaching). */
+export interface StoredFinding {
+  key: string
+  title: string
+  severity: 'high' | 'medium' | 'low'
+  reps: number[]
+  obs: string
+  cue: string
+  fix: string
+}
 export interface AnalysisFull extends AnalysisRow {
+  findings?: StoredFinding[] | null
   width: number | null
   height: number | null
   frames: StoredTrack
@@ -64,7 +75,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
   }
 
   async function get(id: string): Promise<AnalysisFull> {
-    return ok(await supabase.from('movement_analyses').select(`${LIST_COLS}, width, height, frames`).eq('id', id).single()) as AnalysisFull
+    return ok(await supabase.from('movement_analyses').select(`${LIST_COLS}, width, height, frames, findings`).eq('id', id).single()) as AnalysisFull
   }
 
   async function create(input: Omit<AnalysisFull, 'id' | 'created_at' | 'video_path' | 'video_expires_at' | 'reps_actual'>, video?: Blob) {
@@ -89,7 +100,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     Object.assign(row, patch)
   }
 
-  async function update(id: string, patch: Partial<Pick<AnalysisRow, 'label' | 'is_reference' | 'reps_actual' | 'notes' | 'client_id' | 'video_path' | 'video_expires_at' | 'reps' | 'view'>>) {
+  async function update(id: string, patch: Partial<Pick<AnalysisRow, 'label' | 'is_reference' | 'reps_actual' | 'notes' | 'client_id' | 'video_path' | 'video_expires_at' | 'reps' | 'view'>> & { findings?: StoredFinding[] }) {
     ok(await supabase.from('movement_analyses').update(patch).eq('id', id))
     const r = list.value.find((x) => x.id === id)
     if (r) Object.assign(r, patch)

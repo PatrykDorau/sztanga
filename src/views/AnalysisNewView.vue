@@ -6,7 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useClientsStore } from '@/stores/clients'
 import { useAnalysisStore, VIDEO_KEEP_DAYS } from '@/stores/analysis'
 import { analyze, type AnalysisResult } from '@/lib/pose/analysis'
-import { coach, type Finding } from '@/lib/pose/coaching'
+import { coach, storedFindings, type Finding } from '@/lib/pose/coaching'
 import { smoothTrack } from '@/lib/pose/filter'
 import { extractTrack, loadPose, loadVideo, MAX_SECONDS } from '@/lib/pose/extract'
 import { packTrack, type Track } from '@/lib/pose/skeleton'
@@ -132,6 +132,7 @@ async function save() {
         frames: await packTrack(track.value),
         reps: result.value.reps.map(({ start, bottom, end, view, metrics }) => ({ start, bottom, end, view, metrics })),
         is_reference: isRef.value,
+        findings: coaching.value ? storedFindings(coaching.value) : [],
         notes: null,
       } as Parameters<typeof store.create>[0],
       video,

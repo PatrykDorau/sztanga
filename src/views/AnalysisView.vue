@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 import { useAnalysisStore, type AnalysisFull, type AnalysisRow } from '@/stores/analysis'
 import { useClientsStore } from '@/stores/clients'
 import { averageRep, PHASES, refStats, remeasure, summarize, zScore, type AvgRep, type P2, type RefStats } from '@/lib/pose/analysis'
-import { coach, type Finding } from '@/lib/pose/coaching'
+import { coach, storedFindings, type Finding } from '@/lib/pose/coaching'
 import { smoothTrack } from '@/lib/pose/filter'
 import CoachingPanel from '@/components/CoachingPanel.vue'
 import { unpackTrack, type Track } from '@/lib/pose/skeleton'
@@ -59,6 +59,14 @@ function showFinding(f: Finding) {
   player.value?.showFrame(f.frame)
 }
 const details = ref(false)
+// Wnioski trzymamy też w bazie (dla asystenta AI); odświeżamy, gdy różnią się od zapisanych (starsza analiza, zmienione progi).
+watch(coaching, (c) => {
+  if (!c || !a.value) return
+  const f = storedFindings(c)
+  if (JSON.stringify(f) === JSON.stringify(a.value.findings ?? null)) return
+  a.value.findings = f
+  store.update(a.value.id, { findings: f }).catch(() => null)
+})
 const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'łokieć' })[profile.value.signal])
 
 // ---------- Poprawka liczby powtórzeń (kalibracja licznika) ----------
@@ -208,6 +216,10 @@ const expires = computed(() => (a.value?.video_expires_at ? new Date(a.value.vid
         <h2 class="text-xl font-bold">Nagranie</h2>
         <PosePlayer ref="player" :track="track" :video-url="videoUrl" :reps="reps" :flagged="flagged" :signal="signal" :signal-label="signalLabel" :highlight="shownFinding?.joints" />
       </section>
+
+      <RouterLink v-if="reps.length" :to="{ path: '/asystent', query: { analysis: a.id } }" class="btn-ghost w-full border border-line-strong">
+        <Icon name="star" class="size-5" />Omów z asystentem AI (plan poprawy, ćwiczenia z Twojej bazy)
+      </RouterLink>
 
       <section class="card flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
         <div>

@@ -287,6 +287,47 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
+    name: 'movement_analyses',
+    description:
+      'Analizy ruchu z kamery (technika): data, ćwiczenie (squat = przysiad, deadlift = martwy ciąg, pushup = pompka, press = wyciskanie nad głowę), ujęcie, liczba powtórzeń, średnie pomiary i findings – uwagi trenerskie (title, severity high/medium/low, reps, obs = co widać, cue = co powiedzieć, fix = nad czym pracować). findings = null oznacza starszą analizę bez zapisanych uwag. Dla klienta (client_id), pojedynczej analizy (analysis_id) albo najnowsze u wszystkich (oba null).',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['client_id', 'analysis_id'],
+      properties: { client_id: { type: ['string', 'null'] }, analysis_id: { type: ['string', 'null'] } },
+    },
+  },
+  {
+    name: 'client_plan',
+    description: 'Aktualny plan treningowy klienta (aktywny, a gdy brak – najnowszy): tygodnie, treningi i ćwiczenia z seriami, powtórzeniami, obciążeniem i RPE.',
+    strict: true,
+    input_schema: { type: 'object', additionalProperties: false, required: ['client_id'], properties: { client_id: { type: 'string' } } },
+  },
+  {
+    name: 'schedule',
+    description: 'Sesje w grafiku w okresie (daty RRRR-MM-DD): początek, koniec, status, klient. Dla jednego klienta albo wszystkich (client_id null). Służy też do pytań o najbliższe treningi.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['client_id', 'from', 'to'],
+      properties: { client_id: { type: ['string', 'null'] }, from: { type: 'string' }, to: { type: 'string' } },
+    },
+  },
+  {
+    name: 'find_exercises',
+    description:
+      'Szukanie w bazie ćwiczeń trenerki po fragmencie nazwy (polskiej lub angielskiej) i/lub wzorcu ruchu (squat, hinge, lunge, push_h, push_v, pull_h, pull_v, core, carry…). Zwraca nazwę, wzorzec, mięśnie, sprzęt, poziom. Używaj, gdy proponujesz ćwiczenia (np. korekcyjne) – proponuj tylko te, które są w bazie.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['query', 'pattern'],
+      properties: { query: { type: ['string', 'null'] }, pattern: { type: ['string', 'null'] } },
+    },
+  },
+  {
     name: 'clients_with_limitation',
     description: 'Klienci z danym ograniczeniem / kontuzją. Klucze: knee, lower_back, shoulder, hip, wrist, elbow, ankle, neck, pregnancy, hypertension (i inne z karty klienta).',
     strict: true,
@@ -372,6 +413,101 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
       }
       return [...by.values()]
     }
+    case 'movement_analyses': {
+      let q = db
+        .from('movement_analyses')
+        .select('id, client_id, exercise_key, label, recorded_at, view, reps, reps_actual, is_reference, notes, findings, clients(full_name)')
+        .order('recorded_at', { ascending: false })
+        .limit(input.analysis_id ? 1 : 15)
+      if (input.analysis_id) q = q.eq('id', String(input.analysis_id))
+      else if (input.client_id) q = q.eq('client_id', String(input.client_id))
+      const { data, error } = await q
+      if (error) throw error
+      return (data ?? []).map((a: any) => {
+        const reps = (a.reps ?? []) as { metrics: Record<string, number | null> }[]
+        const avg: Record<string, number> = {}
+        for (const k of new Set(reps.flatMap((r) => Object.keys(r.metrics ?? {})))) {
+          const v = reps.map((r) => r.metrics[k]).filter((x): x is number => typeof x === 'number')
+          if (v.length) avg[k] = Math.round((v.reduce((s, x) => s + x, 0) / v.length) * 10) / 10
+        }
+        return {
+          id: a.id,
+          client_id: a.client_id,
+          who: a.clients?.full_name ?? 'trenerka (np. wzorzec)',
+          exercise: a.exercise_key,
+          date: a.recorded_at,
+          view: a.view,
+          label: a.label,
+          reference: a.is_reference,
+          reps_detected: reps.length,
+          reps_actual: a.reps_actual,
+          avg_metrics: avg,
+          findings: a.findings,
+          notes: a.notes,
+        }
+      })
+    }
+    case 'client_plan': {
+      const id = String(input.client_id)
+      const { data: progs, error: pe } = await db.from('programs').select('id, name, status, start_date, description').eq('client_id', id).order('created_at', { ascending: false }).limit(10)
+      if (pe) throw pe
+      const prog = (progs ?? []).find((p) => p.status === 'active') ?? progs?.[0]
+      if (!prog) return { note: 'Klient nie ma żadnego planu.' }
+      const { data, error } = await db
+        .from('program_weeks')
+        .select('position, phase, notes, workouts(position, name, notes, workout_exercises(position, group_label, sets, reps, load, tempo, rest_sec, rpe, notes, exercises(name_pl)))')
+        .eq('program_id', prog.id)
+        .order('position')
+      if (error) throw error
+      const byPos = (a: any, b: any) => a.position - b.position
+      return {
+        program: prog,
+        weeks: (data ?? []).map((w: any) => ({
+          week: w.position + 1,
+          phase: w.phase,
+          notes: w.notes,
+          workouts: [...(w.workouts ?? [])].sort(byPos).map((wo: any) => ({
+            name: wo.name,
+            notes: wo.notes,
+            exercises: [...(wo.workout_exercises ?? [])].sort(byPos).map((e: any) => ({
+              exercise: e.exercises?.name_pl,
+              group: e.group_label,
+              sets: e.sets,
+              reps: e.reps,
+              load: e.load,
+              tempo: e.tempo,
+              rest_sec: e.rest_sec,
+              rpe: e.rpe,
+              notes: e.notes,
+            })),
+          })),
+        })),
+      }
+    }
+    case 'schedule': {
+      let q = db
+        .from('sessions')
+        .select('id, client_id, starts_at, ends_at, status, notes, clients(full_name)')
+        .gte('starts_at', String(input.from))
+        .lt('starts_at', `${input.to}T23:59:59`)
+        .order('starts_at')
+        .limit(300)
+      if (input.client_id) q = q.eq('client_id', String(input.client_id))
+      const { data, error } = await q
+      if (error) throw error
+      return (data ?? []).map((s: any) => ({ client_id: s.client_id, name: s.clients?.full_name, starts_at: s.starts_at, ends_at: s.ends_at, status: s.status, notes: s.notes }))
+    }
+    case 'find_exercises': {
+      let q = db.from('exercises').select('name_pl, name_en, movement_pattern, muscle_groups, equipment, level').order('name_pl').limit(40)
+      if (input.query) {
+        const s = String(input.query).replace(/[%_,()]/g, '').trim()
+        if (s) q = q.or(`name_pl.ilike.%${s}%,name_en.ilike.%${s}%`)
+      }
+      if (input.pattern) q = q.eq('movement_pattern', String(input.pattern))
+      const { data, error } = await q
+      if (error) throw error
+      return data?.length ? data : { note: 'Nic nie znaleziono – spróbuj innego słowa (także po angielsku) albo samego wzorca ruchu.' }
+    }
     case 'clients_with_limitation': {
       const { data, error } = await db.from('clients').select('id, full_name, limitations, archived').contains('limitations', [String(input.limitation)])
       if (error) throw error
@@ -381,14 +517,24 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
   throw new Error(`Nieznane narzędzie: ${name}`)
 }
 
-async function ask(db: SupabaseClient, history: { role: 'user' | 'assistant'; content: string }[]) {
+async function ask(db: SupabaseClient, history: { role: 'user' | 'assistant'; content: string }[], context?: { client_id?: string | null; analysis_id?: string | null }) {
   const today = new Date().toISOString().slice(0, 10)
   const system = `Jesteś asystentem trenerki personalnej w jej aplikacji. Odpowiadasz po polsku, krótko i konkretnie, wyłącznie na podstawie danych z narzędzi – nie zgaduj liczb ani dat.
 Gdy wymieniasz klienta, dodaj link w formacie Markdown do jego karty: [Imię Nazwisko](/klienci/<id>) albo do zakładki: [postępy](/klienci/<id>?tab=progress), [historia](/klienci/<id>?tab=history), [ruch](/klienci/<id>?tab=ruch). Innych linków nie twórz.
+Link do analizy ruchu: [analiza](/analiza/<id>).
+Technika: korzystaj z movement_analyses. Uwagi (findings) pochodzą z automatycznej analizy nagrania – to wskazania do potwierdzenia przez trenerkę, nie diagnoza; nie stawiaj rozpoznań medycznych. Gdy omawiasz analizę, podaj: 1) najważniejsze 1–3 rzeczy do poprawy w kolejności ważności, 2) co powiedzieć klientowi (krótkie komendy), 3) 2–4 ćwiczenia korekcyjne lub regresje – wyłącznie takie, które znalazłeś w bazie przez find_exercises, z uwzględnieniem ograniczeń z karty klienta.
+Propozycje zmian w planie formułuj jako sugestie dla trenerki – niczego nie zapisujesz ani nie zmieniasz.
 Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, sprawy spoza treningu), powiedz o tym wprost.`
   const messages: Anthropic.Beta.BetaMessageParam[] = history.slice(-12).map((m) => ({ role: m.role, content: m.content }))
   // Bieżąca data jako wiadomość operatora na końcu – stała część promptu zostaje w cache.
-  messages.push({ role: 'system', content: `Dzisiaj jest ${today}.` } as unknown as Anthropic.Beta.BetaMessageParam)
+  const uuid = (v: unknown) => (typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v) ? v : null)
+  const ctx = [
+    uuid(context?.client_id) ? `Rozmowa została otwarta z karty klienta o id ${uuid(context?.client_id)} – pytania bez wskazania osoby dotyczą tego klienta.` : '',
+    uuid(context?.analysis_id) ? `Rozmowa została otwarta z analizy ruchu o id ${uuid(context?.analysis_id)} – pobierz ją narzędziem movement_analyses.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  messages.push({ role: 'system', content: `Dzisiaj jest ${today}. ${ctx}`.trim() } as unknown as Anthropic.Beta.BetaMessageParam)
   const client = anthropic()
   for (let i = 0; i < 8; i++) {
     const msg = await client.beta.messages.create({
@@ -433,7 +579,7 @@ Deno.serve(async (req) => {
     if (body.action === 'ask') {
       const history = Array.isArray(body.messages) ? body.messages.filter((m: any) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : []
       if (!history.length || history.at(-1).role !== 'user') return json({ error: 'Brak pytania' }, 400)
-      return json({ answer: await ask(db, history) })
+      return json({ answer: await ask(db, history, body.context) })
     }
     return json({ error: 'Nieznana akcja' }, 400)
   } catch (e) {
