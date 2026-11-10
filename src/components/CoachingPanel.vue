@@ -41,7 +41,7 @@ const tone: Record<Finding['severity'], { bar: string; tag: string }> = {
           <span class="rounded-full px-2 py-0.5 text-[11px] font-bold tracking-wide uppercase" :class="tone[f.severity].tag">{{ SEVERITY_LABEL[f.severity] }}</span>
           <span class="text-xs text-muted">{{ f.repsText }}</span>
         </div>
-        <h3 class="mt-1.5 text-base leading-snug font-bold">{{ f.title }}</h3>
+        <h3 class="mt-1.5 text-lg leading-snug font-bold">{{ f.title }}</h3>
         <p class="mt-2 border-l-2 border-line-strong pl-3 text-[15px] leading-snug">
           <span class="block text-[11px] font-semibold tracking-wide text-muted uppercase">Powiedz</span>
           „{{ f.cue }}”
@@ -53,7 +53,7 @@ const tone: Record<Finding['severity'], { bar: string; tag: string }> = {
         </div>
 
         <div class="mt-3 flex flex-wrap gap-2">
-          <button type="button" class="chip border-line-strong bg-surface" @click="emit('show', f)"><Icon name="video" class="size-4" />Pokaż na nagraniu</button>
+          <button type="button" class="chip gap-1.5 border-line-strong bg-surface" @click="emit('show', f)"><Icon name="video" class="size-4" />Pokaż na nagraniu</button>
           <button type="button" class="chip border-line-strong bg-surface" :aria-expanded="open.has(f.key)" @click="toggle(f.key)">
             {{ open.has(f.key) ? 'Zwiń' : 'Szczegóły' }}
           </button>

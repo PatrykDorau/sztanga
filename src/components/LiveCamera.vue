@@ -139,7 +139,7 @@ function loop(g = gen) {
           clearTimeout(cueTimer)
           cueTimer = window.setTimeout(() => (cue.value = null), 4000)
         }
-        reps.value = r.reps.length
+        reps.value = Math.max(reps.value, r.reps.length) // licznik nigdy się nie cofa
         const a = r.signal.at(-1)
         angle.value = a != null && Number.isFinite(a) ? Math.round(a) : null
       }
@@ -267,7 +267,7 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
         </div>
         <span v-if="fps && state !== 'starting'" class="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-3 rounded-full bg-black/50 px-2 py-1 text-[11px] text-white/80 tabular-nums">{{ fps }} kl./s</span>
 
-        <!-- Licznik powtórzeń + uwaga do ostatniego powtórzenia -->
+        <!-- Uwaga do ostatniego powtórzenia -->
         <div v-if="state === 'recording' || state === 'finishing'" class="absolute inset-x-3 bottom-3 flex flex-col items-center gap-2">
           <p
             v-if="cue"
@@ -277,10 +277,16 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
           >
             {{ cue.text }}
           </p>
-          <div class="rounded-2xl bg-black/65 px-6 py-2 text-center transition-transform" :class="bump ? 'scale-125' : ''" aria-live="polite">
-            <p class="font-display text-7xl leading-none font-bold tabular-nums">{{ reps }}</p>
-            <p class="text-xs">powtórzeń</p>
-          </div>
+        </div>
+        <!-- Licznik w rogu, żeby nie zasłaniał stóp ani kolan -->
+        <div
+          v-if="state === 'recording' || state === 'finishing'"
+          class="absolute top-[max(3.25rem,calc(env(safe-area-inset-top)+2.5rem))] right-3 origin-top-right rounded-2xl bg-black/65 px-4 py-2 text-center transition-transform"
+          :class="bump ? 'scale-125' : ''"
+          aria-live="polite"
+        >
+          <p class="font-display text-6xl leading-none font-bold tabular-nums">{{ reps }}</p>
+          <p class="text-xs">powtórzeń</p>
         </div>
         <div v-if="state === 'countdown'" class="absolute inset-0 flex items-center justify-center bg-black/40">
           <span class="font-display text-[10rem] leading-none font-bold tabular-nums">{{ countdown }}</span>
