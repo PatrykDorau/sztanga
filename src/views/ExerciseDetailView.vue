@@ -54,8 +54,13 @@ async function unlink(otherId: string) {
 
 async function remove() {
   if (!e.value || !confirm(`Usunąć „${e.value.name_pl}”? Tego nie da się cofnąć.`)) return
-  await ex.remove(e.value.id)
-  router.replace('/cwiczenia')
+  try {
+    await ex.remove(e.value.id)
+    router.replace('/cwiczenia')
+  } catch (err) {
+    const code = (err as { code?: string }).code
+    error.value = code === '23503' ? 'To ćwiczenie jest użyte w planach – najpierw usuń je z treningów.' : (err as Error).message
+  }
 }
 </script>
 

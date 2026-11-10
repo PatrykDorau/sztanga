@@ -77,3 +77,33 @@ export const CONTRAINDICATIONS: Record<string, string> = {
 
 export const label = (dict: Record<string, string>, key: string | null | undefined) =>
   key ? (dict[key] ?? key) : ''
+
+export const GROUPS: Record<string, string> = {
+  amateur: 'Amator',
+  athlete: 'Sportowiec',
+  child: 'Dziecko',
+}
+
+export const PHASES: Record<string, string> = {
+  adaptation: 'Adaptacja',
+  hypertrophy: 'Hipertrofia',
+  strength: 'Siła',
+  power: 'Moc',
+  peaking: 'Szczyt formy',
+  deload: 'Deload',
+}
+
+export const PHASE_COLORS: Record<string, string> = {
+  adaptation: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200',
+  hypertrophy: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200',
+  strength: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200',
+  power: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
+  peaking: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200',
+  deload: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
+}
+
+export const STATUSES: Record<string, string> = {
+  draft: 'Szkic',
+  active: 'Aktywny',
+  archived: 'Zakończony',
+}

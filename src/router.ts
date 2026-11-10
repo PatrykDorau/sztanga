@@ -11,6 +11,13 @@ const router = createRouter({
     { path: '/cwiczenia/import', name: 'exercise-import', component: () => import('@/views/ImportView.vue'), meta: { trainer: true } },
     { path: '/cwiczenia/:id', name: 'exercise', component: () => import('@/views/ExerciseDetailView.vue'), props: true },
     { path: '/cwiczenia/:id/edycja', name: 'exercise-edit', component: () => import('@/views/ExerciseFormView.vue'), props: true, meta: { trainer: true } },
+    { path: '/klienci', name: 'clients', component: () => import('@/views/ClientsView.vue'), meta: { trainer: true } },
+    { path: '/klienci/nowy', name: 'client-new', component: () => import('@/views/ClientFormView.vue'), meta: { trainer: true } },
+    { path: '/klienci/:id', name: 'client', component: () => import('@/views/ClientDetailView.vue'), props: true, meta: { trainer: true } },
+    { path: '/klienci/:id/edycja', name: 'client-edit', component: () => import('@/views/ClientFormView.vue'), props: true, meta: { trainer: true } },
+    { path: '/plany', name: 'programs', component: () => import('@/views/ProgramsView.vue'), meta: { trainer: true } },
+    { path: '/plany/:id', name: 'program', component: () => import('@/views/ProgramEditorView.vue'), props: true, meta: { trainer: true } },
+    { path: '/plany/:id/druk', name: 'program-print', component: () => import('@/views/ProgramPrintView.vue'), props: true, meta: { bare: true } }, // klient też: RLS pokazuje mu tylko jego nie-szkicowe plany
     { path: '/profil', name: 'profile', component: () => import('@/views/ProfileView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

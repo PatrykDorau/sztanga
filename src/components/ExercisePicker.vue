@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useExercisesStore } from '@/stores/exercises'
 import { matches } from '@/lib/search'
 import ExerciseThumb from './ExerciseThumb.vue'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ title: string; exclude?: string[] }>()
+const props = defineProps<{ title: string; exclude?: string[]; limitations?: string[] }>()
+const warn = (c: string[]) => !!props.limitations?.some((l) => c.includes(l))
 const emit = defineEmits<{ pick: [id: string]; close: [] }>()
 const ex = useExercisesStore()
 const q = ref('')
+// Atrybut autofocus działa tylko przy ładowaniu strony, nie w oknie otwieranym później.
+const searchEl = ref<HTMLInputElement | null>(null)
+onMounted(() => searchEl.value?.focus())
 
 const list = computed(() =>
   ex.all
@@ -25,13 +29,14 @@ const list = computed(() =>
       <h2 class="font-semibold">{{ title }}</h2>
     </header>
     <div class="p-4 pb-2">
-      <input v-model="q" type="search" class="input" placeholder="Szukaj ćwiczenia…" autofocus />
+      <input ref="searchEl" v-model="q" type="search" class="input" placeholder="Szukaj ćwiczenia…" />
     </div>
     <ul class="flex-1 space-y-2 overflow-y-auto px-4 pb-6">
       <li v-for="e in list" :key="e.id">
         <button class="card flex w-full items-center gap-3 p-2 text-left" @click="emit('pick', e.id)">
           <ExerciseThumb :exercise="e" />
-          <span class="font-medium">{{ e.name_pl }}</span>
+          <span class="flex-1 font-medium">{{ e.name_pl }}</span>
+          <Icon v-if="warn(e.contraindications)" name="alert" class="size-5 shrink-0 text-amber-500" aria-label="Przeciwwskazanie" />
         </button>
       </li>
       <li v-if="!list.length" class="py-8 text-center text-stone-500">Brak wyników</li>
