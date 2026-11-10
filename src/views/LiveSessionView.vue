@@ -11,6 +11,7 @@ import { fmtKg } from '@/lib/strength'
 import ExercisePicker from '@/components/ExercisePicker.vue'
 import ExerciseThumb from '@/components/ExerciseThumb.vue'
 import Icon from '@/components/Icon.vue'
+import TempoMetronome from '@/components/TempoMetronome.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -23,6 +24,12 @@ const d = computed(() => live.drafts[props.id])
 const finishedClientId = ref<string | null>(null)
 const client = computed(() => clients.byId(d.value?.client_id ?? finishedClientId.value))
 const picking = ref(false)
+// Metronom tempa dla wybranego ćwiczenia (tempo i liczba powtórzeń z planu).
+const metro = ref<{ tempo: string | null; reps: number | null; title: string } | null>(null)
+function openMetro(e: NonNullable<typeof d.value>['exercises'][number]) {
+  const reps = Number(String(e.target.reps ?? '').match(/\d+/)?.[0]) || null
+  metro.value = { tempo: e.target.tempo ?? null, reps, title: ex.byId(e.exercise_id)?.name_pl ?? '' }
+}
 const finishing = ref(false)
 const saving = ref(false)
 const result = ref<'' | 'synced' | 'queued'>('')
@@ -156,6 +163,9 @@ function discard() {
               Plan: {{ [e.target.sets && e.target.reps ? `${e.target.sets} × ${e.target.reps}` : e.target.reps, e.target.load, e.target.rpe ? `RPE ${e.target.rpe}` : null].filter(Boolean).join(' · ') || '—' }}
             </p>
             <p v-if="e.target.notes" class="text-xs text-muted italic">{{ e.target.notes }}</p>
+            <button type="button" class="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-full border border-line-strong px-2.5 text-xs font-semibold" @click="openMetro(e)">
+              <Icon name="clock" class="size-3.5" />{{ e.target.tempo ? `Tempo ${e.target.tempo}` : 'Metronom' }}
+            </button>
             <p v-if="warn(e.exercise_id).length" class="mt-1 flex items-center gap-1 text-xs font-semibold text-warn-fg">
               <Icon name="alert" class="size-3.5" />przeciwwskazanie: {{ warn(e.exercise_id).map((w) => label(CONTRAINDICATIONS, w)).join(', ') }}
             </p>
@@ -257,5 +267,6 @@ function discard() {
   <main v-else class="px-4 pt-10 text-center text-muted">
     Nie ma takiej sesji na tym urządzeniu.
     <RouterLink to="/grafik" class="btn-ghost mt-4">Grafik</RouterLink>
+    <TempoMetronome v-if="metro" :tempo="metro.tempo" :reps="metro.reps" :title="metro.title" @close="metro = null" />
   </main>
 </template>
