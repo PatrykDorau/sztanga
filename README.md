@@ -89,6 +89,17 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Logika w `src/lib/pose/` (czysty TS); test na syntetycznych danych: `npm run test:pose`.
 - Do zrobienia: kalibracja na 20–30 prawdziwych nagraniach, generator planów i asystent AI (klucz Anthropic).
 
+## Faza 5 – AI (Claude, Edge Function `ai`)
+
+- **Plan z AI** (`/plany/ai`, przycisk w Planach): cel, poziom, liczba treningów i tygodni, sprzęt, ograniczenia → Claude
+  układa szkic wyłącznie z ćwiczeń z bazy (przefiltrowanych pod sprzęt i przeciwwskazania; krótkie kody, walidacja po
+  stronie serwera) → plan zapisuje się jako **szkic** i otwiera w kreatorze. Do AI nie trafia imię ani kontakt klienta.
+- **Asystent** (`/asystent`, kafelek na Starcie): pytania w języku naturalnym; zamknięta lista narzędzi tylko do odczytu
+  (klienci, karta, historia ćwiczenia, rekordy, frekwencja, ograniczenia), wykonywanych uprawnieniami trenerki (RLS);
+  odpowiedź z linkami do karty klienta.
+- Model `claude-opus-5-5` z zapasowym modelem po odmowie (`fallbacks: "default"`). Wymaga sekretu `ANTHROPIC_API_KEY`
+  w Supabase → Edge Functions → Secrets.
+
 ## Dostęp do bazy dla Claude
 
 Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego projektu jest w `.mcp.json` (`supabase-sztanga`) i działa po restarcie sesji w tym folderze (przy pierwszym użyciu logowanie i wybór organizacji Sztanga).

@@ -110,7 +110,7 @@ function loop(g = gen) {
         if (r.reps.length > reps.value) {
           bump.value = true
           setTimeout(() => (bump.value = false), 350)
-          navigator.vibrate?.(60)
+          if ((navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive) navigator.vibrate?.(60)
         }
         reps.value = r.reps.length
         const a = r.signal.at(-1)
