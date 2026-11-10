@@ -4,7 +4,8 @@ import { useRoute } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
 
 const route = useRoute()
-const showNav = computed(() => !route.meta.public && !route.meta.bare)
+// Przed rozpoznaniem pierwszego adresu trasa jest pusta – bez tego pasek migał na stronach publicznych.
+const showNav = computed(() => route.matched.length > 0 && !route.meta.public && !route.meta.bare)
 </script>
 
 <template>
