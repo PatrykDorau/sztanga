@@ -17,6 +17,14 @@ const router = useRouter()
 const videoSrc = ref<string | null>(null)
 const picking = ref<null | 'regression' | 'progression' | 'alternative'>(null)
 const error = ref('')
+// ----- Własne etykiety -----
+const newTag = ref('')
+async function addTag() {
+  if (!e.value || !newTag.value.trim()) return
+  await ex.setTags(e.value.id, [...(e.value.tags ?? []), newTag.value]).catch((err) => (error.value = (err as Error).message))
+  newTag.value = ''
+}
+const removeTag = (t: string) => e.value && ex.setTags(e.value.id, (e.value.tags ?? []).filter((x) => x !== t)).catch((err) => (error.value = (err as Error).message))
 
 onMounted(() => ex.load())
 const e = computed(() => ex.byId(props.id))
@@ -87,6 +95,16 @@ async function remove() {
       <ExerciseMedia :video-src="videoSrc" :images="e.image_urls?.length ? e.image_urls : e.image_url ? [e.image_url] : []" :name-en="e.name_en" :name-pl="e.name_pl" />
 
       <p v-if="e.name_en && e.name_en !== e.name_pl" class="text-sm text-muted" lang="en">{{ e.name_en }}</p>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span v-for="t in e.tags ?? []" :key="t" class="inline-flex items-center gap-1 rounded-lg bg-primary-soft px-2 py-1 text-sm font-semibold text-primary-fg">
+          {{ t }}
+          <button v-if="auth.isTrainer" type="button" class="-mr-1 rounded p-0.5 hover:bg-primary/20" :aria-label="`Usuń etykietę ${t}`" @click="removeTag(t)"><Icon name="x" class="size-3.5" /></button>
+        </span>
+        <form v-if="auth.isTrainer" class="flex items-center gap-1" @submit.prevent="addTag">
+          <input v-model="newTag" class="input !min-h-9 w-36 text-sm" maxlength="30" placeholder="+ własna etykieta" aria-label="Nowa etykieta ćwiczenia" />
+          <button v-if="newTag.trim()" class="btn-ghost !min-h-9 border border-line-strong text-sm">Dodaj</button>
+        </form>
+      </div>
       <p v-if="e.description" class="text-[15px] leading-relaxed">{{ e.description }}</p>
 
       <dl class="card grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 p-4 text-sm">
@@ -114,7 +132,7 @@ async function remove() {
       </div>
 
       <section v-if="e.cues" class="card p-4">
-        <h2 class="mb-2 font-semibold">{{ e.source === 'free-exercise-db' ? 'Technika krok po kroku (EN)' : 'Wskazówki techniczne' }}</h2>
+        <h2 class="mb-2 font-semibold">{{ e.source === 'free-exercise-db' ? 'Technika krok po kroku' : 'Wskazówki techniczne' }}<span v-if="e.cues_lang === 'en'" class="ml-1 text-xs font-normal text-muted">(po angielsku – do przetłumaczenia w Profilu)</span></h2>
         <p class="text-sm whitespace-pre-line text-fg">{{ e.cues }}</p>
       </section>
 

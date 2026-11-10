@@ -4,7 +4,7 @@ import { MEDIA_BUCKET, supabase } from '@/lib/supabase'
 import type { Exercise, ExerciseInput, ExerciseRelation, RelationKind } from '@/types'
 
 const COLUMNS =
-  'id, name_pl, name_en, muscle_groups, equipment, movement_pattern, level, contraindications, cues, video_path, image_url, primary_muscles, secondary_muscles, description, mechanic, force, image_urls, attribution, source, external_id, created_at, updated_at'
+  'id, name_pl, name_en, muscle_groups, equipment, movement_pattern, level, contraindications, cues, video_path, image_url, primary_muscles, secondary_muscles, description, mechanic, force, image_urls, attribution, search_terms, tags, cues_lang, source, external_id, created_at, updated_at'
 
 export const useExercisesStore = defineStore('exercises', () => {
   const all = ref<Exercise[]>([])
@@ -58,6 +58,15 @@ export const useExercisesStore = defineStore('exercises', () => {
     else all.value.push(row)
     all.value.sort((a, b) => a.name_pl.localeCompare(b.name_pl, 'pl'))
     return row
+  }
+
+  /** Własne etykiety trenerki (np. „bułgar”, „ulubione Ani”) – widoczne obok nazwy i przeszukiwane. */
+  async function setTags(id: string, tags: string[]) {
+    const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))].slice(0, 8)
+    const { error } = await supabase.from('exercises').update({ tags: clean }).eq('id', id)
+    if (error) throw error
+    const e = all.value.find((x) => x.id === id)
+    if (e) all.value.splice(all.value.indexOf(e), 1, { ...e, tags: clean })
   }
 
   async function remove(id: string) {
@@ -159,6 +168,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   }
 
   return {
+    setTags,
     all, favorites, relations, loaded, loading,
     load, byId, save, remove, uploadVideo, videoUrl, toggleFavorite,
     progressionsOf, regressionsOf, alternativesOf, chainOf, link, unlink,

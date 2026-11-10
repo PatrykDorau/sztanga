@@ -34,6 +34,7 @@ const router = createRouter({
     { path: '/g/:token', name: 'readiness-link', component: () => import('@/views/ReadinessLinkView.vue'), props: true, meta: { public: true, bare: true } },
     { path: '/t/:token', name: 'reschedule-link', component: () => import('@/views/RescheduleLinkView.vue'), props: true, meta: { public: true, bare: true } },
     { path: '/r/:token', name: 'parent-report', component: () => import('@/views/ParentReportView.vue'), props: true, meta: { public: true, bare: true } },
+    { path: '/silownie/:id', name: 'gym-equipment', component: () => import('@/views/GymEquipmentView.vue'), props: true, meta: { trainer: true } },
     { path: '/wyzwania', name: 'challenges', component: () => import('@/views/ChallengesView.vue'), meta: { trainer: true } },
     { path: '/p/:token', name: 'shared-plan', component: () => import('@/views/SharedPlanView.vue'), props: true, meta: { public: true } },
     { path: '/terminy', name: 'my-sessions', component: () => import('@/views/MySessionsView.vue') },

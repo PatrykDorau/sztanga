@@ -5,6 +5,7 @@ import ClientMovement from '@/components/ClientMovement.vue'
 import ClientSport from '@/components/ClientSport.vue'
 import ClientKid from '@/components/ClientKid.vue'
 import RescheduleSheet from '@/components/RescheduleSheet.vue'
+import ClientAttendance from '@/components/ClientAttendance.vue'
 import { offers as rescheduleOffers } from '@/lib/reschedule'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
@@ -107,7 +108,10 @@ async function newPlan() {
 
     <div class="space-y-4 px-4 pt-2">
       <ClientProgress v-if="tab === 'progress'" :client-id="c.id" />
-      <ClientHistory v-else-if="tab === 'history'" :client-id="c.id" />
+      <template v-else-if="tab === 'history'">
+        <ClientAttendance :client-id="c.id" />
+        <ClientHistory :client-id="c.id" />
+      </template>
       <ClientMovement v-else-if="tab === 'ruch'" :client-id="c.id" />
       <ClientSport v-else-if="tab === 'sport'" :client-id="c.id" :first-name="c.full_name.split(' ')[0]" />
       <ClientKid v-else-if="tab === 'kid'" :client-id="c.id" :first-name="c.full_name.split(' ')[0]" />
@@ -161,6 +165,8 @@ async function newPlan() {
           </li>
         </ul>
       </section>
+
+      <ClientAttendance :key="openSession ?? 'att'" :client-id="c.id" />
 
       <section>
         <div class="mb-2 flex items-center justify-between">

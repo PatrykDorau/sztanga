@@ -18,6 +18,25 @@ export interface PlanRequest {
   equipment: string[]
   limitations: string[]
   notes: string | null
+  split?: SplitType // typ treningu (auto = wg liczby dni)
+  gym_id?: string | null // siłownia – tylko dostępny tam sprzęt
+}
+export type SplitType = 'auto' | 'fbw' | 'upper_lower' | 'push_pull' | 'ppl' | 'bro'
+export const SPLIT_LABEL: Record<SplitType, string> = {
+  auto: 'Automatycznie',
+  fbw: 'FBW (całe ciało)',
+  upper_lower: 'Góra / dół',
+  push_pull: 'Push / pull',
+  ppl: 'Push / pull / nogi',
+  bro: 'Split na partie',
+}
+export const SPLIT_HINT: Record<SplitType, string> = {
+  auto: '1–3 dni: FBW, 4–5: góra/dół, 6: push/pull/nogi',
+  fbw: 'każdy trening na całe ciało – najlepsze przy 2–3 dniach',
+  upper_lower: 'naprzemiennie góra i dół ciała – 2–4 dni',
+  push_pull: 'pchanie + czworogłowe / przyciąganie + tył uda – 2–4 dni',
+  ppl: 'pchanie, przyciąganie, nogi – 3 lub 6 dni',
+  bro: 'klatka, plecy, nogi, barki, ręce – 4–5 dni, dla zaawansowanych',
 }
 /** Czy AI jest skonfigurowane po stronie serwera (bez klucza działa tylko generator z reguł). */
 export const aiStatus = () => call<{ ai: boolean }>({ action: 'status' }).catch(() => ({ ai: false }))

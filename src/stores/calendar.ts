@@ -26,7 +26,7 @@ export const useCalendarStore = defineStore('calendar', () => {
   const gymById = (id: string | null | undefined) => gyms.value.find((g) => g.id === id) ?? null
 
   async function loadGyms() {
-    gyms.value = ok(await supabase.from('gyms').select('id, name, code, color_id, is_default').order('created_at')) as Gym[]
+    gyms.value = ok(await supabase.from('gyms').select('id, name, code, color_id, is_default, equipment, machines').order('created_at')) as Gym[]
   }
 
   async function saveGym(input: Omit<Gym, 'id'>, id?: string) {

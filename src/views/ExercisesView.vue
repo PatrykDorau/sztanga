@@ -17,7 +17,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useExercisesStore } from '@/stores/exercises'
 import { EQUIPMENT, LEVELS, MUSCLES, PATTERNS, label } from '@/lib/vocab'
-import { matches } from '@/lib/search'
+import { searchExercises } from '@/lib/exerciseSearch'
 import ChipSelect from '@/components/ChipSelect.vue'
 import ExerciseThumb from '@/components/ExerciseThumb.vue'
 import Icon from '@/components/Icon.vue'
@@ -36,22 +36,15 @@ const activeFilterCount = computed(
 )
 
 const results = computed(() =>
-  ex.all.filter((e) => {
+  searchExercises(filters.q, ex.all.filter((e) => {
     if (filters.scope === 'own' && hasImported.value && e.source !== 'own') return false
     if (filters.favOnly && !ex.favorites.has(e.id)) return false
     if (filters.muscles.length && !filters.muscles.some((m) => (e.primary_muscles?.length ? e.primary_muscles : e.muscle_groups).includes(m))) return false
     if (filters.equipment.length && !filters.equipment.some((m) => e.equipment.includes(m))) return false
     if (filters.pattern.length && !filters.pattern.includes(e.movement_pattern ?? '')) return false
     if (filters.level.length && !filters.level.includes(e.level)) return false
-    return matches(
-      filters.q,
-      e.name_pl,
-      e.name_en,
-      ...e.muscle_groups.map((m) => label(MUSCLES, m)),
-      ...e.equipment.map((m) => label(EQUIPMENT, m)),
-      label(PATTERNS, e.movement_pattern),
-    )
-  }),
+    return true
+  })),
 )
 const visible = computed(() => results.value.slice(0, limit.value))
 
@@ -134,7 +127,10 @@ function clearFilters() {
             <RouterLink :to="`/cwiczenia/${e.id}`" class="card flex items-center gap-3 p-2 pr-3 active:bg-surface-2">
               <ExerciseThumb :exercise="e" />
               <div class="min-w-0 flex-1">
-                <p class="truncate font-medium">{{ e.name_pl }}</p>
+                <p class="flex items-center gap-1.5 font-medium">
+                  <span class="truncate">{{ e.name_pl }}</span>
+                  <span v-for="t in e.tags ?? []" :key="t" class="shrink-0 rounded-md bg-primary-soft px-1.5 text-[11px] font-semibold text-primary-fg">{{ t }}</span>
+                </p>
                 <p v-if="e.name_en && e.name_en !== e.name_pl" class="truncate text-xs text-subtle" lang="en">{{ e.name_en }}</p>
                 <p class="truncate text-xs text-muted">
                   {{ [...(e.primary_muscles?.length ? e.primary_muscles : e.muscle_groups.slice(0, 1)).map((m) => label(MUSCLES, m)), ...e.equipment.slice(0, 1).map((m) => label(EQUIPMENT, m))].join(' · ') }}

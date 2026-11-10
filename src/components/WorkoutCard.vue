@@ -6,10 +6,20 @@ import { useSortable } from '@/lib/sortable'
 import { doseLine, describeProgression } from '@/lib/progression'
 import type { Workout, WorkoutExercise } from '@/types'
 import ExercisePicker from './ExercisePicker.vue'
+import MuscleMap from './MuscleMap.vue'
 import ExerciseSheet from './ExerciseSheet.vue'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ workout: Workout; limitations: string[] }>()
+const props = defineProps<{ workout: Workout; limitations: string[]; allowed?: Set<string> | null; gymName?: string | null }>()
+const onlyGym = ref(true)
+// Mapa obciążenia mięśni dla tego treningu
+const showMap = ref(false)
+const mapItems = computed(() =>
+  props.workout.workout_exercises.map((we) => {
+    const e = ex.byId(we.exercise_id)
+    return { name: e?.name_pl ?? '…', sets: we.sets ?? 3, primary: e?.primary_muscles?.length ? e.primary_muscles : (e?.muscle_groups.slice(0, 1) ?? []), secondary: e?.secondary_muscles ?? [] }
+  }),
+)
 const ex = useExercisesStore()
 const programs = useProgramsStore()
 
@@ -80,6 +90,7 @@ async function remove() {
       <button v-else class="min-h-11 flex-1 text-left font-display text-xl font-bold" @click="renaming = true">{{ workout.name }}</button>
       <button v-if="dayIndex > 0" class="icon-btn text-subtle" aria-label="Przesuń trening wyżej" @click="moveDay(-1)"><Icon name="up" class="size-4" /></button>
       <button v-if="week && dayIndex < week.workouts.length - 1" class="icon-btn text-subtle" aria-label="Przesuń trening niżej" @click="moveDay(1)"><Icon name="down" class="size-4" /></button>
+      <button v-if="workout.workout_exercises.length" class="icon-btn" :class="showMap ? 'text-primary-fg' : 'text-subtle'" :aria-pressed="showMap" aria-label="Obciążenie mięśni w tym treningu" title="Obciążenie mięśni" @click="showMap = !showMap"><Icon name="user" class="size-4" /></button>
       <button class="icon-btn text-subtle hover:text-danger" aria-label="Usuń trening" @click="remove"><Icon name="trash" class="size-4" /></button>
     </header>
 
@@ -114,12 +125,22 @@ async function remove() {
       </li>
     </ul>
 
+    <div v-if="showMap && workout.workout_exercises.length" class="mt-3 rounded-xl border border-line p-3">
+      <MuscleMap :items="mapItems" />
+    </div>
     <p v-if="error" class="mt-1 text-sm text-danger">{{ error }}</p>
     <button class="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-line-strong py-2 text-sm text-muted" @click="picking = true">
       <Icon name="plus" class="size-4" />Ćwiczenie
     </button>
 
-    <ExercisePicker v-if="picking" title="Dodaj ćwiczenie" :limitations="limitations" @pick="add" @close="picking = false" />
+    <ExercisePicker
+      v-if="picking"
+      :title="allowed && onlyGym ? `Dodaj ćwiczenie – ${gymName ?? 'siłownia klienta'}` : 'Dodaj ćwiczenie'"
+      :limitations="limitations"
+      :allowed="onlyGym ? allowed : null"
+      @pick="add"
+      @close="picking = false"
+    />
     <ExerciseSheet v-if="editing" :item="editing" :limitations="limitations" @close="editingId = null" />
   </section>
 </template>

@@ -46,6 +46,15 @@ interface PlanInput {
   equipment: string[]
   limitations: string[]
   notes?: string | null
+  split?: string | null
+  gym_id?: string | null
+}
+const SPLIT_TEXT: Record<string, string> = {
+  fbw: 'FBW – każdy trening na całe ciało',
+  upper_lower: 'podział góra / dół (naprzemiennie)',
+  push_pull: 'push / pull: dzień pchania (klatka, barki, triceps, czworogłowe) i dzień przyciągania (plecy, biceps, tył uda, pośladki)',
+  ppl: 'push / pull / nogi',
+  bro: 'split na partie: klatka, plecy, nogi, barki, ręce',
 }
 
 const nul = (t: string) => ({ type: [t, 'null'] })
@@ -130,8 +139,17 @@ async function generatePlan(db: SupabaseClient, input: PlanInput) {
   // Tylko ćwiczenia z jej bazy, które da się zrobić tym sprzętem i bez przeciwwskazań klienta.
   const { data: all, error } = await db.from('exercises').select('id, name_pl, movement_pattern, muscle_groups, equipment, level, contraindications')
   if (error) throw error
+  // Siłownia: kategorie sprzętu i konkretne maszyny ustawione przez trenerkę
+  let gymRow: { name: string; equipment: string[] | null; machines: string[] | null } | null = null
+  if (input.gym_id) {
+    const { data } = await db.from('gyms').select('name, equipment, machines').eq('id', input.gym_id).maybeSingle()
+    gymRow = data
+  }
   const allowed = (all ?? []).filter(
-    (e) => (e.equipment as string[]).every((q) => equipment.includes(q)) && !(e.contraindications as string[]).some((c) => limitations.includes(c)),
+    (e) =>
+      (e.equipment as string[]).every((q) => equipment.includes(q) && (!gymRow?.equipment || q === 'body only' || gymRow.equipment.includes(q))) &&
+      !(gymRow?.machines && (e.equipment as string[]).includes('machine') && !gymRow.machines.includes(e.id as string)) &&
+      !(e.contraindications as string[]).some((c) => limitations.includes(c)),
   )
   if (allowed.length < 8) throw new HttpError(400, 'Za mało ćwiczeń pasujących do sprzętu i ograniczeń – dodaj sprzęt albo ćwiczenia do bazy.')
   const codeToId = new Map(allowed.map((e, i) => [`e${i + 1}`, e.id as string]))
@@ -159,7 +177,8 @@ ${catalog}`
     `Cel planu: ${input.goal}`,
     `Poziom: ${input.level}`,
     `Treningi w tygodniu: ${days}, liczba tygodni: ${weeks}${input.minutes ? `, ok. ${input.minutes} min na trening` : ''}`,
-    `Dostępny sprzęt: ${equipment.join(', ')}`,
+    `Dostępny sprzęt: ${equipment.join(', ')}${gymRow ? ` (siłownia ${gymRow.name} – katalog zawiera tylko to, co tam jest)` : ''}`,
+    input.split && SPLIT_TEXT[input.split] ? `Typ treningu: ${SPLIT_TEXT[input.split]} – ułóż dni zgodnie z tym podziałem.` : '',
     `Ograniczenia / kontuzje: ${limitations.length ? limitations.join(', ') : 'brak'}`,
     input.notes ? `Uwagi trenerki: ${input.notes}` : '',
   ]
@@ -696,6 +715,39 @@ Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, spraw
 }
 
 // ======================================================================
+// Tłumaczenie wskazówek technicznych ćwiczeń (EN → PL) – partiami, structured output, bez danych osobowych.
+const TRANSLATE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['items'],
+  properties: {
+    items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'pl'], properties: { id: { type: 'string' }, pl: { type: 'string' } } } },
+  },
+} as const
+async function translate(items: { id: string; name: string; text: string }[], model: string) {
+  const batch = items.slice(0, 25).filter((i) => typeof i.id === 'string' && typeof i.text === 'string' && i.text.length < 6000)
+  if (!batch.length) return { items: [] }
+  const msg = await anthropic().beta.messages.create({
+    model,
+    max_tokens: 16000,
+    ...(model === MODEL ? FALLBACK : {}),
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: TRANSLATE_SCHEMA } },
+    system: [
+      {
+        type: 'text',
+        text: 'Tłumaczysz instrukcje techniki ćwiczeń siłowych z angielskiego na polski dla aplikacji trenerki personalnej. Język naturalny, poprawna terminologia siłowniana (np. sztanga, hantle, wyciąg, łopatki, wyprost, przysiad), tryb rozkazujący 2. osoby jak w instrukcji. Zachowaj podział na kroki (każdy w osobnej linii). Nie dodawaj treści, nie skracaj. Zwróć te same id.',
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: JSON.stringify(batch.map((i) => ({ id: i.id, exercise: i.name, text: i.text }))) }],
+  } as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming)
+  if (msg.stop_reason === 'max_tokens') throw new HttpError(502, 'Za długa partia – zmniejsz liczbę ćwiczeń w jednym wywołaniu.')
+  const out = JSON.parse(textOf(msg)) as { items: { id: string; pl: string }[] }
+  const ids = new Set(batch.map((i) => i.id))
+  return { items: out.items.filter((i) => ids.has(i.id) && i.pl.trim()), usage: msg.usage }
+}
+
+// ======================================================================
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const auth = req.headers.get('Authorization')
@@ -706,6 +758,7 @@ Deno.serve(async (req) => {
     // Czy AI jest włączone (klucz w sekretach) – aplikacja pokazuje wtedy opcję "z AI" obok generatora z reguł.
     if (body.action === 'status') return json({ ai: !!Deno.env.get('ANTHROPIC_API_KEY') })
     if (body.action === 'plan') return json(await generatePlan(db, body as PlanInput))
+    if (body.action === 'translate') return json(await translate(Array.isArray(body.items) ? body.items : [], body.model === 'claude-haiku-5-5' ? 'claude-haiku-5-5' : MODEL))
     if (body.action === 'ask') {
       const history = Array.isArray(body.messages) ? body.messages.filter((m: any) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : []
       if (!history.length || history.at(-1).role !== 'user') return json({ error: 'Brak pytania' }, 400)
