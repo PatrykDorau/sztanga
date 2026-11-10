@@ -63,7 +63,7 @@ const PLAN_SCHEMA = {
         additionalProperties: false,
         required: ['phase', 'notes', 'workouts'],
         properties: {
-          phase: { type: ['string', 'null'], enum: [...PHASES, null] },
+          phase: { anyOf: [{ type: 'string', enum: PHASES }, { type: 'null' }] },
           notes: nul('string'),
           workouts: {
             type: 'array',
@@ -427,6 +427,8 @@ Deno.serve(async (req) => {
   const db = asUser(auth!)
   try {
     const body = await req.json()
+    // Czy AI jest włączone (klucz w sekretach) – aplikacja pokazuje wtedy opcję "z AI" obok generatora z reguł.
+    if (body.action === 'status') return json({ ai: !!Deno.env.get('ANTHROPIC_API_KEY') })
     if (body.action === 'plan') return json(await generatePlan(db, body as PlanInput))
     if (body.action === 'ask') {
       const history = Array.isArray(body.messages) ? body.messages.filter((m: any) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : []

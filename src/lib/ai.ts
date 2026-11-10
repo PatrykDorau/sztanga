@@ -18,7 +18,9 @@ export interface PlanRequest {
   limitations: string[]
   notes: string | null
 }
-export const generatePlan = (req: PlanRequest) => call<{ program_id: string; warnings: string[] }>({ action: 'plan', ...req })
+/** Czy AI jest skonfigurowane po stronie serwera (bez klucza działa tylko generator z reguł). */
+export const aiStatus = () => call<{ ai: boolean }>({ action: 'status' }).catch(() => ({ ai: false }))
+export const generatePlan =(req: PlanRequest) => call<{ program_id: string; warnings: string[] }>({ action: 'plan', ...req })
 
 export interface ChatMessage {
   role: 'user' | 'assistant'

@@ -163,7 +163,7 @@ const removeProgram = () =>
 
       <p v-if="aiNote" class="warn-box mx-2 mt-2 text-sm">
         <Icon name="star" class="size-5 shrink-0" />
-        <span class="flex-1">Szkic ułożony przez AI z Twojej bazy ćwiczeń – przejrzyj dawki i kolejność, zanim aktywujesz plan.<template v-if="aiNote !== '1'"> {{ aiNote }}</template></span>
+        <span class="flex-1">{{ aiNote === 'rules' ? 'Szkic z generatora (reguły)' : 'Szkic ułożony przez AI' }} z Twojej bazy ćwiczeń – przejrzyj dawki i kolejność, zanim aktywujesz plan.<template v-if="aiNote !== '1' && aiNote !== 'rules'"> {{ aiNote }}</template></span>
         <button type="button" class="icon-btn -my-2 -mr-2" aria-label="Zamknij" @click="aiNote = ''"><Icon name="x" class="size-4" /></button>
       </p>
       <nav class="mt-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none]" aria-label="Tygodnie">

@@ -91,7 +91,11 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 
 ## Faza 5 – AI (Claude, Edge Function `ai`)
 
-- **Plan z AI** (`/plany/ai`, przycisk w Planach): cel, poziom, liczba treningów i tygodni, sprzęt, ograniczenia → Claude
+- **Generator planu** (`/plany/ai`, przycisk „Generator” w Planach) ma dwa tryby:
+  - **Z reguł** – zawsze, za darmo, w kilka sekund na telefonie (`src/lib/planRules.ts`): podział wg liczby treningów
+    (FBW / góra–dół / push–pull–nogi), sloty wzorców ruchu z kontrolą głównej grupy mięśni, dawki wg celu i poziomu
+    (dzieci zawsze ogólnorozwojowo), ćwiczenia najczęściej używane w planach trenerki, progresja serii i RPE, deload.
+  - **Z AI** – gdy w sekretach jest `ANTHROPIC_API_KEY`: cel, poziom, liczba treningów i tygodni, sprzęt, ograniczenia → Claude
   układa szkic wyłącznie z ćwiczeń z bazy (przefiltrowanych pod sprzęt i przeciwwskazania; krótkie kody, walidacja po
   stronie serwera) → plan zapisuje się jako **szkic** i otwiera w kreatorze. Do AI nie trafia imię ani kontakt klienta.
 - **Asystent** (`/asystent`, kafelek na Starcie): pytania w języku naturalnym; zamknięta lista narzędzi tylko do odczytu
