@@ -416,6 +416,9 @@ export function coach(tr: Track, ex: ExerciseKey, res: { reps: Rep[]; series: Se
   return { headline, findings, good, notes }
 }
 
+/** Skrót do zapisu w bazie (bez klatek i punktów). */
+export const storedFindings = (c: Coaching) => c.findings.map(({ key, title, severity, reps, obs, cue, fix }) => ({ key, title, severity, reps, obs, cue, fix }))
+
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
 
 /** Najważniejsza uwaga dotycząca danego powtórzenia (numer od 1) – na podgląd na żywo. */

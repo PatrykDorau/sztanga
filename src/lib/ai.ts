@@ -26,7 +26,12 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
 }
-export const askAssistant = (messages: ChatMessage[]) => call<{ answer: string }>({ action: 'ask', messages })
+/** Kontekst rozmowy: asystent otwarty z karty klienta albo z analizy ruchu. */
+export interface ChatContext {
+  client_id?: string | null
+  analysis_id?: string | null
+}
+export const askAssistant = (messages: ChatMessage[], context?: ChatContext) => call<{ answer: string }>({ action: 'ask', messages, context })
 
 /** Bezpieczne wyświetlanie odpowiedzi: tekst + pogrubienia + wewnętrzne linki (/…), nic więcej. */
 export type Piece = { kind: 'text' | 'bold'; text: string } | { kind: 'link'; text: string; to: string } | { kind: 'br' }

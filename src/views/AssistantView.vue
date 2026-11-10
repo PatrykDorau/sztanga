@@ -1,13 +1,25 @@
 <script setup lang="ts">
 // Asystent nad danymi: pytania w języku naturalnym („kiedy Ania ostatnio robiła martwy ciąg i z jakim ciężarem?”).
-// Claude ma tylko narzędzia do odczytu (klienci, historia, rekordy, frekwencja, ograniczenia) i działa uprawnieniami trenerki.
-import { nextTick, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { askAssistant, pieces, type ChatMessage } from '@/lib/ai'
+// Claude ma tylko narzędzia do odczytu (klienci, plan, historia, rekordy, grafik, frekwencja, analizy ruchu, baza ćwiczeń) i działa uprawnieniami trenerki.
+// Otwarty z karty klienta (?client=id) albo z analizy ruchu (?analysis=id) wie, o kim / o czym jest rozmowa.
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { askAssistant, pieces, type ChatContext, type ChatMessage } from '@/lib/ai'
+import { useClientsStore } from '@/stores/clients'
 import Icon from '@/components/Icon.vue'
 
 const router = useRouter()
-const KEY = 'assistant:chat'
+const route = useRoute()
+const clients = useClientsStore()
+const isId = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v)
+const context: ChatContext = {
+  client_id: isId(route.query.client) ? route.query.client : null,
+  analysis_id: isId(route.query.analysis) ? route.query.analysis : null,
+}
+const client = computed(() => (context.client_id ? clients.byId(context.client_id) : undefined))
+const contextLabel = computed(() => (context.analysis_id ? 'Rozmowa o analizie ruchu' : context.client_id ? `Rozmowa o: ${client.value?.full_name ?? 'kliencie'}` : ''))
+// Osobna rozmowa na każdy kontekst – pytania o Anię nie mieszają się z rozmową ogólną.
+const KEY = `assistant:chat:${context.analysis_id ?? context.client_id ?? ''}`
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const busy = ref(false)
@@ -15,6 +27,7 @@ const error = ref('')
 const list = ref<HTMLElement>()
 
 onMounted(() => {
+  if (context.client_id) clients.load()
   try {
     messages.value = JSON.parse(sessionStorage.getItem(KEY) ?? '[]')
   } catch {
@@ -34,12 +47,26 @@ watch(
   { deep: true },
 )
 
-const EXAMPLES = [
-  'Kiedy Ania ostatnio robiła martwy ciąg i z jakim ciężarem?',
-  'Którzy klienci mają problem z kolanem?',
-  'Ile sesji odbyło się w tym miesiącu i kto najczęściej odwoływał?',
-  'Jakie rekordy ma Kuba?',
-]
+const EXAMPLES = context.analysis_id
+  ? [
+      'Omów tę analizę: co poprawić w pierwszej kolejności i co powiedzieć klientowi?',
+      'Zaproponuj ćwiczenia korekcyjne z mojej bazy do tych błędów.',
+      'Porównaj tę analizę z poprzednimi nagraniami tej osoby – jest postęp?',
+    ]
+  : context.client_id
+    ? [
+        'Podsumuj ostatnie 4 tygodnie: frekwencja, postępy w ciężarach, rekordy.',
+        'Co wychodzi z analiz ruchu i nad czym pracować na najbliższych treningach?',
+        'Co jest w aktualnym planie i gdzie warto dołożyć progresję?',
+        'Przygotuj krótkie podsumowanie postępów, które mogę wysłać klientowi.',
+      ]
+    : [
+        'Kogo mam dziś i jutro w grafiku?',
+        'Kiedy Ania ostatnio robiła martwy ciąg i z jakim ciężarem?',
+        'Którzy klienci mają problem z kolanem?',
+        'Ile sesji odbyło się w tym miesiącu i kto najczęściej odwoływał?',
+        'U kogo ostatnie analizy ruchu pokazały koślawienie kolan?',
+      ]
 
 async function send(text = input.value) {
   const q = text.trim()
@@ -50,7 +77,7 @@ async function send(text = input.value) {
   scroll()
   busy.value = true
   try {
-    const { answer } = await askAssistant(messages.value)
+    const { answer } = await askAssistant(messages.value, context)
     messages.value.push({ role: 'assistant', content: answer })
   } catch (e) {
     error.value = (e as Error).message
@@ -76,7 +103,7 @@ function reset() {
       <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
       <div class="min-w-0 flex-1">
         <h1 class="text-2xl font-bold">Asystent</h1>
-        <p class="text-sm text-muted">Pytaj o klientów, treningi, rekordy i frekwencję</p>
+        <p class="truncate text-sm text-muted">{{ contextLabel || 'Pytaj o klientów, plany, grafik, rekordy i technikę' }}</p>
       </div>
       <button v-if="messages.length" class="icon-btn" aria-label="Nowa rozmowa" @click="reset"><Icon name="trash" class="size-5" /></button>
     </header>
@@ -99,7 +126,7 @@ function reset() {
           </div>
         </li>
         <li v-if="busy" class="flex">
-          <p class="card px-4 py-3 text-sm text-muted">Sprawdzam dane…</p>
+          <p class="card animate-pulse px-4 py-3 text-sm text-muted">Sprawdzam dane… zwykle 10–30 s</p>
         </li>
       </ul>
       <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>

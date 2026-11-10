@@ -100,6 +100,7 @@ async function newPlan() {
 
       <template v-else>
       <button class="btn-primary w-full" @click="startLive"><Icon name="dumbbell" class="size-5" />Sesja teraz (bez terminu)</button>
+      <RouterLink :to="{ path: '/asystent', query: { client: c.id } }" class="btn-ghost w-full border border-line-strong"><Icon name="star" class="size-5" />Zapytaj asystenta AI o tego klienta</RouterLink>
       <div class="flex flex-wrap gap-1.5">
         <span class="tag">{{ label(GROUPS, c.client_group) }}</span>
         <span v-if="age !== null" class="tag">{{ age }} lat</span>
