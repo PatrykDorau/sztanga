@@ -5,13 +5,16 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClientsStore } from '@/stores/clients'
 import { useAnalysisStore, VIDEO_KEEP_DAYS } from '@/stores/analysis'
-import { analyze, flagsFor, type AnalysisResult } from '@/lib/pose/analysis'
+import { analyze, type AnalysisResult } from '@/lib/pose/analysis'
+import { coach, type Finding } from '@/lib/pose/coaching'
+import { smoothTrack } from '@/lib/pose/filter'
 import { extractTrack, loadPose, loadVideo, MAX_SECONDS } from '@/lib/pose/extract'
 import { packTrack, type Track } from '@/lib/pose/skeleton'
 import { EXERCISE_KEYS, PROFILES, VIEW_LABEL, type ExerciseKey, type View } from '@/lib/pose/profiles'
 import { compressVideo } from '@/lib/video'
 import PosePlayer from '@/components/PosePlayer.vue'
 import LiveCamera from '@/components/LiveCamera.vue'
+import CoachingPanel from '@/components/CoachingPanel.vue'
 import Icon from '@/components/Icon.vue'
 
 const route = useRoute()
@@ -66,7 +69,7 @@ async function onFile(e: Event) {
     const video = await loadVideo(url.value)
     await loadPose()
     stage.value = 'processing'
-    track.value = await extractTrack(video, (p) => (progress.value = p), abort.signal)
+    track.value = smoothTrack(await extractTrack(video, (p) => (progress.value = p), abort.signal))
     rerun()
     stage.value = 'result'
   } catch (err) {
@@ -82,7 +85,7 @@ async function onFile(e: Event) {
 /** Koniec nagrania z kamery na żywo – ta sama analiza co dla filmu. */
 function onLive(tr: Track, video: Blob | null) {
   if (import.meta.env.DEV) Object.assign(window, { __live: { tr, video } })
-  track.value = tr
+  track.value = smoothTrack(tr)
   if (url.value) URL.revokeObjectURL(url.value)
   url.value = video ? URL.createObjectURL(video) : null
   file.value = video ? new File([video], `kamera.${video.type.includes('mp4') ? 'mp4' : 'webm'}`, { type: video.type, lastModified: Date.now() }) : null
@@ -95,8 +98,15 @@ function rerun() {
   result.value = analyze(track.value, ex.value, viewChoice.value === 'auto' ? undefined : viewChoice.value)
 }
 
-const flags = computed(() => (result.value ? flagsFor(ex.value, result.value.reps, store.thresholds) : []))
-const flagged = computed(() => new Set(flags.value.flatMap((f) => f.reps)))
+const coaching = computed(() => (result.value && track.value ? coach(track.value, ex.value, result.value, store.thresholds) : null))
+const flagged = computed(() => new Set(coaching.value?.findings.flatMap((f) => f.reps) ?? []))
+// "Pokaż na nagraniu": klatka, na której błąd jest najwyraźniejszy, z podświetlonymi punktami.
+const player = ref<InstanceType<typeof PosePlayer>>()
+const shownFinding = ref<Finding | null>(null)
+function showFinding(f: Finding) {
+  shownFinding.value = f
+  player.value?.showFrame(f.frame)
+}
 const detected = computed(() => track.value?.poses.filter(Boolean).length ?? 0)
 const coverage = computed(() => (track.value?.poses.length ? detected.value / track.value.poses.length : 0))
 
@@ -138,6 +148,7 @@ function reset() {
   stage.value = 'pick'
   track.value = null
   result.value = null
+  shownFinding.value = null
 }
 const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'łokieć' })[profile.value.signal])
 </script>
@@ -207,8 +218,6 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
       </template>
 
       <template v-else-if="result && track">
-        <PosePlayer :track="track" :video-url="url" :reps="result.reps" :flagged="flagged" :signal="result.signal" :signal-label="signalLabel" />
-
         <section class="grid grid-cols-2 gap-3">
           <div class="card p-4">
             <p class="font-display text-4xl leading-none font-bold tabular-nums">{{ result.reps.length }}</p>
@@ -231,10 +240,11 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
           <Icon name="alert" class="size-5 shrink-0" />Nie wykryto powtórzeń. Sprawdź, czy wybrane ćwiczenie się zgadza i czy cała sylwetka jest w kadrze.
         </p>
 
-        <section v-if="flags.length" class="space-y-2">
-          <h2 class="text-lg font-bold">Do sprawdzenia</h2>
-          <p v-for="f in flags" :key="f.key" class="flex items-start gap-2 text-sm"><Icon name="alert" class="mt-0.5 size-4 shrink-0 text-[var(--div-pos)]" />{{ f.text }}</p>
-          <p class="text-xs text-muted">To wstępne wskazania na podstawie progów – decyzja należy do Ciebie.</p>
+        <CoachingPanel v-if="coaching && result.reps.length" :coaching="coaching" :active="shownFinding?.key" @show="showFinding" />
+
+        <section class="space-y-2">
+          <h2 class="text-xl font-bold">Nagranie</h2>
+          <PosePlayer ref="player" :track="track" :video-url="url" :reps="result.reps" :flagged="flagged" :signal="result.signal" :signal-label="signalLabel" :highlight="shownFinding?.joints" />
         </section>
 
         <section class="card space-y-4 p-4">

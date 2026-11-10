@@ -7,7 +7,7 @@ import { drawSkeleton, fitCanvas } from '@/lib/pose/draw'
 import type { StoredRep } from '@/stores/analysis'
 import Icon from '@/components/Icon.vue'
 
-const props = defineProps<{ track: Track; videoUrl?: string | null; reps: StoredRep[]; flagged?: Set<number>; signal?: number[]; signalLabel?: string }>()
+const props = defineProps<{ track: Track; videoUrl?: string | null; reps: StoredRep[]; flagged?: Set<number>; signal?: number[]; signalLabel?: string; highlight?: number[] }>()
 
 const wrap = ref<HTMLDivElement>()
 const video = ref<HTMLVideoElement>()
@@ -53,7 +53,7 @@ function draw() {
   const H = w.clientHeight
   const g = fitCanvas(c, W, H)
   const p = props.track.poses[frame.value]
-  if (p) drawSkeleton(g, p, W, H)
+  if (p) drawSkeleton(g, p, W, H, false, props.highlight)
   // Rysunki trenerki
   g.strokeStyle = '#facc15'
   g.fillStyle = '#facc15'
@@ -169,6 +169,13 @@ function toggle() {
     video.value.play().catch(() => (playing.value = false))
   }
 }
+/** Pokaż konkretną klatkę (np. tę, której dotyczy uwaga) – zatrzymuje odtwarzanie i przewija odtwarzacz na ekran. */
+function showFrame(i: number) {
+  playing.value = false
+  video.value?.pause()
+  setTime(props.track.t[Math.max(0, Math.min(props.track.t.length - 1, i))])
+  wrap.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 function step(n: number) {
   playing.value = false
   video.value?.pause()
@@ -203,7 +210,7 @@ onBeforeUnmount(() => {
 
 const pct = (i: number) => `${(props.track.t[i] / (duration.value || 1)) * 100}%`
 const fmt = (s: number) => s.toFixed(2).replace('.', ',')
-defineExpose({ setTime, step })
+defineExpose({ setTime, step, showFrame })
 </script>
 
 <template>

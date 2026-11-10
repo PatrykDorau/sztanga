@@ -2,10 +2,13 @@
 // Kamera na żywo: szkielet nakładany na obraz w czasie rzeczywistym, licznik powtórzeń i kąt na bieżąco.
 // "Start" → odliczanie 3 s (czas, żeby odejść od telefonu) → zapis szkieletu (+ wideo, jeśli przeglądarka umie)
 // → "Stop" oddaje ścieżkę do tej samej analizy co film z galerii. Obraz nie wychodzi z telefonu.
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
 import { liveDetector, loadPose, MAX_SECONDS } from '@/lib/pose/extract'
 import { drawSkeleton, fitCanvas } from '@/lib/pose/draw'
 import { analyze } from '@/lib/pose/analysis'
+import { coach, repCue } from '@/lib/pose/coaching'
+import { liveSmoother } from '@/lib/pose/filter'
+import { useAnalysisStore } from '@/stores/analysis'
 import { PROFILES, type ExerciseKey } from '@/lib/pose/profiles'
 import type { Pose, Track } from '@/lib/pose/skeleton'
 import Icon from '@/components/Icon.vue'
@@ -26,7 +29,21 @@ const fps = ref(0)
 const bump = ref(false)
 const seen = ref(false) // czy sylwetka jest w kadrze
 const showVideo = ref(true) // wyłączony = same kreski i kropki na ciemnym tle
-const ar = ref('9 / 16') // proporcje obrazu z kamery – okno dopasowane, żeby szkielet leżał dokładnie na obrazie
+const store = useAnalysisStore()
+// Uwaga do ostatniego powtórzenia (znika po kilku sekundach).
+const cue = ref<{ text: string; ok: boolean } | null>(null)
+let cueTimer = 0
+// Okno obrazu: największy prostokąt w proporcjach kamery, który mieści się na ekranie.
+const stage = ref<HTMLDivElement>()
+const size = reactive({ sw: 0, sh: 0, vw: 9, vh: 16 })
+const box = computed(() => {
+  const a = size.vw / size.vh
+  const w = Math.min(size.sw, size.sh * a)
+  const h = w / a
+  return { width: `${w}px`, height: `${h}px`, left: `${(size.sw - w) / 2}px`, top: `${(size.sh - h) / 2}px` }
+})
+let ro: ResizeObserver | null = null
+let smoother = liveSmoother()
 
 let stream: MediaStream | null = null
 let detect: ((v: HTMLVideoElement) => Pose | null) | null = null
@@ -52,13 +69,14 @@ async function openCamera() {
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error(), { name: 'Insecure' })
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing.value, width: { ideal: 720 }, height: { ideal: 1280 }, frameRate: { ideal: 30 } },
+      video: { facingMode: facing.value, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
       audio: false,
     })
     const v = video.value!
     v.srcObject = stream
     await v.play()
-    if (v.videoWidth && v.videoHeight) ar.value = `${v.videoWidth} / ${v.videoHeight}`
+    if (v.videoWidth && v.videoHeight) Object.assign(size, { vw: v.videoWidth, vh: v.videoHeight })
+    smoother = liveSmoother()
     detect = liveDetector(await loadPose())
     state.value = 'ready'
     loop()
@@ -85,8 +103,11 @@ function loop(g = gen) {
   const nowT = performance.now()
   if (v.readyState >= 2 && nowT - lastProc >= 30) {
     lastProc = nowT
-    const pose = detect(v)
+    const raw = detect(v)
+    // Na ekranie: punkty ustabilizowane filtrem (nie skaczą); do analizy idzie surowy zapis, wygładzany po nagraniu bez opóźnienia.
+    const pose = smoother(raw, nowT / 1000)
     seen.value = !!pose
+    if (v.videoWidth && v.videoHeight && (v.videoWidth !== size.vw || v.videoHeight !== size.vh)) Object.assign(size, { vw: v.videoWidth, vh: v.videoHeight }) // obrót telefonu
     const W = c.clientWidth
     const H = c.clientHeight
     const g = fitCanvas(c, W, H)
@@ -101,7 +122,7 @@ function loop(g = gen) {
     if (state.value === 'recording') {
       const tt = (now - recStart) / 1000
       track.value.t.push(tt)
-      track.value.poses.push(pose)
+      track.value.poses.push(raw)
       elapsed.value = tt
       // Licznik powtórzeń na bieżąco (analiza całej dotychczasowej ścieżki co ~0,4 s – kilka ms).
       if (now - lastAnalyze > 400) {
@@ -111,6 +132,12 @@ function loop(g = gen) {
           bump.value = true
           setTimeout(() => (bump.value = false), 350)
           if ((navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive) navigator.vibrate?.(60)
+          // Krótka uwaga do właśnie skończonego powtórzenia.
+          const n = r.reps.length
+          const f = repCue(coach(asTrack(), props.exercise, r, store.thresholds), n)
+          cue.value = f ? { text: `Powt. ${n}: ${f.short}`, ok: false } : { text: `Powt. ${n}: dobrze`, ok: true }
+          clearTimeout(cueTimer)
+          cueTimer = window.setTimeout(() => (cue.value = null), 4000)
         }
         reps.value = r.reps.length
         const a = r.signal.at(-1)
@@ -169,6 +196,7 @@ function start() {
     clearInterval(id)
     track.value = { t: [], poses: [] }
     reps.value = 0
+    cue.value = null
     chunks = []
     recorder = startRecorder()
     recStart = performance.now()
@@ -205,54 +233,84 @@ function flip() {
 
 onMounted(() => {
   fpsT0 = performance.now()
+  if (!store.loaded) store.load().catch(() => null)
+  ro = new ResizeObserver(([e]) => Object.assign(size, { sw: e.contentRect.width, sh: e.contentRect.height }))
+  if (stage.value) ro.observe(stage.value)
   openCamera()
 })
-onBeforeUnmount(stop)
+onBeforeUnmount(() => {
+  stop()
+  ro?.disconnect()
+  clearTimeout(cueTimer)
+})
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 </script>
 
 <template>
-  <div class="space-y-3">
-    <div class="relative mx-auto w-full overflow-hidden rounded-2xl bg-black" :style="{ aspectRatio: ar, maxWidth: `min(28rem, calc(70vh * ${ar.replace(' / ', ' / ')}))` }">
-      <video ref="video" class="absolute inset-0 size-full object-fill" :class="[mirror ? '-scale-x-100' : '', showVideo ? '' : 'opacity-0']" playsinline muted />
-      <div v-if="!showVideo" class="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#2a2f37,#0b0d10)]" />
-      <!-- Płótno w tych samych proporcjach co obraz kamery -->
-      <canvas ref="canvas" class="absolute inset-0 size-full" />
-
-      <div class="absolute top-2 left-2 flex flex-wrap gap-1.5 text-xs font-semibold text-white">
-        <span v-if="state === 'recording'" class="flex items-center gap-1.5 rounded-full bg-[var(--div-pos)] px-2 py-1 tabular-nums">
-          <span class="size-2 animate-pulse rounded-full bg-white" />{{ mmss(elapsed) }}
-        </span>
-        <span v-if="angle != null && state === 'recording'" class="rounded-full bg-black/60 px-2 py-1 tabular-nums">{{ signalName }} {{ angle }}°</span>
-        <span v-if="state !== 'starting' && !seen" class="rounded-full bg-black/60 px-2 py-1">ustaw całą sylwetkę w kadrze</span>
-      </div>
-      <span v-if="fps && state !== 'starting'" class="absolute top-2 right-2 rounded-full bg-black/50 px-2 py-1 text-[10px] text-white/80 tabular-nums">{{ fps }} kl./s</span>
-
-      <!-- Licznik powtórzeń -->
-      <div v-if="state === 'recording' || state === 'finishing'" class="absolute right-0 bottom-3 left-0 flex justify-center">
-        <div class="rounded-2xl bg-black/65 px-5 py-2 text-center text-white transition-transform" :class="bump ? 'scale-125' : ''" aria-live="polite">
-          <p class="font-display text-6xl leading-none font-bold tabular-nums">{{ reps }}</p>
-          <p class="text-xs">powtórzeń · {{ profile.name.toLowerCase() }}</p>
+  <!-- Pełny ekran: obraz z kamery tak duży, jak pozwala ekran (w całości, bez przycinania – szkielet leży dokładnie na obrazie) -->
+  <Teleport to="body">
+    <div class="fixed inset-0 z-[70] flex flex-col bg-black text-white" role="dialog" aria-label="Kamera na żywo">
+      <div ref="stage" class="relative min-h-0 flex-1">
+        <div class="absolute overflow-hidden" :style="box">
+          <video ref="video" class="absolute inset-0 size-full object-fill" :class="[mirror ? '-scale-x-100' : '', showVideo ? '' : 'opacity-0']" playsinline muted />
+          <div v-if="!showVideo" class="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#2a2f37,#0b0d10)]" />
+          <canvas ref="canvas" class="absolute inset-0 size-full" />
         </div>
-      </div>
-      <div v-if="state === 'countdown'" class="absolute inset-0 flex items-center justify-center bg-black/40">
-        <span class="font-display text-8xl font-bold text-white tabular-nums">{{ countdown }}</span>
-      </div>
-      <div v-if="state === 'starting' && !error" class="absolute inset-0 flex items-center justify-center text-sm text-white/80">Uruchamianie kamery i modelu…</div>
-      <div v-if="error" class="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-white">{{ error }}</div>
-    </div>
 
-    <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3">
-      <button class="icon-btn border border-line-strong" aria-label="Zamknij kamerę" @click="(stop(), emit('cancel'))"><Icon name="x" class="size-5" /></button>
-      <button v-if="state === 'recording' || state === 'finishing'" class="btn-danger" :disabled="state === 'finishing'" @click="finish">
-        {{ state === 'finishing' ? 'Kończenie…' : 'Stop i analiza' }}
-      </button>
-      <button v-else class="btn-primary" :disabled="state !== 'ready'" @click="start">{{ state === 'countdown' ? 'Za chwilę…' : 'Start' }}</button>
-      <button class="icon-btn border border-line-strong" aria-label="Przełącz kamerę (przód / tył)" :disabled="state === 'recording'" @click="flip"><Icon name="swap" class="size-5" /></button>
+        <div class="absolute top-[max(0.75rem,env(safe-area-inset-top))] left-3 flex flex-wrap gap-1.5 pr-20 text-sm font-semibold">
+          <span v-if="state === 'recording'" class="flex items-center gap-1.5 rounded-full bg-[var(--div-pos)] px-2.5 py-1 tabular-nums">
+            <span class="size-2 animate-pulse rounded-full bg-white" />{{ mmss(elapsed) }}
+          </span>
+          <span class="rounded-full bg-black/60 px-2.5 py-1">{{ profile.name }}</span>
+          <span v-if="angle != null && state === 'recording'" class="rounded-full bg-black/60 px-2.5 py-1 tabular-nums">{{ signalName }} {{ angle }}°</span>
+          <span v-if="state !== 'starting' && !seen" class="rounded-full bg-amber-300 px-2.5 py-1 text-black">ustaw całą sylwetkę w kadrze</span>
+        </div>
+        <span v-if="fps && state !== 'starting'" class="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-3 rounded-full bg-black/50 px-2 py-1 text-[11px] text-white/80 tabular-nums">{{ fps }} kl./s</span>
+
+        <!-- Licznik powtórzeń + uwaga do ostatniego powtórzenia -->
+        <div v-if="state === 'recording' || state === 'finishing'" class="absolute inset-x-3 bottom-3 flex flex-col items-center gap-2">
+          <p
+            v-if="cue"
+            class="max-w-md rounded-2xl px-4 py-2 text-center text-base leading-snug font-semibold text-white shadow-lg"
+            :class="cue.ok ? 'bg-green-700' : 'bg-[var(--div-pos)]'"
+            aria-live="assertive"
+          >
+            {{ cue.text }}
+          </p>
+          <div class="rounded-2xl bg-black/65 px-6 py-2 text-center transition-transform" :class="bump ? 'scale-125' : ''" aria-live="polite">
+            <p class="font-display text-7xl leading-none font-bold tabular-nums">{{ reps }}</p>
+            <p class="text-xs">powtórzeń</p>
+          </div>
+        </div>
+        <div v-if="state === 'countdown'" class="absolute inset-0 flex items-center justify-center bg-black/40">
+          <span class="font-display text-[10rem] leading-none font-bold tabular-nums">{{ countdown }}</span>
+        </div>
+        <div v-if="state === 'starting' && !error" class="absolute inset-0 flex items-center justify-center text-sm text-white/80">Uruchamianie kamery i modelu…</div>
+        <div v-if="error" class="absolute inset-0 flex items-center justify-center p-6 text-center text-sm">{{ error }}</div>
+      </div>
+
+      <div class="space-y-2 bg-black px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div class="mx-auto grid max-w-md grid-cols-[auto_1fr_auto_auto] items-center gap-3">
+          <button class="flex size-12 items-center justify-center rounded-full bg-white/15" aria-label="Zamknij kamerę" @click="(stop(), emit('cancel'))"><Icon name="x" class="size-6" /></button>
+          <button v-if="state === 'recording' || state === 'finishing'" class="btn-danger" :disabled="state === 'finishing'" @click="finish">
+            {{ state === 'finishing' ? 'Kończenie…' : 'Stop i analiza' }}
+          </button>
+          <button v-else class="btn-primary" :disabled="state !== 'ready'" @click="start">{{ state === 'countdown' ? 'Za chwilę…' : 'Start' }}</button>
+          <button
+            class="flex size-12 items-center justify-center rounded-full"
+            :class="showVideo ? 'bg-white/15' : 'bg-white text-black'"
+            :aria-label="showVideo ? 'Ukryj obraz – zostaw sam szkielet' : 'Pokaż obraz z kamery'"
+            :aria-pressed="!showVideo"
+            @click="showVideo = !showVideo"
+          >
+            <Icon name="user" class="size-6" />
+          </button>
+          <button class="flex size-12 items-center justify-center rounded-full bg-white/15 disabled:opacity-40" aria-label="Przełącz kamerę (przód / tył)" :disabled="state === 'recording'" @click="flip"><Icon name="swap" class="size-6" /></button>
+        </div>
+        <p class="text-center text-xs text-white/60">
+          {{ state === 'recording' ? 'Po każdym powtórzeniu zobaczysz krótką uwagę. Pełne wnioski po „Stop”.' : 'Po „Start” masz 3 s, żeby odejść. Obraz analizuje to urządzenie – nic nie jest wysyłane, dopóki nie zapiszesz.' }}
+        </p>
+      </div>
     </div>
-    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-      <input v-model="showVideo" type="checkbox" class="size-5 accent-primary" />Pokazuj obraz z kamery (wyłącz, żeby widzieć same kreski i kropki)
-    </label>
-    <p class="text-xs text-muted">Po „Start” masz 3 s, żeby odejść od telefonu. Obraz analizuje telefon – nic nie jest wysyłane, dopóki nie zapiszesz.</p>
-  </div>
+  </Teleport>
 </template>

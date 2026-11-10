@@ -5,7 +5,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAnalysisStore, type AnalysisFull, type AnalysisRow } from '@/stores/analysis'
 import { useClientsStore } from '@/stores/clients'
-import { analyze, averageRep, flagsFor, PHASES, refStats, summarize, zScore, type AvgRep, type P2, type RefStats } from '@/lib/pose/analysis'
+import { averageRep, PHASES, refStats, remeasure, summarize, zScore, type AvgRep, type P2, type RefStats } from '@/lib/pose/analysis'
+import { coach, type Finding } from '@/lib/pose/coaching'
+import { smoothTrack } from '@/lib/pose/filter'
+import CoachingPanel from '@/components/CoachingPanel.vue'
 import { unpackTrack, type Track } from '@/lib/pose/skeleton'
 import { fmtMetric, PROFILES, VIEW_LABEL } from '@/lib/pose/profiles'
 import { refStatsByExercise, shortDate, type HeatRow } from '@/lib/pose/heat'
@@ -31,7 +34,7 @@ async function load() {
   try {
     await Promise.all([store.loaded ? null : store.load(), clients.load()])
     a.value = await store.get(props.id)
-    track.value = await unpackTrack(a.value.frames)
+    track.value = smoothTrack(await unpackTrack(a.value.frames))
     videoUrl.value = a.value.video_path ? await store.videoUrl(a.value.video_path) : null
   } catch (e) {
     error.value = (e as Error).message
@@ -43,10 +46,19 @@ watch(() => props.id, load)
 const row = computed(() => store.list.find((x) => x.id === props.id) ?? a.value)
 const profile = computed(() => (a.value ? PROFILES[a.value.exercise_key] : PROFILES.squat))
 const who = computed(() => (a.value?.client_id ? (clients.byId(a.value.client_id)?.full_name ?? 'Klient') : 'Trenerka'))
-const reps = computed(() => a.value?.reps ?? [])
-const signal = computed(() => (track.value && a.value ? analyze(track.value, a.value.exercise_key, a.value.view).signal : []))
-const flags = computed(() => (a.value ? flagsFor(a.value.exercise_key, reps.value, store.thresholds) : []))
-const flagged = computed(() => new Set(flags.value.flatMap((f) => f.reps)))
+// Pomiary liczone od nowa na zapisanych granicach powtórzeń – starsze analizy dostają też nowsze pomiary i uwagi.
+const measured = computed(() => (track.value && a.value ? remeasure(track.value, a.value.exercise_key, a.value.reps, a.value.view) : null))
+const reps = computed(() => measured.value?.reps ?? a.value?.reps ?? [])
+const signal = computed(() => measured.value?.signal ?? [])
+const coaching = computed(() => (track.value && a.value && measured.value ? coach(track.value, a.value.exercise_key, measured.value, store.thresholds) : null))
+const flagged = computed(() => new Set(coaching.value?.findings.flatMap((f) => f.reps) ?? []))
+const player = ref<InstanceType<typeof PosePlayer>>()
+const shownFinding = ref<Finding | null>(null)
+function showFinding(f: Finding) {
+  shownFinding.value = f
+  player.value?.showFrame(f.frame)
+}
+const details = ref(false)
 const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'łokieć' })[profile.value.signal])
 
 // ---------- Poprawka liczby powtórzeń (kalibracja licznika) ----------
@@ -190,7 +202,12 @@ const expires = computed(() => (a.value?.video_expires_at ? new Date(a.value.vid
     <p v-else-if="!a || !track" class="px-4 text-muted">Ładowanie…</p>
 
     <div v-else class="space-y-6 px-4">
-      <PosePlayer :track="track" :video-url="videoUrl" :reps="reps" :flagged="flagged" :signal="signal" :signal-label="signalLabel" />
+      <CoachingPanel v-if="coaching && reps.length" :coaching="coaching" :active="shownFinding?.key" @show="showFinding" />
+
+      <section class="space-y-2">
+        <h2 class="text-xl font-bold">Nagranie</h2>
+        <PosePlayer ref="player" :track="track" :video-url="videoUrl" :reps="reps" :flagged="flagged" :signal="signal" :signal-label="signalLabel" :highlight="shownFinding?.joints" />
+      </section>
 
       <section class="card flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
         <div>
@@ -217,13 +234,11 @@ const expires = computed(() => (a.value?.video_expires_at ? new Date(a.value.vid
         </div>
       </section>
 
-      <section v-if="flags.length" class="space-y-2">
-        <h2 class="text-xl font-bold">Do sprawdzenia</h2>
-        <p v-for="f in flags" :key="f.key" class="flex items-start gap-2"><Icon name="alert" class="mt-1 size-4 shrink-0 text-[var(--div-pos)]" />{{ f.text }}</p>
-        <p class="text-xs text-muted">Wstępne wskazania wg progów (<RouterLink to="/analiza/progi" class="underline">ustawienia</RouterLink>) – decyzja należy do Ciebie.</p>
-      </section>
+      <button v-if="reps.length" type="button" class="btn-ghost w-full border border-line-strong" :aria-expanded="details" @click="details = !details">
+        <Icon name="trend" class="size-5" />{{ details ? 'Zwiń dokładną analizę' : 'Dokładna analiza: porównanie ze wzorcem i pomiary' }}
+      </button>
 
-      <section v-if="reps.length" class="space-y-3">
+      <section v-if="reps.length && details" class="space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-xl font-bold">Porównanie</h2>
           <select v-model="target" class="input !min-h-10 w-auto max-w-full text-sm" aria-label="Porównaj z">

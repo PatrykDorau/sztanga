@@ -1,7 +1,7 @@
 // Ćwiczenia analizowane z kamery: co liczy powtórzenia, co mierzymy i kiedy flagujemy.
 // Progi to wartości startowe – trenerka kalibruje je w aplikacji (tabela analysis_settings).
 
-export type ExerciseKey = 'squat' | 'deadlift' | 'pushup'
+export type ExerciseKey = 'squat' | 'deadlift' | 'pushup' | 'press'
 export type View = 'front' | 'side' | 'oblique' | 'unknown'
 
 export interface MetricDef {
@@ -62,9 +62,12 @@ export const PROFILES: Record<ExerciseKey, Profile> = {
       { key: 'depth_knee', label: 'Kąt w kolanie w dole', short: 'kolano w dole', unit: '°', views: ['front', 'side', 'oblique', 'unknown'], tol: 6, decimals: 0, help: 'Najmniejszy kąt biodro–kolano–kostka. Mniej = głębiej.' },
       { key: 'depth_hip', label: 'Kąt w biodrze w dole', short: 'biodro w dole', unit: '°', views: ['side', 'oblique'], tol: 6, decimals: 0, help: 'Najmniejszy kąt bark–biodro–kolano.' },
       { key: 'trunk', label: 'Pochylenie tułowia w dole', short: 'pochylenie', unit: '°', views: ['side', 'oblique'], tol: 5, decimals: 0, help: 'Odchylenie linii biodra–barki od pionu.' },
-      { key: 'valgus', label: 'Rozstaw kolan / kostek w dole', short: 'kolana/kostki', unit: '%', views: ['front'], tol: 6, decimals: 0, help: 'Odległość między kolanami względem kostek. Poniżej 100% kolana schodzą do środka.' },
+      { key: 'valgus', label: 'Rozstaw kolan / kostek (najmniejszy w dolnej połowie ruchu)', short: 'kolana/kostki', unit: '%', views: ['front'], tol: 6, decimals: 0, help: 'Odległość między kolanami względem kostek. Poniżej 100% kolana schodzą do środka.' },
       { key: 'asym', label: 'Asymetria kolan w dole', short: 'asymetria L/P', unit: '°', views: ['front'], tol: 4, decimals: 0, help: 'Różnica kąta lewego i prawego kolana.' },
       { key: 'shift', label: 'Przesunięcie bioder w bok', short: 'biodra w bok', unit: '%', views: ['front'], tol: 3, decimals: 0, help: 'Środek bioder względem środka stóp, w % szerokości bioder.' },
+      { key: 'hip_rise', label: 'Biodra przed barkami przy wstawaniu', short: 'biodra pierwsze', unit: '°', views: ['side', 'oblique'], tol: 3, decimals: 0, help: 'O ile stopni tułów pochyla się bardziej w pierwszej połowie wstawania. Dużo = biodra wstają szybciej niż barki.' },
+      { key: 'back', label: 'Skrócenie tułowia (plecy)', short: 'plecy', unit: '%', views: ['side'], tol: 3, decimals: 0, help: 'O ile skraca się odcinek bark–biodro względem pozycji wyprostowanej. Pośredni znak zaokrąglenia pleców – model nie widzi kręgosłupa.' },
+      { key: 'heel_lift', label: 'Uniesienie pięt', short: 'pięty', unit: '%', views: ['side'], tol: 5, decimals: 0, help: 'O ile pięta unosi się względem palców, w % długości stopy.' },
       ...tempo('opuszczania', 'wstawania'),
     ],
     flags: [
@@ -74,6 +77,9 @@ export const PROFILES: Record<ExerciseKey, Profile> = {
       { key: 'shift', metric: 'shift', op: '>', value: 10, label: 'przesunięcie bioder w bok' },
       { key: 'trunk', metric: 'trunk', op: '>', value: 50, label: 'duże pochylenie tułowia' },
       { key: 'ecc', metric: 'ecc', op: '<', value: 0.6, label: 'opuszczanie bez kontroli' },
+      { key: 'hip_rise', metric: 'hip_rise', op: '>', value: 10, label: 'biodra wstają pierwsze' },
+      { key: 'back', metric: 'back', op: '>', value: 12, label: 'możliwe zaokrąglenie pleców' },
+      { key: 'heel_lift', metric: 'heel_lift', op: '>', value: 22, label: 'możliwe odrywanie pięt' },
     ],
   },
   deadlift: {
@@ -94,11 +100,15 @@ export const PROFILES: Record<ExerciseKey, Profile> = {
       { key: 'trunk', label: 'Pochylenie tułowia w dole', short: 'pochylenie', unit: '°', views: ['side', 'oblique'], tol: 5, decimals: 0, help: 'Odchylenie pleców od pionu w dole.' },
       { key: 'lockout', label: 'Wyprost bioder na górze', short: 'wyprost', unit: '°', views: ['side', 'oblique'], tol: 4, decimals: 0, help: 'Największy kąt w biodrze po powtórzeniu; ok. 175–180° = pełny wyprost.' },
       { key: 'bar_drift', label: 'Odejście dłoni od linii stóp', short: 'tor sztangi', unit: '%', views: ['side', 'oblique'], tol: 4, decimals: 0, help: 'Największa pozioma odległość dłoni od środka stopy, w % długości tułowia.' },
+      { key: 'hip_rise', label: 'Biodra przed barkami przy ruszaniu', short: 'biodra pierwsze', unit: '°', views: ['side', 'oblique'], tol: 3, decimals: 0, help: 'O ile stopni tułów pochyla się bardziej w pierwszej połowie podnoszenia. Dużo = kolana prostują się, zanim ruszy tułów.' },
+      { key: 'back', label: 'Skrócenie tułowia (plecy)', short: 'plecy', unit: '%', views: ['side'], tol: 3, decimals: 0, help: 'O ile skraca się odcinek bark–biodro względem pozycji wyprostowanej. Pośredni znak zaokrąglenia pleców – model nie widzi kręgosłupa.' },
       ...tempo('opuszczania', 'podnoszenia'),
     ],
     flags: [
       { key: 'lockout', metric: 'lockout', op: '<', value: 165, label: 'niepełny wyprost bioder' },
       { key: 'bar_drift', metric: 'bar_drift', op: '>', value: 20, label: 'sztanga odchodzi od nóg' },
+      { key: 'hip_rise', metric: 'hip_rise', op: '>', value: 8, label: 'biodra wstają za szybko' },
+      { key: 'back', metric: 'back', op: '>', value: 10, label: 'możliwe zaokrąglenie pleców' },
     ],
   },
   pushup: {
@@ -121,6 +131,31 @@ export const PROFILES: Record<ExerciseKey, Profile> = {
     flags: [
       { key: 'depth', metric: 'elbow_bottom', op: '>', value: 110, label: 'niepełny zakres ruchu' },
       { key: 'body_line', metric: 'body_line', op: '>', value: 15, label: 'linia ciała niestabilna' },
+    ],
+  },
+  press: {
+    key: 'press',
+    name: 'Wyciskanie nad głowę',
+    beta: true,
+    signal: 'elbow',
+    minRange: 40,
+    anchor: 'ankles',
+    facing: 'feet',
+    trace: 'wrist',
+    traceLabel: 'tor dłoni',
+    phases: ['opuszczania', 'wyciskania'],
+    hint: 'Telefon na wysokości klatki, 2–3 m od klienta, cała sylwetka z rękami w górze w kadrze. Z przodu: symetria rąk. Z boku: odchylanie tułowia.',
+    metrics: [
+      { key: 'elbow_bottom', label: 'Kąt w łokciu w dole', short: 'łokieć w dole', unit: '°', views: ['front', 'side', 'oblique', 'unknown'], tol: 8, decimals: 0, help: 'Najmniejszy kąt bark–łokieć–nadgarstek.' },
+      { key: 'lockout', label: 'Wyprost łokci na górze', short: 'wyprost', unit: '°', views: ['front', 'side', 'oblique', 'unknown'], tol: 5, decimals: 0, help: 'Największy kąt w łokciu po wyciśnięciu; ok. 170–180° = pełny wyprost.' },
+      { key: 'wrist_asym', label: 'Różnica wysokości dłoni', short: 'asymetria rąk', unit: '%', views: ['front'], tol: 4, decimals: 0, help: 'Największa różnica wysokości nadgarstków podczas wyciskania, w % szerokości barków.' },
+      { key: 'lean', label: 'Odchylenie tułowia', short: 'odchylenie', unit: '°', views: ['side', 'oblique'], tol: 4, decimals: 0, help: 'Największe odchylenie linii biodra–barki od pionu.' },
+      ...tempo('opuszczania', 'wyciskania'),
+    ],
+    flags: [
+      { key: 'wrist_asym', metric: 'wrist_asym', op: '>', value: 12, label: 'asymetria pracy ramion' },
+      { key: 'lockout', metric: 'lockout', op: '<', value: 160, label: 'niepełny wyprost łokci' },
+      { key: 'lean', metric: 'lean', op: '>', value: 15, label: 'odchylanie tułowia' },
     ],
   },
 }
