@@ -26,7 +26,7 @@ const path = computed(() => route.path)
 
 <template>
   <nav
-    class="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur"
+    class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur"
     style="padding-bottom: env(safe-area-inset-bottom)"
   >
     <ul class="mx-auto flex max-w-2xl" aria-label="Nawigacja główna">

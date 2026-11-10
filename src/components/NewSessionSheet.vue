@@ -98,7 +98,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Nowa sesja" @click.self="emit('close')" @keydown.esc="emit('close')">
+  <div class="fixed inset-0 z-50 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Nowa sesja" @click.self="emit('close')" @keydown.esc="emit('close')">
     <form class="sheet space-y-4" @submit.prevent="submit">
       <div class="flex items-center justify-between">
         <h2 class="text-2xl font-bold">Nowa sesja</h2>

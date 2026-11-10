@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
 import type { Client } from '@/types'
 
-const COLUMNS = 'id, user_id, full_name, email, phone, client_group, birth_date, goals, limitations, equipment, notes, archived, created_at'
+const COLUMNS = 'id, user_id, full_name, email, phone, client_group, birth_date, goals, limitations, equipment, notes, archived, gym_id, created_at'
 export type ClientInput = Omit<Client, 'id' | 'created_at' | 'user_id'>
 
 export const useClientsStore = defineStore('clients', () => {

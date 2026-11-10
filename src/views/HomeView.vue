@@ -15,6 +15,7 @@ import SessionCard from '@/components/SessionCard.vue'
 import SessionSheet from '@/components/SessionSheet.vue'
 import TempoMetronome from '@/components/TempoMetronome.vue'
 import { useSportStore } from '@/stores/sport'
+import { offers as rescheduleOffers, slotLabel, type RescheduleOffer } from '@/lib/reschedule'
 import { LIGHT_LABEL, readinessStatus, TEST_EVERY_DAYS, CHILD_TESTS, type Light } from '@/lib/sport'
 
 const auth = useAuthStore()
@@ -80,6 +81,10 @@ onMounted(async () => {
   const m = new Map<string, string>()
   for (const r of data ?? []) if (!m.has(r.client_id)) m.set(r.client_id, r.measured_on)
   kidsTests.value = m
+})
+const changes = ref<RescheduleOffer[]>([])
+onMounted(async () => {
+  if (auth.isTrainer) changes.value = (await rescheduleOffers().catch(() => [])).filter((o) => o.status === 'chosen')
 })
 const ORDER: Record<Light | 'none', number> = { red: 0, yellow: 1, none: 2, green: 3 }
 /** Sportowcy z dzisiejszą sesją (albo dzisiejszą ankietą): światło gotowości, najpierw czerwoni. */
@@ -171,6 +176,15 @@ onMounted(async () => {
             <SessionCard :session="s" :title="clients.byId(s.client_id)?.full_name ?? 'Klient'" @open="openId = s.id" />
           </li>
         </ul>
+      </section>
+
+      <section v-if="changes.length" class="card space-y-2 p-4">
+        <h2 class="text-lg font-bold">Zmiany stałych terminów do zatwierdzenia</h2>
+        <RouterLink v-for="o in changes" :key="o.id" :to="`/klienci/${o.client_id}`" class="flex items-center gap-2 text-sm">
+          <Icon name="swap" class="size-4 text-primary-fg" />
+          <span class="flex-1"><strong>{{ clients.byId(o.client_id)?.full_name ?? 'Klient' }}</strong> wybrał(a) {{ o.chosen ? slotLabel(o.chosen) : '' }}</span>
+          <Icon name="chevron" class="size-4 text-subtle" />
+        </RouterLink>
       </section>
 
       <section v-if="athletesToday.length" class="space-y-2">

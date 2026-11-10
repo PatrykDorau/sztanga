@@ -15,6 +15,7 @@ import { compressVideo } from '@/lib/video'
 import PosePlayer from '@/components/PosePlayer.vue'
 import LiveCamera from '@/components/LiveCamera.vue'
 import CoachingPanel from '@/components/CoachingPanel.vue'
+import TempoPower from '@/components/TempoPower.vue'
 import Icon from '@/components/Icon.vue'
 
 const route = useRoute()
@@ -38,6 +39,14 @@ const result = ref<AnalysisResult | null>(null)
 let abort: AbortController | null = null
 
 const label = ref('')
+const loadKg = ref<number | null>(null)
+// Inne nagrania tej osoby z tym ćwiczeniem: ciężar i najszybsze powtórzenie (profil obciążenie–prędkość).
+const lvHistory = computed(() =>
+  store.list
+    .filter((a) => a.exercise_key === ex.value && (a.client_id ?? '') === clientId.value && a.load_kg != null)
+    .map((a) => ({ load: Number(a.load_kg), v: Math.max(0, ...a.reps.map((r) => r.metrics.mcv ?? 0)) }))
+    .filter((p) => p.v > 0),
+)
 const isRef = ref(false)
 const keepVideo = ref(false)
 const saving = ref(false)
@@ -132,6 +141,7 @@ async function save() {
         frames: await packTrack(track.value),
         reps: result.value.reps.map(({ start, bottom, end, view, metrics }) => ({ start, bottom, end, view, metrics })),
         is_reference: isRef.value,
+        load_kg: loadKg.value,
         findings: coaching.value ? storedFindings(coaching.value) : [],
         notes: null,
       } as Parameters<typeof store.create>[0],
@@ -242,6 +252,8 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
         </p>
 
         <CoachingPanel v-if="coaching && result.reps.length" :coaching="coaching" :active="shownFinding?.key" @show="showFinding" />
+
+        <TempoPower v-if="result.reps.length" v-model:load-kg="loadKg" :exercise="ex" :reps="result.reps" :phases="profile.phases" :history="lvHistory" />
 
         <section class="space-y-2">
           <h2 class="text-xl font-bold">Nagranie</h2>

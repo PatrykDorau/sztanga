@@ -118,6 +118,11 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - **Raport dla rodzica** (`/r/<token>`, bez konta): rodzic sam wyraża zgody; wyniki widać dopiero po zgodzie na udostępnianie.
   Testy, frekwencja, odznaki, wyzwania, zatwierdzone podsumowania; zapis do PDF.
 - Metronom tempa (Start i przy ćwiczeniu w sesji): słupki faz, pełny ekran z jednym słupkiem.
+- **Zmiana stałego terminu** (karta klienta → „Zmiana terminu”): terminy wolne co tydzień z dostępności, grafiku i Google
+  Calendar, do edycji; klient wybiera pod linkiem `/t/<token>`, trenerka zatwierdza (stara seria odwołana, nowa od najbliższego dnia).
+- **Tempo i prędkość** w analizie ruchu: czasy faz, średnia i szczytowa prędkość w górę (m/s), zakres, spadek prędkości w serii;
+  z ciężarem – moc i 1RM z profilu obciążenie–prędkość (min. 2 nagrania z różnymi ciężarami). Migracja 013: `load_kg`,
+  `clients.gym_id` (filtr siłowni na liście klientów), `reschedule_offers`.
 - Nie zrobione z planu Fazy 6: pomiar prędkości sztangi z kamery (VBT), zegarki (Garmin / Apple Health),
   liczenie pajacyków z kamery, tryb grupowy na TV.
 
@@ -127,7 +132,7 @@ Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego proje
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`, wszystkie (001–012) zastosowane na projekcie w chmurze.
+Migracje w `supabase/migrations/`, wszystkie (001–013) zastosowane na projekcie w chmurze.
 
 Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).

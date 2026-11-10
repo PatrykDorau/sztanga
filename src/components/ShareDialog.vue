@@ -47,7 +47,7 @@ async function copy() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Udostępnij plan" @click.self="emit('close')" @keydown.esc="emit('close')">
+  <div class="fixed inset-0 z-50 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Udostępnij plan" @click.self="emit('close')" @keydown.esc="emit('close')">
     <div class="sheet space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-2xl font-bold">Udostępnij plan</h2>

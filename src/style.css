@@ -171,7 +171,7 @@
   @apply text-xs font-semibold tracking-wider text-muted uppercase;
 }
 @utility page-header {
-  @apply sticky top-0 z-10 bg-bg/95 backdrop-blur;
+  @apply sticky top-0 z-30 bg-bg/95 backdrop-blur;
   padding-top: max(1rem, env(safe-area-inset-top));
 }
 @utility page-title {

@@ -294,7 +294,7 @@ function discard() {
     <TempoMetronome v-if="metro" :tempo="metro.tempo" :reps="metro.reps" :title="metro.title" @close="metro = null" />
     <ExercisePicker v-if="picking" title="Dodaj ćwiczenie" :limitations="client?.limitations" @pick="addExercise" @close="picking = false" />
 
-    <div v-if="finishing" class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Zakończ sesję" @click.self="finishing = false" @keydown.esc="finishing = false">
+    <div v-if="finishing" class="fixed inset-0 z-50 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Zakończ sesję" @click.self="finishing = false" @keydown.esc="finishing = false">
       <div class="sheet space-y-4">
         <h2 class="text-2xl font-bold">Zakończ sesję</h2>
         <p class="text-sm text-muted">{{ doneSets }} z {{ totalSets }} serii · {{ elapsed }}</p>

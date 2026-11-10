@@ -28,6 +28,7 @@ const form = reactive({
   equipment: [] as string[],
   notes: '',
   archived: false,
+  gym_id: '' as string,
 })
 const busy = ref(false)
 const error = ref('')
@@ -57,6 +58,7 @@ onMounted(async () => {
     equipment: [...c.equipment],
     notes: c.notes ?? '',
     archived: c.archived,
+    gym_id: c.gym_id ?? '',
   })
 })
 
@@ -76,6 +78,7 @@ async function submit() {
         equipment: form.equipment,
         notes: form.notes.trim() || null,
         archived: form.archived,
+        gym_id: form.gym_id || null,
       },
       props.id,
     )
@@ -125,6 +128,13 @@ async function remove() {
       <div>
         <p class="label">Grupa</p>
         <ChipSelect v-model="form.group" :options="GROUPS" single />
+      </div>
+      <div v-if="calendar.gyms.length">
+        <label class="label" for="gym">Siłownia</label>
+        <select id="gym" v-model="form.gym_id" class="input">
+          <option value="">—</option>
+          <option v-for="g in calendar.gyms" :key="g.id" :value="g.id">{{ g.name }}</option>
+        </select>
       </div>
       <div>
         <label class="label" for="b">Data urodzenia</label>
