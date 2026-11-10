@@ -9,6 +9,7 @@ import { averageRep, PHASES, refStats, remeasure, summarize, zScore, type AvgRep
 import { coach, storedFindings, type Finding } from '@/lib/pose/coaching'
 import { smoothTrack } from '@/lib/pose/filter'
 import CoachingPanel from '@/components/CoachingPanel.vue'
+import TempoPower from '@/components/TempoPower.vue'
 import { unpackTrack, type Track } from '@/lib/pose/skeleton'
 import { fmtMetric, PROFILES, VIEW_LABEL } from '@/lib/pose/profiles'
 import { refStatsByExercise, shortDate, type HeatRow } from '@/lib/pose/heat'
@@ -59,14 +60,31 @@ function showFinding(f: Finding) {
   player.value?.showFrame(f.frame)
 }
 const details = ref(false)
-// Wnioski trzymamy też w bazie (dla asystenta AI); odświeżamy, gdy różnią się od zapisanych (starsza analiza, zmienione progi).
+// Wnioski i pomiary trzymamy też w bazie (asystent AI, profil obciążenie–prędkość); odświeżamy, gdy różnią się od zapisanych
+// (starsza analiza bez nowszych pomiarów, zmienione progi).
 watch(coaching, (c) => {
-  if (!c || !a.value) return
+  if (!c || !a.value || !measured.value) return
   const f = storedFindings(c)
-  if (JSON.stringify(f) === JSON.stringify(a.value.findings ?? null)) return
-  a.value.findings = f
-  store.update(a.value.id, { findings: f }).catch(() => null)
+  const r = measured.value.reps.map(({ start, bottom, end, view, metrics }) => ({ start, bottom, end, view, metrics }))
+  const patch: { findings?: typeof f; reps?: typeof r } = {}
+  if (JSON.stringify(f) !== JSON.stringify(a.value.findings ?? null)) patch.findings = f
+  if (r.some((x, i) => x.metrics.mcv !== undefined && a.value!.reps[i]?.metrics.mcv === undefined)) patch.reps = r
+  if (!patch.findings && !patch.reps) return
+  Object.assign(a.value, patch)
+  store.update(a.value.id, patch).catch(() => null)
 })
+// ---------- Ciężar, prędkość, 1RM ----------
+const lvHistory = computed(() =>
+  store.list
+    .filter((x) => x.id !== props.id && x.exercise_key === a.value?.exercise_key && x.client_id === a.value?.client_id && x.load_kg != null)
+    .map((x) => ({ load: Number(x.load_kg), v: Math.max(0, ...x.reps.map((r) => r.metrics.mcv ?? 0)) }))
+    .filter((p) => p.v > 0),
+)
+async function setLoad(v: number | null) {
+  if (!a.value) return
+  a.value.load_kg = v
+  await store.update(a.value.id, { load_kg: v })
+}
 const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'łokieć' })[profile.value.signal])
 
 // ---------- Poprawka liczby powtórzeń (kalibracja licznika) ----------
@@ -211,6 +229,8 @@ const expires = computed(() => (a.value?.video_expires_at ? new Date(a.value.vid
 
     <div v-else class="space-y-6 px-4">
       <CoachingPanel v-if="coaching && reps.length" :coaching="coaching" :active="shownFinding?.key" @show="showFinding" />
+
+      <TempoPower v-if="reps.length" :load-kg="a.load_kg" :exercise="a.exercise_key" :reps="reps" :phases="profile.phases" :history="lvHistory" @update:load-kg="setLoad" />
 
       <section class="space-y-2">
         <h2 class="text-xl font-bold">Nagranie</h2>

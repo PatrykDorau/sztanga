@@ -50,6 +50,7 @@ export interface Client {
   equipment: string[]
   notes: string | null
   archived: boolean
+  gym_id?: string | null // siłownia, na którą zwykle przychodzi
   created_at: string
 }
 

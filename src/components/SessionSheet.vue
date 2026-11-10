@@ -74,7 +74,7 @@ const remove = () => (armedDelete.value ? run(() => schedule.removeSession(props
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Sesja" @click.self="emit('close')" @keydown.esc="emit('close')">
+  <div class="fixed inset-0 z-50 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Sesja" @click.self="emit('close')" @keydown.esc="emit('close')">
     <div v-if="s" class="sheet space-y-4">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">

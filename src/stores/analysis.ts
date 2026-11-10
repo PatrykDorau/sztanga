@@ -32,6 +32,7 @@ export interface AnalysisRow {
   notes: string | null
   video_path: string | null
   video_expires_at: string | null
+  load_kg: number | null
   created_at: string
 }
 /** Uwaga trenerska zapisana przy analizie (skrót Finding z lib/pose/coaching). */
@@ -51,7 +52,7 @@ export interface AnalysisFull extends AnalysisRow {
   frames: StoredTrack
 }
 
-const LIST_COLS = 'id, client_id, exercise_key, session_id, label, recorded_at, view, fps, duration, reps, is_reference, reps_actual, notes, video_path, video_expires_at, created_at'
+const LIST_COLS = 'id, client_id, exercise_key, session_id, label, recorded_at, view, fps, duration, reps, is_reference, reps_actual, notes, video_path, video_expires_at, load_kg, created_at'
 
 function ok<T>(res: { data: T; error: unknown }): T {
   if (res.error) throw res.error
@@ -78,7 +79,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     return ok(await supabase.from('movement_analyses').select(`${LIST_COLS}, width, height, frames, findings`).eq('id', id).single()) as AnalysisFull
   }
 
-  async function create(input: Omit<AnalysisFull, 'id' | 'created_at' | 'video_path' | 'video_expires_at' | 'reps_actual'>, video?: Blob) {
+  async function create(input: Omit<AnalysisFull, 'id' | 'created_at' | 'video_path' | 'video_expires_at' | 'reps_actual' | 'load_kg'> & { load_kg?: number | null }, video?: Blob) {
     const row = ok(await supabase.from('movement_analyses').insert(input).select(LIST_COLS).single()) as AnalysisRow
     if (video) {
       try {
@@ -100,7 +101,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     Object.assign(row, patch)
   }
 
-  async function update(id: string, patch: Partial<Pick<AnalysisRow, 'label' | 'is_reference' | 'reps_actual' | 'notes' | 'client_id' | 'video_path' | 'video_expires_at' | 'reps' | 'view'>> & { findings?: StoredFinding[] }) {
+  async function update(id: string, patch: Partial<Pick<AnalysisRow, 'label' | 'is_reference' | 'reps_actual' | 'notes' | 'client_id' | 'video_path' | 'video_expires_at' | 'reps' | 'view' | 'load_kg'>> & { findings?: StoredFinding[] }) {
     ok(await supabase.from('movement_analyses').update(patch).eq('id', id))
     const r = list.value.find((x) => x.id === id)
     if (r) Object.assign(r, patch)

@@ -11,10 +11,20 @@ const props = defineProps<{ groups: HeatGroup[]; sections: { title: string; rows
 const hover = ref<{ row: HeatRow; group: HeatGroup; metric: MetricDef } | null>(null)
 const hoverCol = computed(() => (hover.value ? `${hover.value.group.key}.${hover.value.metric.key}` : null))
 
+/** Próg odchylenia: 0 = jak wzorzec (|z| < 0,5), 1 = trochę (do 1,5), 2 = wyraźnie. */
+const level = (z: number) => (Math.abs(z) < 0.5 ? 0 : Math.abs(z) < 1.5 ? 1 : 2)
 function bg(c: HeatCell | undefined) {
   if (!c || c.z == null) return undefined
-  const pct = Math.round(Math.min(1, Math.abs(c.z) / 2) * 100)
-  return `color-mix(in oklab, var(--div-mid), var(${c.z < 0 ? '--div-neg' : '--div-pos'}) ${pct}%)`
+  const l = level(c.z)
+  if (!l) return 'var(--div-mid)'
+  return `color-mix(in oklab, var(--div-mid), var(${c.z < 0 ? '--div-neg' : '--div-pos'}) ${l === 1 ? 60 : 100}%)`
+}
+const strong = (c: HeatCell | undefined) => c?.z != null && level(c.z) === 2
+/** Liczba w komórce – bez jednostki (jest w nagłówku kolumny). */
+function num(c: HeatCell | undefined, m: MetricDef) {
+  if (!c || c.value == null) return '–'
+  const v = Number(c.value)
+  return (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(m.decimals)).replace('.', ',')
 }
 
 function describe(c: HeatCell | undefined, m: MetricDef) {
@@ -39,34 +49,35 @@ const hasRows = computed(() => props.sections.some((s) => s.rows.length))
           <strong>{{ hover.row.label }}</strong> · {{ hover.group.name }}, {{ hover.metric.label.toLowerCase() }}:
           <span class="text-muted">{{ describe(hover.row.cells[`${hover.group.key}.${hover.metric.key}`], hover.metric) }}</span>
         </template>
-        <span v-else class="text-muted">Dotknij komórki, żeby zobaczyć wartość i porównanie ze wzorcem.</span>
+        <span v-else class="text-muted">Dotknij komórki, żeby zobaczyć porównanie ze wzorcem.</span>
       </p>
       <div class="-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:thin]">
-        <table class="border-separate border-spacing-[2px] text-xs" @mouseleave="hover = null">
+        <table class="border-separate border-spacing-[3px] text-xs" @mouseleave="hover = null">
           <thead>
             <tr>
-              <th class="sticky left-0 z-10 bg-bg" />
+              <th class="sticky left-0 z-10 bg-bg shadow-[-1rem_0_0_var(--bg),4px_0_0_var(--bg)]" />
               <th v-for="g in groups" :key="g.key" :colspan="g.metrics.length" class="px-1 pb-1 text-center font-display text-sm font-bold">
                 <span class="block border-b-2 border-line-strong pb-0.5">{{ g.name }}</span>
               </th>
             </tr>
             <tr>
-              <th class="sticky left-0 z-10 bg-bg" />
-              <th v-for="c in cols" :key="`${c.g.key}.${c.m.key}`" class="relative h-24 w-7 max-w-7 min-w-7 p-0 align-bottom">
+              <th class="sticky left-0 z-10 bg-bg shadow-[-1rem_0_0_var(--bg),4px_0_0_var(--bg)]" />
+              <th v-for="c in cols" :key="`${c.g.key}.${c.m.key}`" class="w-16 max-w-16 min-w-16 px-0.5 pb-1 align-bottom" :title="c.m.label">
                 <span
-                  class="absolute bottom-1 left-3.5 origin-bottom-left -rotate-[55deg] font-medium whitespace-nowrap"
-                  :class="hoverCol === `${c.g.key}.${c.m.key}` ? 'font-bold text-fg' : 'text-muted'"
-                  >{{ c.m.short }}</span
+                  class="block text-center text-[11px] leading-tight font-semibold hyphens-auto"
+                  :class="hoverCol === `${c.g.key}.${c.m.key}` ? 'text-fg' : 'text-muted'"
+                  lang="pl"
+                  >{{ c.m.short }}<span class="block font-normal text-subtle">{{ c.m.unit === 's' ? 's' : c.m.unit }}</span></span
                 >
               </th>
             </tr>
           </thead>
           <tbody v-for="s in sections" :key="s.title">
             <tr v-if="s.rows.length">
-              <th :colspan="cols.length + 1" class="sticky left-0 pt-3 pb-1 text-left text-sm font-bold">{{ s.title }}</th>
+              <th :colspan="cols.length + 1" class="sticky left-0 z-10 bg-bg pt-3 pb-1 text-left text-sm font-bold">{{ s.title }}</th>
             </tr>
             <tr v-for="r in s.rows" :key="r.id">
-              <th class="sticky left-0 z-10 max-w-36 bg-bg pr-2 text-left font-semibold">
+              <th class="sticky left-0 z-10 max-w-32 min-w-24 bg-bg pr-2 text-left text-sm font-semibold">
                 <RouterLink v-if="r.to" :to="r.to" class="block truncate underline-offset-4 hover:underline">{{ r.label }}</RouterLink>
                 <span v-else class="block truncate">{{ r.label }}</span>
                 <span v-if="r.sub" class="block truncate text-[10px] font-normal text-subtle">{{ r.sub }}</span>
@@ -74,18 +85,20 @@ const hasRows = computed(() => props.sections.some((s) => s.rows.length))
               <td v-for="c in cols" :key="`${c.g.key}.${c.m.key}`" class="p-0">
                 <button
                   type="button"
-                  class="block size-7 rounded-[4px] outline-offset-1"
+                  class="block h-10 w-16 rounded-md text-[13px] font-semibold tabular-nums outline-offset-1"
                   :class="[
                     r.cells[`${c.g.key}.${c.m.key}`]?.z == null ? 'border border-dashed border-line-strong' : '',
                     hover?.row.id === r.id && hoverCol === `${c.g.key}.${c.m.key}` ? 'outline-2 outline-fg' : '',
                     hoverCol === `${c.g.key}.${c.m.key}` && hover?.row.id !== r.id ? 'opacity-90 ring-1 ring-line-strong' : '',
                   ]"
-                  :style="{ background: bg(r.cells[`${c.g.key}.${c.m.key}`]) }"
+                  :style="{ background: bg(r.cells[`${c.g.key}.${c.m.key}`]), color: strong(r.cells[`${c.g.key}.${c.m.key}`]) ? '#fff' : undefined }"
                   :aria-label="`${r.label}, ${c.g.name}, ${c.m.label}: ${describe(r.cells[`${c.g.key}.${c.m.key}`], c.m)}`"
                   @mouseenter="hover = { row: r, group: c.g, metric: c.m }"
                   @focus="hover = { row: r, group: c.g, metric: c.m }"
                   @click="hover = { row: r, group: c.g, metric: c.m }"
-                />
+                >
+                  {{ num(r.cells[`${c.g.key}.${c.m.key}`], c.m) }}
+                </button>
               </td>
             </tr>
           </tbody>
@@ -93,14 +106,11 @@ const hasRows = computed(() => props.sections.some((s) => s.rows.length))
       </div>
       <!-- Legenda -->
       <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
-        <span class="flex items-center gap-1.5">
-          mniej niż wzorzec
-          <span class="flex gap-[2px]" aria-hidden="true">
-            <span v-for="z in [-2, -1, 0, 1, 2]" :key="z" class="size-4 rounded-[3px]" :style="{ background: bg({ value: 0, z, ref: 0 }) }" />
-          </span>
-          więcej niż wzorzec
+        <span v-for="[z, t] in ([[-2, 'wyraźnie mniej'], [-1, 'mniej'], [0, 'jak wzorzec'], [1, 'więcej'], [2, 'wyraźnie więcej']] as [number, string][])" :key="z" class="flex items-center gap-1.5">
+          <span class="size-4 rounded-[3px]" :style="{ background: bg({ value: 0, z, ref: 0 }) }" aria-hidden="true" />{{ t }}
         </span>
-        <span class="flex items-center gap-1.5"><span class="size-4 rounded-[3px] border border-dashed border-line-strong" aria-hidden="true" />brak pomiaru</span>
+        <span class="flex items-center gap-1.5"><span class="size-4 rounded-[3px] border border-dashed border-line-strong" aria-hidden="true" />brak pomiaru (inne ujęcie)</span>
+        <span class="basis-full">Liczba = średnia osoby; kolor = różnica względem wzorca w jednostkach jego rozrzutu. „Więcej” nie znaczy „gorzej” – np. większy kąt w kolanie to płytszy przysiad.</span>
       </div>
     </template>
   </div>

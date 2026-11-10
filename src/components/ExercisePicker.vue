@@ -23,7 +23,7 @@ const list = computed(() =>
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex flex-col bg-bg" role="dialog" aria-modal="true" :aria-label="title" @keydown.esc="emit('close')">
+  <div class="fixed inset-0 z-50 flex flex-col bg-bg" role="dialog" aria-modal="true" :aria-label="title" @keydown.esc="emit('close')">
     <header class="flex items-center gap-2 border-b border-line px-4 py-3">
       <button class="icon-btn -ml-2" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
       <h2 class="font-semibold">{{ title }}</h2>

@@ -137,11 +137,11 @@ export const useScheduleStore = defineStore('schedule', () => {
   }
 
   /** Odwołuje tę i wszystkie przyszłe sesje serii, kończy serię. */
-  async function cancelSeriesFrom(seriesId: string, fromIso: string) {
+  async function cancelSeriesFrom(seriesId: string, fromIso: string, reason = 'Koniec serii') {
     ok(
       await supabase
         .from('sessions')
-        .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: 'Koniec serii' })
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: reason })
         .eq('series_id', seriesId)
         .gte('starts_at', fromIso)
         .in('status', ['pending', 'confirmed']),

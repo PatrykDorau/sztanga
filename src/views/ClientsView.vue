@@ -9,6 +9,8 @@ import { matches } from '@/lib/search'
 import { clientStatus, type Trend } from '@/lib/analytics'
 import type { SessionLog } from '@/types'
 import Icon from '@/components/Icon.vue'
+import GymBadge from '@/components/GymBadge.vue'
+import { useCalendarStore } from '@/stores/calendar'
 
 const clients = useClientsStore()
 const programs = useProgramsStore()
@@ -16,12 +18,14 @@ const progress = useProgressStore()
 const q = ref('')
 const group = ref<string | null>(null)
 const showArchived = ref(false)
+const gym = ref<string | null>(null) // filtr siłowni; '' = bez siłowni
+const calendar = useCalendarStore()
 type Sort = 'name' | 'absent' | 'progress'
 const sort = ref<Sort>('name')
 const recentLogs = ref<SessionLog[]>([])
 
 onMounted(async () => {
-  await Promise.all([clients.load(), programs.loadList()])
+  await Promise.all([clients.load(), programs.loadList(), calendar.gyms.length ? null : calendar.loadGyms?.().catch(() => null)])
   recentLogs.value = await progress.loadAllRecent().catch(() => [])
 })
 
@@ -42,6 +46,7 @@ const results = computed(() =>
       (c) =>
         c.archived === showArchived.value &&
         (!group.value || c.client_group === group.value) &&
+        (gym.value == null || (c.gym_id ?? '') === gym.value) &&
         matches(q.value, c.full_name, c.email, c.goals),
     )
     .sort((a, b) => {
@@ -77,6 +82,11 @@ const absentLong = (d: number | null) => d !== null && d >= 14
         <button v-for="(l, k) in GROUPS" :key="k" :class="group === k ? 'chip-on' : 'chip-off'" @click="group = String(k)">{{ l }}</button>
         <button :class="showArchived ? 'chip-on' : 'chip-off'" @click="showArchived = !showArchived">Archiwum</button>
       </div>
+      <div v-if="calendar.gyms.length > 1" class="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]" role="group" aria-label="Siłownia">
+        <button :class="gym == null ? 'chip-on' : 'chip-off'" @click="gym = null">Każda siłownia</button>
+        <button v-for="g in calendar.gyms" :key="g.id" :class="gym === g.id ? 'chip-on' : 'chip-off'" class="shrink-0" @click="gym = gym === g.id ? null : g.id">{{ g.name }}</button>
+        <button v-if="clients.all.some((c) => !c.gym_id)" :class="gym === '' ? 'chip-on' : 'chip-off'" class="shrink-0" @click="gym = gym === '' ? null : ''">Bez siłowni</button>
+      </div>
       <div class="flex items-center gap-2 text-sm">
         <span class="text-muted">Sortuj:</span>
         <button
@@ -109,6 +119,7 @@ const absentLong = (d: number | null) => d !== null && d >= 14
               <p class="flex items-center gap-1.5 truncate font-semibold">
                 {{ c.full_name }}
                 <Icon v-if="c.limitations.length" name="alert" class="size-4 shrink-0 text-warn-fg" aria-label="Ma ograniczenia" />
+                <GymBadge v-if="calendar.gyms.length > 1" :gym-id="c.gym_id" />
               </p>
               <p class="truncate text-xs text-muted">{{ label(GROUPS, c.client_group) }} · {{ activeProgram(c.id)?.name ?? 'brak planu' }}</p>
               <p class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">

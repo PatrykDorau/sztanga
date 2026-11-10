@@ -47,6 +47,9 @@ export interface Series {
   hipSag: number[] // biodro względem linii bark–kostka [% jej długości]: plus = biodra opadają (obraz)
   wristDy: number[] // różnica wysokości nadgarstków [% szer. barków]: plus = lewy niżej
   heel: number[] // pięta względem palców [% długości stopy]: rośnie, gdy pięta się odrywa
+  hHip: number[] // wysokość bioder nad kostkami [m] (świat MediaPipe – biodra są w początku układu)
+  hWrist: number[] // wysokość dłoni (sztangi) nad kostkami [m]
+  hShoulder: number[] // wysokość barków nad dłońmi [m] (pompka)
   leftVis: number[]
   rightVis: number[]
 }
@@ -55,7 +58,7 @@ export function computeSeries(tr: Track): Series {
   const n = tr.poses.length
   const s: Series = {
     kneeL: [], kneeR: [], hipL: [], hipR: [], elbowL: [], elbowR: [], trunk: [], valgus: [], shift: [], bodyLine: [], wristDrift: [],
-    kneeInL: [], kneeInR: [], shiftS: [], hipTilt: [], torsoRatio: [], hipSag: [], wristDy: [], heel: [], leftVis: [], rightVis: [],
+    kneeInL: [], kneeInR: [], shiftS: [], hipTilt: [], torsoRatio: [], hipSag: [], wristDy: [], heel: [], hHip: [], hWrist: [], hShoulder: [], leftVis: [], rightVis: [],
   }
   const W = tr.width || 1
   const H = tr.height || 1
@@ -127,6 +130,12 @@ export function computeSeries(tr: Track): Series {
     } else s.hipSag.push(NaN)
     const shW = d2(J.lSh, J.rSh)
     s.wristDy.push(shW > 1 ? ((py(J.lWr) - py(J.rWr)) / shW) * 100 : NaN)
+    // Wysokości w metrach (oś y świata w dół, biodra w 0) – do prędkości ruchu (VBT).
+    const ankY = (p[J.lAnk].wy + p[J.rAnk].wy) / 2
+    const wrY = (p[J.lWr].wy + p[J.rWr].wy) / 2
+    s.hHip.push(ankY)
+    s.hWrist.push(ankY - wrY)
+    s.hShoulder.push(wrY - (p[J.lSh].wy + p[J.rSh].wy) / 2)
     const footLen = d2(nHeel, nFoot)
     s.heel.push(footLen > 1 ? ((py(nFoot) - py(nHeel)) / footLen) * 100 : NaN)
   }
@@ -369,6 +378,25 @@ export function repMetrics(profile: Profile, s: Series, sig: number[], t: number
   } else {
     put('elbow_bottom', sig[bottom])
     put('body_line', maxIn(s.bodyLine.map(Math.abs), start, end))
+  }
+  // Prędkość fazy koncentrycznej (w górę) punktu, który podnosi ciężar: biodra (przysiad), dłonie (martwy ciąg,
+  // wyciskanie), barki (pompka). Tylko informacyjnie – nie flagujemy i nie porównujemy na heatmapie.
+  const h = profile.key === 'squat' ? s.hHip : profile.key === 'pushup' ? s.hShoulder : s.hWrist
+  const dur = t[end] - t[p1]
+  const rise = at(h, end) - at(h, p1)
+  if (dur > 0.1 && Number.isFinite(rise) && rise > 0.05) {
+    out.mcv = Math.round((rise / dur) * 100) / 100
+    out.rom = Math.round(rise * 100)
+    let pv = 0
+    for (let i = p1 + 1; i < end; i++) {
+      const v = (h[Math.min(end, i + 1)] - h[Math.max(p1, i - 1)]) / (t[Math.min(end, i + 1)] - t[Math.max(p1, i - 1)] || 1)
+      if (Number.isFinite(v) && v > pv) pv = v
+    }
+    out.pv = Math.round(Math.max(pv, out.mcv) * 100) / 100
+  } else {
+    out.mcv = null
+    out.pv = null
+    out.rom = null
   }
   void at
   return out

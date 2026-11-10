@@ -111,7 +111,7 @@ const remove = () =>
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" @click.self="emit('close')" @keydown.esc="emit('close')">
+  <div class="fixed inset-0 z-50 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" @click.self="emit('close')" @keydown.esc="emit('close')">
     <form
       class="sheet space-y-4"
       @submit.prevent="save"

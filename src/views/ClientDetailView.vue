@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import ClientMovement from '@/components/ClientMovement.vue'
 import ClientSport from '@/components/ClientSport.vue'
 import ClientKid from '@/components/ClientKid.vue'
+import RescheduleSheet from '@/components/RescheduleSheet.vue'
+import { offers as rescheduleOffers } from '@/lib/reschedule'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
 import { CONTRAINDICATIONS, EQUIPMENT, GROUPS, STATUSES, label } from '@/lib/vocab'
@@ -28,6 +30,12 @@ const assigning = ref(false)
 const schedule = useScheduleStore()
 const booking = ref(false)
 const openSession = ref<string | null>(null)
+const rescheduling = ref(false)
+const pendingChange = ref(0) // klient wybrał nowy termin – czeka na zatwierdzenie
+async function loadChanges() {
+  pendingChange.value = (await rescheduleOffers(props.id).catch(() => [])).filter((o) => o.status === 'chosen').length
+}
+loadChanges()
 const progress = useProgressStore()
 const live = useLiveStore()
 type Tab = 'overview' | 'progress' | 'history' | 'ruch' | 'sport' | 'kid'
@@ -139,7 +147,12 @@ async function newPlan() {
       <section>
         <div class="mb-2 flex items-center justify-between">
           <h2 class="text-xl font-bold">Najbliższe sesje</h2>
-          <button class="btn-ghost !min-h-10 text-sm" @click="booking = true"><Icon name="plus" class="size-4" />Umów</button>
+          <div class="flex gap-1">
+            <button class="btn-ghost !min-h-10 text-sm" :class="pendingChange ? 'text-primary-fg' : ''" @click="rescheduling = true">
+              <Icon name="swap" class="size-4" />{{ pendingChange ? 'Klient wybrał termin' : 'Zmiana terminu' }}
+            </button>
+            <button class="btn-ghost !min-h-10 text-sm" @click="booking = true"><Icon name="plus" class="size-4" />Umów</button>
+          </div>
         </div>
         <p v-if="!upcoming.length" class="text-sm text-muted">Brak zaplanowanych sesji.</p>
         <ul class="space-y-2">
@@ -173,6 +186,13 @@ async function newPlan() {
     </div>
 
     <NewSessionSheet v-if="booking" :day="ymd(new Date())" :client-id="c.id" @close="booking = false" @done="booking = false" />
+    <RescheduleSheet
+      v-if="rescheduling"
+      :client-id="c.id"
+      :client-name="c.full_name"
+      @close="((rescheduling = false), loadChanges())"
+      @changed="schedule.loadRange(addDays(new Date(), -1), addDays(new Date(), 60))"
+    />
     <SessionSheet v-if="openSession" :id="openSession" @close="openSession = null" />
     <AssignProgramDialog v-if="assigning" :client-id="c.id" @close="assigning = false" @done="(id) => router.push(`/plany/${id}`)" />
   </main>
