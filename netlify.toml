@@ -5,6 +5,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Publiczne dane projektu Supabase (i tak trafiają do kodu w przeglądarce; dostęp chroni RLS).
+  VITE_SUPABASE_URL = "https://kbqbmdzjuusbmyhrdqke.supabase.co"
+  VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_NWwLtgEffEVBLzGz7mE54A_xmeWbgH6"
 
 # Każdy adres (np. /grafik, /p/<token>) obsługuje index.html – routing robi aplikacja.
 [[redirects]]
