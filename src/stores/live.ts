@@ -19,7 +19,7 @@ export interface LiveExercise {
   exercise_id: string
   workout_exercise_id: string | null
   group_label: string | null
-  target: { sets: number | null; reps: string | null; load: string | null; rest_sec: number | null; rpe: number | null; notes: string | null }
+  target: { sets: number | null; reps: string | null; load: string | null; tempo?: string | null; rest_sec: number | null; rpe: number | null; notes: string | null }
   sets: LiveSet[]
 }
 
@@ -85,6 +85,7 @@ export const useLiveStore = defineStore('live', () => {
         sets: we?.sets ?? null,
         reps: we?.reps ?? null,
         load: we?.load ?? null,
+        tempo: we?.tempo ?? null,
         rest_sec: we?.rest_sec ?? 90,
         rpe: we?.rpe ?? null,
         notes: we?.notes ?? null,

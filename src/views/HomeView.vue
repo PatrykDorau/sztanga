@@ -13,6 +13,7 @@ import Icon from '@/components/Icon.vue'
 import ProgressRing from '@/components/ProgressRing.vue'
 import SessionCard from '@/components/SessionCard.vue'
 import SessionSheet from '@/components/SessionSheet.vue'
+import TempoMetronome from '@/components/TempoMetronome.vue'
 
 const auth = useAuthStore()
 const ex = useExercisesStore()
@@ -59,6 +60,7 @@ const live = useLiveStore()
 onMounted(() => live.flush())
 
 // ===== Raport tygodnia (liczony w aplikacji; wysyłka e-mail/push dojdzie z serwerem powiadomień) =====
+const metronome = ref(false)
 const report = ref<{ stalled: string[]; absent: string[]; nextWeek: number; freeSlots: number } | null>(null)
 onMounted(async () => {
   if (!auth.isTrainer) return
@@ -176,6 +178,16 @@ onMounted(async () => {
         </div>
         <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
       </RouterLink>
+
+      <button type="button" class="card pressable flex w-full items-center gap-4 p-4 text-left hover:bg-surface-2" @click="metronome = true">
+        <Icon name="clock" class="size-7 shrink-0 text-primary-fg" />
+        <div class="min-w-0 flex-1">
+          <h2 class="text-xl font-bold">Metronom tempa</h2>
+          <p class="text-sm text-muted">Słupki: w dół, pauza, w górę – z dźwiękiem i licznikiem powtórzeń.</p>
+        </div>
+        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
+      </button>
+      <TempoMetronome v-if="metronome" @close="metronome = false" />
 
       <RouterLink to="/analiza" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
         <Icon name="video" class="size-7 shrink-0 text-primary-fg" />
