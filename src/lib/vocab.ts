@@ -131,3 +131,18 @@ export const MEASUREMENTS: Record<string, { label: string; unit: string }> = {
   pushups: { label: 'Pompki (max)', unit: 'powt.' },
   broad_jump: { label: 'Skok w dal', unit: 'cm' },
 }
+
+/** Kolory wydarzeń Google Calendar (colorId 1–11) – nazwy jak w polskim interfejsie Google. */
+export const GCAL_COLORS: Record<number, { name: string; hex: string }> = {
+  1: { name: 'Lawenda', hex: '#7986cb' },
+  2: { name: 'Szałwia', hex: '#33b679' },
+  3: { name: 'Winogrono', hex: '#8e24aa' },
+  4: { name: 'Flaming', hex: '#e67c73' },
+  5: { name: 'Banan', hex: '#f6bf26' },
+  6: { name: 'Mandarynka', hex: '#f4511e' },
+  7: { name: 'Paw', hex: '#039be5' },
+  8: { name: 'Grafit', hex: '#616161' },
+  9: { name: 'Borówka', hex: '#3f51b5' },
+  10: { name: 'Bazylia', hex: '#0b8043' },
+  11: { name: 'Pomidor', hex: '#d50000' },
+}

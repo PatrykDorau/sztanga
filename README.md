@@ -74,8 +74,12 @@ Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego proje
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`. Zastosowane na projekcie w chmurze: 001–003 (Fazy 1–2).
-Zastosowane też 004 (Faza 3) i 005 (Faza 4) – wklejone ręcznie w SQL Editor.
+Migracje w `supabase/migrations/`, wszystkie (001–006) zastosowane na projekcie w chmurze.
+
+Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
+każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).
+Wymaga `SUPABASE_ACCESS_TOKEN` w `.env.local` (token z https://supabase.com/dashboard/account/tokens).
+`-- --dry` pokazuje, co poszłoby; `-- --mark <wersja>` oznacza migrację wklejoną ręcznie.
 
 | Tabela | Zawartość |
 | --- | --- |

@@ -4,6 +4,7 @@ import { hm } from '@/lib/dates'
 import { SESSION_STATUSES, label } from '@/lib/vocab'
 import type { Session } from '@/types'
 import Icon from './Icon.vue'
+import GymBadge from './GymBadge.vue'
 
 const props = defineProps<{ session: Session; title: string; subtitle?: string }>()
 defineEmits<{ open: [] }>()
@@ -38,6 +39,7 @@ const badge = computed(
           <Icon v-else-if="muted" name="x" class="size-3" />
           {{ label(SESSION_STATUSES, session.status) }}
         </span>
+        <GymBadge :gym-id="session.gym_id" />
         <span v-if="session.series_id" class="tag">co tydzień</span>
         <span v-if="session.booked_by_client" class="tag">rezerwacja klienta</span>
       </div>

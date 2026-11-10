@@ -8,12 +8,15 @@ import { hm, isoWeekday, localIso } from '@/lib/dates'
 import { WEEKDAYS } from '@/lib/vocab'
 import type { ProgramTree } from '@/types'
 import Icon from './Icon.vue'
+import { useCalendarStore } from '@/stores/calendar'
+import { GCAL_COLORS } from '@/lib/vocab'
 
 const props = defineProps<{ day: string; clientId?: string }>()
 const emit = defineEmits<{ close: []; done: [] }>()
 const clients = useClientsStore()
 const programs = useProgramsStore()
 const schedule = useScheduleStore()
+const cal = useCalendarStore()
 
 const f = reactive({
   client_id: props.clientId ?? '',
@@ -24,14 +27,16 @@ const f = reactive({
   until: '',
   workout_id: '',
   notes: '',
+  gym_id: '',
 })
 const plan = ref<ProgramTree | null>(null)
 const busy = ref(false)
 const error = ref('')
 
 onMounted(async () => {
-  await Promise.all([clients.load(), programs.loadList(), schedule.settings ? null : schedule.loadSettings()])
+  await Promise.all([clients.load(), programs.loadList(), schedule.settings ? null : schedule.loadSettings(), cal.gyms.length ? null : cal.loadGyms()])
   f.duration = schedule.settings?.session_minutes ?? 60
+  f.gym_id = cal.defaultGym?.id ?? ''
 })
 
 const activeClients = computed(() => clients.all.filter((c) => !c.archived))
@@ -70,6 +75,7 @@ async function submit() {
         duration_minutes: f.duration,
         start_date: f.day,
         end_date: f.until || null,
+        gym_id: f.gym_id || null,
       })
     } else {
       const starts = localIso(f.day, f.time)
@@ -79,6 +85,7 @@ async function submit() {
         ends_at: new Date(new Date(starts).getTime() + f.duration * 60000).toISOString(),
         workout_id: f.workout_id || null,
         notes: f.notes.trim() || null,
+        gym_id: f.gym_id || null,
       })
     }
     emit('done')
@@ -114,6 +121,15 @@ async function submit() {
         <div>
           <label class="label" for="ns-t">Godzina</label>
           <input id="ns-t" v-model="f.time" type="time" step="900" class="input" required />
+        </div>
+      </div>
+
+      <div v-if="cal.gyms.length > 1">
+        <p class="label">Siłownia</p>
+        <div class="flex flex-wrap gap-2">
+          <button v-for="g in cal.gyms" :key="g.id" type="button" :class="f.gym_id === g.id ? 'chip-on' : 'chip-off'" :aria-pressed="f.gym_id === g.id" @click="f.gym_id = g.id">
+            <span class="mr-1.5 size-2.5 rounded-full" :style="{ background: GCAL_COLORS[g.color_id].hex }" aria-hidden="true" />{{ g.name }} ({{ g.code }})
+          </button>
         </div>
       </div>
 

@@ -123,6 +123,8 @@ export interface Session {
   booked_by_client: boolean
   cancelled_at: string | null
   cancel_reason: string | null
+  gym_id: string | null
+  gcal_event_id: string | null
 }
 
 export interface BookingSettings {
@@ -202,4 +204,32 @@ export interface Measurement {
   value: number
   unit: string
   notes: string | null
+}
+
+export interface Gym {
+  id: string
+  name: string
+  code: string
+  color_id: number
+  is_default: boolean
+}
+
+export interface CalendarBlock {
+  gcal_event_id: string
+  kind: 'free' | 'busy' | 'unmatched' | 'session'
+  title: string | null
+  starts_at: string
+  ends_at: string
+  all_day: boolean
+  color_id: number | null
+  gym_id: string | null
+}
+
+export interface GoogleStatus {
+  connected: boolean
+  email: string | null
+  calendar_id: string
+  last_sync_at: string | null
+  last_error: string | null
+  watching: boolean
 }
