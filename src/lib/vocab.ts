@@ -107,3 +107,27 @@ export const STATUSES: Record<string, string> = {
   active: 'Aktywny',
   archived: 'Zakończony',
 }
+
+export const SESSION_STATUSES: Record<string, string> = {
+  pending: 'Do akceptacji',
+  confirmed: 'Potwierdzona',
+  cancelled: 'Odwołana',
+  completed: 'Odbyta',
+  no_show: 'Nieobecność',
+}
+
+export const WEEKDAYS = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela']
+export const WEEKDAYS_SHORT = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd']
+
+export const MEASUREMENTS: Record<string, { label: string; unit: string }> = {
+  weight: { label: 'Masa ciała', unit: 'kg' },
+  waist: { label: 'Obwód talii', unit: 'cm' },
+  hips: { label: 'Obwód bioder', unit: 'cm' },
+  chest: { label: 'Obwód klatki', unit: 'cm' },
+  thigh: { label: 'Obwód uda', unit: 'cm' },
+  arm: { label: 'Obwód ramienia', unit: 'cm' },
+  sit_reach: { label: 'Skłon w siadzie', unit: 'cm' },
+  plank: { label: 'Deska', unit: 's' },
+  pushups: { label: 'Pompki (max)', unit: 'powt.' },
+  broad_jump: { label: 'Skok w dal', unit: 'cm' },
+}

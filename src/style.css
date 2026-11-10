@@ -28,6 +28,9 @@
   --danger: #b91c1c;
   --danger-soft: #fee2e2;
   --scrim: rgb(12 10 9 / 0.55);
+  /* Kolor serii na wykresach – zwalidowany skryptem dataviz (kontrast >=3:1, pasmo jasności) w obu motywach. */
+  --chart-1: #ea580c;
+  --chart-grid: #e7e4df;
 }
 .dark {
   --bg: #0b0d10;
@@ -51,6 +54,8 @@
   --danger: #f87171;
   --danger-soft: #3b1212;
   --scrim: rgb(0 0 0 / 0.7);
+  --chart-1: #ea580c;
+  --chart-grid: #252a31;
 }
 
 @theme {
@@ -78,6 +83,8 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-scrim: var(--scrim);
+  --color-chart-1: var(--chart-1);
+  --color-chart-grid: var(--chart-grid);
 }
 
 @layer base {

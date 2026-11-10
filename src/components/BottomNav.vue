@@ -6,15 +6,21 @@ import Icon from './Icon.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
-// Faza 3 dołoży tu Grafik.
-const all = [
-  { to: '/', label: 'Start', icon: 'home', match: (p: string) => p === '/', trainer: false },
-  { to: '/klienci', label: 'Klienci', icon: 'users', match: (p: string) => p.startsWith('/klienci'), trainer: true },
-  { to: '/plany', label: 'Plany', icon: 'clipboard', match: (p: string) => p.startsWith('/plany'), trainer: true },
-  { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p: string) => p.startsWith('/cwiczenia'), trainer: false },
-  { to: '/profil', label: 'Profil', icon: 'user', match: (p: string) => p.startsWith('/profil'), trainer: false },
+// Max 5 pozycji (ui-ux-pro-max: bottom-nav-limit). Profil jest w nagłówku Startu.
+type Item = { to: string; label: string; icon: string; match: (p: string) => boolean }
+const TRAINER: Item[] = [
+  { to: '/', label: 'Start', icon: 'home', match: (p) => p === '/' || p.startsWith('/profil') },
+  { to: '/grafik', label: 'Grafik', icon: 'calendar', match: (p) => p.startsWith('/grafik') },
+  { to: '/klienci', label: 'Klienci', icon: 'users', match: (p) => p.startsWith('/klienci') },
+  { to: '/plany', label: 'Plany', icon: 'clipboard', match: (p) => p.startsWith('/plany') },
+  { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p) => p.startsWith('/cwiczenia') },
 ]
-const items = computed(() => all.filter((i) => !i.trainer || auth.isTrainer))
+const CLIENT: Item[] = [
+  { to: '/', label: 'Start', icon: 'home', match: (p) => p === '/' || p.startsWith('/profil') },
+  { to: '/terminy', label: 'Terminy', icon: 'calendar', match: (p) => p.startsWith('/terminy') },
+  { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p) => p.startsWith('/cwiczenia') },
+]
+const items = computed(() => (auth.isTrainer ? TRAINER : CLIENT))
 const path = computed(() => route.path)
 </script>
 

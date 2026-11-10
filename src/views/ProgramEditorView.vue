@@ -8,6 +8,7 @@ import { useSortable } from '@/lib/sortable'
 import { PHASES, PHASE_COLORS, STATUSES, label } from '@/lib/vocab'
 import type { ProgramStatus } from '@/types'
 import AssignProgramDialog from '@/components/AssignProgramDialog.vue'
+import ShareDialog from '@/components/ShareDialog.vue'
 import WorkoutCard from '@/components/WorkoutCard.vue'
 import Icon from '@/components/Icon.vue'
 
@@ -22,6 +23,7 @@ const error = ref('')
 const weekIdx = ref(0)
 const showSettings = ref(false)
 const assigning = ref(false)
+const sharing = ref(false)
 const busy = ref(false)
 
 const p = computed(() => (programs.current?.id === props.id ? programs.current : null))
@@ -152,6 +154,7 @@ const removeProgram = () =>
             </template>
           </p>
         </div>
+        <button v-if="!p.is_template" class="icon-btn" aria-label="Udostępnij klientowi linkiem" @click="sharing = true"><Icon name="share" class="size-5" /></button>
         <RouterLink :to="`/plany/${p.id}/druk`" class="icon-btn" aria-label="Wersja do druku"><Icon name="download" class="size-5" /></RouterLink>
         <button class="icon-btn" aria-label="Ustawienia planu" @click="showSettings = !showSettings"><Icon name="edit" class="size-5" /></button>
       </div>
@@ -243,6 +246,7 @@ const removeProgram = () =>
       <p v-if="error" class="text-sm text-danger">{{ error }}</p>
     </div>
 
+    <ShareDialog v-if="sharing" :program-id="p.id" :is-draft="p.status === 'draft'" @close="sharing = false" />
     <AssignProgramDialog v-if="assigning" :template-id="p.id" @close="assigning = false" @done="(id) => ((assigning = false), router.push(`/plany/${id}`))" />
   </main>
   <main v-else class="px-4 pt-10 text-center text-muted">{{ loading ? 'Ładowanie…' : error || 'Nie znaleziono planu.' }}</main>

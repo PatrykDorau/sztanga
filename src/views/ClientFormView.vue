@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useScheduleStore } from '@/stores/schedule'
 import { useClientsStore } from '@/stores/clients'
 import { CONTRAINDICATIONS, EQUIPMENT, GROUPS } from '@/lib/vocab'
 import type { ClientGroup } from '@/types'
@@ -10,6 +11,8 @@ import Icon from '@/components/Icon.vue'
 const props = defineProps<{ id?: string }>()
 const clients = useClientsStore()
 const router = useRouter()
+const route = useRoute()
+const schedule = useScheduleStore()
 
 const form = reactive({
   full_name: '',
@@ -29,7 +32,15 @@ const error = ref('')
 onMounted(async () => {
   await clients.load()
   const c = clients.byId(props.id)
-  if (!c) return
+  if (!c) {
+    // Nowy klient ze zgłoszenia na konsultację – dane pobierane z bazy po id (nie z adresu URL).
+    if (route.query.req) {
+      if (!schedule.requests.length) await schedule.loadRequests().catch(() => null)
+      const r = schedule.requests.find((x) => x.id === route.query.req)
+      if (r) Object.assign(form, { full_name: r.full_name, email: r.email ?? '', phone: r.phone ?? '', notes: r.message ?? '' })
+    }
+    return
+  }
   Object.assign(form, {
     full_name: c.full_name,
     email: c.email ?? '',
@@ -63,6 +74,7 @@ async function submit() {
       },
       props.id,
     )
+    if (route.query.req) await schedule.setRequestStatus(String(route.query.req), 'converted').catch(() => null)
     router.replace(`/klienci/${c.id}`)
   } catch (e) {
     error.value = (e as Error).message
