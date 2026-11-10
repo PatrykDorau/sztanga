@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Prawdziwe nagrania do testów analizy ruchu – nigdy do repozytorium
+tests/media/
+supabase/.temp/
