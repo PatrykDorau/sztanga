@@ -7,6 +7,7 @@ import { badgesFor, CHILD_TESTS, TEST_EVERY_DAYS, testProgress, type TestPoint }
 import LineChart from '@/components/LineChart.vue'
 import LinkBox from '@/components/LinkBox.vue'
 import Icon from '@/components/Icon.vue'
+import { loadAppSettings, parentConsent } from '@/lib/appSettings'
 
 const props = defineProps<{ clientId: string; firstName: string }>()
 const progress = useProgressStore()
@@ -15,6 +16,7 @@ const consents = ref<Consent[]>([])
 const challenges = ref<Challenge[]>([])
 
 onMounted(async () => {
+  loadAppSettings()
   await progress.loadClient(props.clientId).catch(() => null)
   consents.value = await sport.consents(props.clientId).catch(() => [])
   challenges.value = await sport.challenges().catch(() => [])
@@ -151,8 +153,8 @@ const date = (d: string) => new Date(d).toLocaleDateString('pl-PL', { day: 'nume
       <RouterLink to="/wyzwania" class="text-sm font-semibold text-primary-fg underline">Wyzwania drużynowe</RouterLink>
     </section>
 
-    <!-- Zgody -->
-    <section class="space-y-2">
+    <!-- Zgody (tylko gdy włączone w Profilu) -->
+    <section v-if="parentConsent" class="space-y-2">
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-bold">Zgody rodzica</h3>
         <button class="btn-ghost !min-h-10 text-sm" @click="adding = !adding"><Icon name="plus" class="size-4" />Zgoda</button>
@@ -181,7 +183,7 @@ const date = (d: string) => new Date(d).toLocaleDateString('pl-PL', { day: 'nume
       :client-id="clientId"
       purpose="parent"
       title="Link dla rodzica"
-      hint="Rodzic bez konta wyraża zgody i widzi raport: testy sprawności, frekwencję, odznaki, wyzwania drużyny i Twoje podsumowania. Wyniki pokazujemy dopiero po zgodzie na udostępnianie."
+      :hint="parentConsent ? 'Rodzic bez konta wyraża zgody i widzi raport: testy sprawności, frekwencję, odznaki, wyzwania drużyny i Twoje podsumowania. Wyniki pokazujemy dopiero po zgodzie na udostępnianie.' : 'Rodzic bez konta widzi raport: testy sprawności, frekwencję, odznaki, wyzwania drużyny i Twoje podsumowania.'"
       :share-text="`Raport z zajęć – ${firstName}:`"
     />
   </div>

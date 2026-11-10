@@ -113,6 +113,7 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
   z ostrzeżeniem > 1,3 / > 1,5 i < 0,8. Brakujące RPE uzupełnia się na karcie.
 - **Dzieci** (zakładka „Rozwój”): bateria testów co kwartał (skok w dal, 20 m, 4×10 m, równowaga, brzuszki 30 s, skłon)
   z wykresem rozwoju, przypomnienie na Starcie, odznaki liczone z danych, zgody rodzica (kto i kiedy, wycofanie).
+  Zgody rodzica są domyślnie wyłączone – włącza je przełącznik w Profilu (tabela `app_settings`, migracja 012).
 - **Wyzwania drużynowe** (`/wyzwania`): wspólny cel grupy, wkład każdego dziecka, bez rankingów.
 - **Raport dla rodzica** (`/r/<token>`, bez konta): rodzic sam wyraża zgody; wyniki widać dopiero po zgodzie na udostępnianie.
   Testy, frekwencja, odznaki, wyzwania, zatwierdzone podsumowania; zapis do PDF.
@@ -126,7 +127,7 @@ Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego proje
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`, wszystkie (001–011) zastosowane na projekcie w chmurze.
+Migracje w `supabase/migrations/`, wszystkie (001–012) zastosowane na projekcie w chmurze.
 
 Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).
