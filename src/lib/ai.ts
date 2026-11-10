@@ -1,5 +1,6 @@
 // Wywołania funkcji "ai" (Claude po stronie serwera; klucz nigdy nie trafia do przeglądarki).
 import { supabase } from '@/lib/supabase'
+import type { Proposal } from '@/lib/planActions'
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ai', { body })
@@ -25,13 +26,24 @@ export const generatePlan =(req: PlanRequest) => call<{ program_id: string; warn
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  proposals?: Proposal[] // karty zmian w planie do zatwierdzenia przez trenerkę
 }
 /** Kontekst rozmowy: asystent otwarty z karty klienta albo z analizy ruchu. */
 export interface ChatContext {
   client_id?: string | null
   analysis_id?: string | null
 }
-export const askAssistant = (messages: ChatMessage[], context?: ChatContext) => call<{ answer: string }>({ action: 'ask', messages, context })
+const STATE_NOTE = { pending: 'czeka na decyzję trenerki', applied: 'trenerka zatwierdziła – zapisana w planie', undone: 'zastosowana, a potem cofnięta przez trenerkę', rejected: 'odrzucona przez trenerkę' }
+/** Do modelu idzie sam tekst rozmowy + dopisek, co trenerka zrobiła z kartami propozycji. */
+export const askAssistant = (messages: ChatMessage[], context?: ChatContext) =>
+  call<{ answer: string; proposals?: Proposal[] }>({
+    action: 'ask',
+    context,
+    messages: messages.map((m) => ({
+      role: m.role,
+      content: m.content + (m.proposals ?? []).map((p) => `\n[Karta propozycji „${p.summary}”: ${STATE_NOTE[p.state ?? 'pending']}]`).join(''),
+    })),
+  })
 
 /** Bezpieczne wyświetlanie odpowiedzi: tekst + pogrubienia + wewnętrzne linki (/…), nic więcej. */
 export type Piece = { kind: 'text' | 'bold'; text: string } | { kind: 'link'; text: string; to: string } | { kind: 'br' }

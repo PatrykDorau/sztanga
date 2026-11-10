@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { askAssistant, pieces, type ChatContext, type ChatMessage } from '@/lib/ai'
 import { useClientsStore } from '@/stores/clients'
 import Icon from '@/components/Icon.vue'
+import ProposalCard from '@/components/ProposalCard.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -77,8 +78,8 @@ async function send(text = input.value) {
   scroll()
   busy.value = true
   try {
-    const { answer } = await askAssistant(messages.value, context)
-    messages.value.push({ role: 'assistant', content: answer })
+    const { answer, proposals } = await askAssistant(messages.value, context)
+    messages.value.push({ role: 'assistant', content: answer, proposals: proposals?.length ? proposals.map((p) => ({ ...p, state: 'pending' as const })) : undefined })
   } catch (e) {
     error.value = (e as Error).message
     messages.value.pop()
@@ -114,7 +115,7 @@ function reset() {
         <button v-for="e in EXAMPLES" :key="e" class="card pressable block w-full p-3 text-left text-sm hover:bg-surface-2" @click="send(e)">{{ e }}</button>
       </div>
       <ul ref="list" class="space-y-3" aria-live="polite">
-        <li v-for="(m, i) in messages" :key="i" class="flex" :class="m.role === 'user' ? 'justify-end' : ''">
+        <li v-for="(m, i) in messages" :key="i" class="flex flex-col gap-2" :class="m.role === 'user' ? 'items-end' : 'items-start'">
           <p v-if="m.role === 'user'" class="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-on-primary">{{ m.content }}</p>
           <div v-else class="card max-w-[92%] rounded-bl-md px-4 py-3 text-sm leading-relaxed">
             <template v-for="(p, k) in pieces(m.content)" :key="k">
@@ -124,6 +125,7 @@ function reset() {
               <template v-else>{{ p.text }}</template>
             </template>
           </div>
+          <ProposalCard v-for="p in m.proposals ?? []" :key="p.id" :proposal="p" class="w-full max-w-[92%]" @state="(s) => (p.state = s)" />
         </li>
         <li v-if="busy" class="flex">
           <p class="card animate-pulse px-4 py-3 text-sm text-muted">Sprawdzam dane… zwykle 10–30 s</p>

@@ -328,6 +328,42 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
+    name: 'propose_plan_changes',
+    description:
+      'Przygotowuje PROPOZYCJĘ zmian w planie – niczego nie zapisuje. Trenerka zobaczy kartę ze stanem przed/po i sama zatwierdzi (dwa kliknięcia) albo odrzuci. Najpierw pobierz plan narzędziem client_plan (stamtąd bierz workout_exercise_id i workout_id), a ćwiczenia do zamiany/dodania znajdź przez find_exercises (exercise_id). Wszystkie zmiany w jednym wywołaniu muszą dotyczyć jednego planu. Typy: update = zmiana parametrów ćwiczenia w treningu; swap = zamiana na inne ćwiczenie z bazy (parametry opcjonalnie); add = dodanie ćwiczenia na koniec treningu; remove = usunięcie. Pola parametrów: null = bez zmiany.',
+    // bez strict: limit API to 16 pól z typem łączonym na wszystkie narzędzia; dane i tak sprawdza buildProposal
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['summary', 'changes'],
+      properties: {
+        summary: { type: 'string', description: 'Jedno zdanie: co i po co zmieniamy.' },
+        changes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['type', 'workout_exercise_id', 'workout_id', 'exercise_id', 'sets', 'reps', 'load', 'tempo', 'rest_sec', 'rpe', 'notes', 'reason'],
+            properties: {
+              type: { type: 'string', enum: ['update', 'swap', 'add', 'remove'] },
+              workout_exercise_id: { type: ['string', 'null'], description: 'Wymagane dla update, swap, remove.' },
+              workout_id: { type: ['string', 'null'], description: 'Wymagane dla add.' },
+              exercise_id: { type: ['string', 'null'], description: 'Nowe ćwiczenie – wymagane dla swap i add.' },
+              sets: { type: ['integer', 'null'] },
+              reps: { type: ['string', 'null'] },
+              load: { type: ['string', 'null'] },
+              tempo: { type: ['string', 'null'] },
+              rest_sec: { type: ['integer', 'null'] },
+              rpe: { type: ['number', 'null'] },
+              notes: { type: ['string', 'null'] },
+              reason: { type: 'string', description: 'Krótko: dlaczego.' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
     name: 'clients_with_limitation',
     description: 'Klienci z danym ograniczeniem / kontuzją. Klucze: knee, lower_back, shoulder, hip, wrist, elbow, ankle, neck, pregnancy, hypertension (i inne z karty klienta).',
     strict: true,
@@ -455,7 +491,7 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
       if (!prog) return { note: 'Klient nie ma żadnego planu.' }
       const { data, error } = await db
         .from('program_weeks')
-        .select('position, phase, notes, workouts(position, name, notes, workout_exercises(position, group_label, sets, reps, load, tempo, rest_sec, rpe, notes, exercises(name_pl)))')
+        .select('position, phase, notes, workouts(id, position, name, notes, workout_exercises(id, exercise_id, position, group_label, sets, reps, load, tempo, rest_sec, rpe, notes, exercises(name_pl)))')
         .eq('program_id', prog.id)
         .order('position')
       if (error) throw error
@@ -467,9 +503,12 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
           phase: w.phase,
           notes: w.notes,
           workouts: [...(w.workouts ?? [])].sort(byPos).map((wo: any) => ({
+            workout_id: wo.id,
             name: wo.name,
             notes: wo.notes,
             exercises: [...(wo.workout_exercises ?? [])].sort(byPos).map((e: any) => ({
+              workout_exercise_id: e.id,
+              exercise_id: e.exercise_id,
               exercise: e.exercises?.name_pl,
               group: e.group_label,
               sets: e.sets,
@@ -498,7 +537,7 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
       return (data ?? []).map((s: any) => ({ client_id: s.client_id, name: s.clients?.full_name, starts_at: s.starts_at, ends_at: s.ends_at, status: s.status, notes: s.notes }))
     }
     case 'find_exercises': {
-      let q = db.from('exercises').select('name_pl, name_en, movement_pattern, muscle_groups, equipment, level').order('name_pl').limit(40)
+      let q = db.from('exercises').select('id, name_pl, name_en, movement_pattern, muscle_groups, equipment, level').order('name_pl').limit(40)
       if (input.query) {
         const s = String(input.query).replace(/[%_,()]/g, '').trim()
         if (s) q = q.or(`name_pl.ilike.%${s}%,name_en.ilike.%${s}%`)
@@ -517,13 +556,93 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
   throw new Error(`Nieznane narzędzie: ${name}`)
 }
 
+// ----- Propozycje zmian w planie: model tylko proponuje; zapis robi aplikacja po dwóch potwierdzeniach trenerki -----
+const FIELDS = ['sets', 'reps', 'load', 'tempo', 'rest_sec', 'rpe', 'notes'] as const
+type Field = (typeof FIELDS)[number]
+interface ChangeIn extends Record<Field, string | number | null> {
+  type: 'update' | 'swap' | 'add' | 'remove'
+  workout_exercise_id: string | null
+  workout_id: string | null
+  exercise_id: string | null
+  reason: string
+}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const WHERE = 'id, name, program_weeks(position, programs(id, name, status, client_id, is_template))'
+
+async function buildProposal(db: SupabaseClient, input: { summary: string; changes: ChangeIn[] }) {
+  const changes = Array.isArray(input.changes) ? input.changes.slice(0, 30) : []
+  if (!changes.length) throw new Error('Brak zmian.')
+  const ids = (k: 'workout_exercise_id' | 'workout_id' | 'exercise_id') => [...new Set(changes.map((c) => c[k]).filter((v): v is string => !!v && UUID.test(v)))]
+  const [we, wo, ex] = await Promise.all([
+    ids('workout_exercise_id').length
+      ? db.from('workout_exercises').select(`id, workout_id, exercise_id, position, group_label, sets, reps, load, tempo, rest_sec, rpe, notes, progression, exercises(name_pl), workouts(${WHERE})`).in('id', ids('workout_exercise_id'))
+      : { data: [], error: null },
+    ids('workout_id').length ? db.from('workouts').select(WHERE).in('id', ids('workout_id')) : { data: [], error: null },
+    ids('exercise_id').length ? db.from('exercises').select('id, name_pl').in('id', ids('exercise_id')) : { data: [], error: null },
+  ])
+  if (we.error) throw we.error
+  if (wo.error) throw wo.error
+  if (ex.error) throw ex.error
+  const weBy = new Map((we.data as any[]).map((r) => [r.id, r]))
+  const woBy = new Map((wo.data as any[]).map((r) => [r.id, r]))
+  const exBy = new Map((ex.data as any[]).map((r) => [r.id, r.name_pl as string]))
+
+  const clean = (c: ChangeIn) => {
+    const out: Partial<Record<Field, string | number>> = {}
+    if (c.sets != null) out.sets = Math.max(1, Math.min(20, Math.round(Number(c.sets))))
+    if (c.rest_sec != null) out.rest_sec = Math.max(0, Math.min(900, Math.round(Number(c.rest_sec))))
+    if (c.rpe != null) {
+      const r = Number(c.rpe)
+      if (!(r >= 1 && r <= 10)) throw new Error('RPE musi być w zakresie 1–10.')
+      out.rpe = Math.round(r * 2) / 2
+    }
+    for (const k of ['reps', 'load', 'tempo', 'notes'] as const) if (c[k] != null && String(c[k]).trim()) out[k] = String(c[k]).trim().slice(0, k === 'notes' ? 300 : 40)
+    return out
+  }
+  let program: { id: string; name: string; status: string; is_template: boolean } | null = null
+  const out = changes.map((c) => {
+    const row = c.workout_exercise_id ? weBy.get(c.workout_exercise_id) : null
+    const workout = c.type === 'add' ? (c.workout_id ? woBy.get(c.workout_id) : null) : row?.workouts
+    if (c.type !== 'add' && !row) throw new Error(`Nie ma pozycji planu o workout_exercise_id ${c.workout_exercise_id} – pobierz plan przez client_plan.`)
+    if (c.type === 'add' && !workout) throw new Error(`Nie ma treningu o workout_id ${c.workout_id} – pobierz plan przez client_plan.`)
+    const p = workout?.program_weeks?.programs
+    if (!p) throw new Error('Nie udało się ustalić planu dla tej zmiany.')
+    if (program && program.id !== p.id) throw new Error('Wszystkie zmiany w jednej propozycji muszą dotyczyć jednego planu.')
+    program = { id: p.id, name: p.name, status: p.status, is_template: p.is_template }
+    const where = `Tydz. ${(workout.program_weeks.position ?? 0) + 1} · ${workout.name}`
+    const fields = clean(c)
+    const base = { type: c.type, where, reason: String(c.reason ?? '').slice(0, 200), we_id: row?.id ?? null, workout_id: workout.id as string }
+    if (c.type === 'add' || c.type === 'swap') {
+      if (!c.exercise_id || !exBy.has(c.exercise_id)) throw new Error('Ćwiczenie do dodania/zamiany musi pochodzić z bazy – znajdź je przez find_exercises i podaj exercise_id.')
+    }
+    if (c.type === 'add') return { ...base, exercise: exBy.get(c.exercise_id!)!, new_exercise_id: c.exercise_id, after: fields }
+    const before: Record<string, unknown> = {}
+    const after: Record<string, unknown> = {}
+    for (const k of FIELDS) {
+      if (fields[k] === undefined || String(fields[k]) === String(row[k] ?? '')) continue
+      before[k] = row[k]
+      after[k] = fields[k]
+    }
+    if (c.type === 'remove') return { ...base, exercise: row.exercises?.name_pl ?? '?', exercise_id: row.exercise_id }
+    if (c.type === 'swap') {
+      if (c.exercise_id === row.exercise_id) throw new Error('Zamiana na to samo ćwiczenie.')
+      return { ...base, exercise: row.exercises?.name_pl ?? '?', exercise_id: row.exercise_id, new_exercise: exBy.get(c.exercise_id!)!, new_exercise_id: c.exercise_id, before, after }
+    }
+    if (!Object.keys(after).length) throw new Error(`Brak różnic względem obecnych wartości dla „${row.exercises?.name_pl}” (${where}).`)
+    return { ...base, exercise: row.exercises?.name_pl ?? '?', exercise_id: row.exercise_id, before, after }
+  })
+  return { id: crypto.randomUUID(), summary: String(input.summary ?? '').slice(0, 300), program: program!, changes: out }
+}
+
 async function ask(db: SupabaseClient, history: { role: 'user' | 'assistant'; content: string }[], context?: { client_id?: string | null; analysis_id?: string | null }) {
   const today = new Date().toISOString().slice(0, 10)
   const system = `Jesteś asystentem trenerki personalnej w jej aplikacji. Odpowiadasz po polsku, krótko i konkretnie, wyłącznie na podstawie danych z narzędzi – nie zgaduj liczb ani dat.
+Styl: precyzyjnie i bezpośrednio. Krótkie zdania. Najpierw odpowiedź, potem najwyżej kilka punktów z konkretami (liczby, daty, nazwy). Bez wstępów, bez powtarzania pytania, bez ogólników, bez asekuracyjnych zastrzeżeń i bez podsumowań na końcu. Nie dopisuj rad, o które nikt nie prosił. Dłużej tylko wtedy, gdy trenerka wyraźnie o to poprosi.
+Daty i godziny z narzędzi są w UTC – podawaj je w czasie polskim (Europe/Warsaw), bez dopisku o strefie.
 Gdy wymieniasz klienta, dodaj link w formacie Markdown do jego karty: [Imię Nazwisko](/klienci/<id>) albo do zakładki: [postępy](/klienci/<id>?tab=progress), [historia](/klienci/<id>?tab=history), [ruch](/klienci/<id>?tab=ruch). Innych linków nie twórz.
 Link do analizy ruchu: [analiza](/analiza/<id>).
 Technika: korzystaj z movement_analyses. Uwagi (findings) pochodzą z automatycznej analizy nagrania – to wskazania do potwierdzenia przez trenerkę, nie diagnoza; nie stawiaj rozpoznań medycznych. Gdy omawiasz analizę, podaj: 1) najważniejsze 1–3 rzeczy do poprawy w kolejności ważności, 2) co powiedzieć klientowi (krótkie komendy), 3) 2–4 ćwiczenia korekcyjne lub regresje – wyłącznie takie, które znalazłeś w bazie przez find_exercises, z uwzględnieniem ograniczeń z karty klienta.
-Propozycje zmian w planie formułuj jako sugestie dla trenerki – niczego nie zapisujesz ani nie zmieniasz.
+Zmiany w planie: sam niczego nie zapisujesz. Gdy trenerka prosi o zmianę w planie albo zgadza się na Twoją sugestię, wywołaj propose_plan_changes – zobaczy kartę z przyciskiem „Zastosuj” i sama zatwierdzi. Po wywołaniu napisz krótko, co proponujesz i dlaczego; nigdy nie pisz, że zmiana została wprowadzona. Nie proponuj karty, gdy trenerka pyta tylko o opinię – najpierw opisz sugestie i zapytaj, czy przygotować zmianę. Uwzględniaj ograniczenia z karty klienta.
 Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, sprawy spoza treningu), powiedz o tym wprost.`
   const messages: Anthropic.Beta.BetaMessageParam[] = history.slice(-12).map((m) => ({ role: m.role, content: m.content }))
   // Bieżąca data jako wiadomość operatora na końcu – stała część promptu zostaje w cache.
@@ -536,7 +655,9 @@ Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, spraw
     .join(' ')
   messages.push({ role: 'system', content: `Dzisiaj jest ${today}. ${ctx}`.trim() } as unknown as Anthropic.Beta.BetaMessageParam)
   const client = anthropic()
-  for (let i = 0; i < 8; i++) {
+  const proposals: unknown[] = []
+  const done = (answer: string) => ({ answer, proposals })
+  for (let i = 0; i < 10; i++) {
     const msg = await client.beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
@@ -546,13 +667,22 @@ Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, spraw
       tools: TOOLS,
       messages,
     } as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming)
-    if (msg.stop_reason === 'refusal') return textOf(msg)
-    if (msg.stop_reason !== 'tool_use') return textOf(msg) || 'Brak odpowiedzi.'
+    if (msg.stop_reason === 'refusal') return done(textOf(msg))
+    if (msg.stop_reason !== 'tool_use') return done(textOf(msg) || (proposals.length ? 'Przygotowałem propozycję zmian – sprawdź kartę poniżej.' : 'Brak odpowiedzi.'))
     messages.push({ role: 'assistant', content: msg.content })
     const uses = msg.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === 'tool_use')
     const results = await Promise.all(
       uses.map(async (u) => {
         try {
+          if (u.name === 'propose_plan_changes') {
+            const p = await buildProposal(db, u.input as { summary: string; changes: ChangeIn[] })
+            proposals.push(p)
+            return {
+              type: 'tool_result' as const,
+              tool_use_id: u.id,
+              content: `Propozycja (${p.changes.length} zmian w planie „${p.program.name}”) została pokazana trenerce jako karta do zatwierdzenia. NIC nie zostało zapisane – nie pisz, że zmiana jest wprowadzona.`,
+            }
+          }
           const out = await runTool(db, u.name, u.input as Record<string, unknown>)
           return { type: 'tool_result' as const, tool_use_id: u.id, content: JSON.stringify(out).slice(0, 60000) }
         } catch (e) {
@@ -562,7 +692,7 @@ Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, spraw
     )
     messages.push({ role: 'user', content: results })
   }
-  return 'Nie udało się zebrać odpowiedzi w rozsądnej liczbie kroków – zadaj węższe pytanie.'
+  return done('Nie udało się zebrać odpowiedzi w rozsądnej liczbie kroków – zadaj węższe pytanie.')
 }
 
 // ======================================================================
@@ -579,7 +709,7 @@ Deno.serve(async (req) => {
     if (body.action === 'ask') {
       const history = Array.isArray(body.messages) ? body.messages.filter((m: any) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : []
       if (!history.length || history.at(-1).role !== 'user') return json({ error: 'Brak pytania' }, 400)
-      return json({ answer: await ask(db, history, body.context) })
+      return json(await ask(db, history, body.context))
     }
     return json({ error: 'Nieznana akcja' }, 400)
   } catch (e) {
