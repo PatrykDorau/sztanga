@@ -168,6 +168,7 @@ const lastSync = computed(() =>
               <p class="font-semibold">{{ g.name }} <span class="tag ml-1">{{ g.code }}</span><span v-if="g.is_default" class="ml-1 text-xs text-muted">domyślna</span></p>
               <p class="text-xs text-muted">kolor: {{ GCAL_COLORS[g.color_id].name }}</p>
             </div>
+            <RouterLink :to="`/silownie/${g.id}`" class="chip border-line-strong bg-surface">Sprzęt{{ g.equipment || g.machines ? '' : ' (wszystko)' }}</RouterLink>
             <button class="icon-btn" :aria-label="`Edytuj ${g.name}`" @click="editGym(g)"><Icon name="edit" class="size-5" /></button>
           </li>
         </ul>

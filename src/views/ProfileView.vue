@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
 import { themePref, type ThemePref } from '@/lib/theme'
 import { loadAppSettings, parentConsent, setParentConsent } from '@/lib/appSettings'
+import { pendingCount, translateAll, type TranslateModel } from '@/lib/translateCues'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -36,6 +37,29 @@ async function toggleConsent(e: Event) {
     settingError.value = (err as Error).message
     ;(e.target as HTMLInputElement).checked = !v
   })
+}
+
+// ----- Tłumaczenie technik ćwiczeń (AI, koszt z klucza Anthropic) -----
+const pending = ref<number | null>(null)
+if (auth.isTrainer) pendingCount().then((n) => (pending.value = n)).catch(() => null)
+const trModel = ref<TranslateModel>('claude-opus-5-5')
+const trBusy = ref(false)
+const trProgress = ref({ done: 0, total: 0, usd: 0 })
+const trError = ref('')
+const trSignal = { stop: false }
+async function runTranslate() {
+  if (!confirm(`Przetłumaczyć ${pending.value} instrukcji? Koszt pokrywa Twój klucz Anthropic (szacunek poniżej). Możesz przerwać w każdej chwili.`)) return
+  trBusy.value = true
+  trError.value = ''
+  trSignal.stop = false
+  try {
+    await translateAll(trModel.value, (done, total, usd) => (trProgress.value = { done, total, usd }), trSignal)
+  } catch (e) {
+    trError.value = (e as Error).message
+  } finally {
+    trBusy.value = false
+    pending.value = await pendingCount().catch(() => pending.value)
+  }
 }
 
 async function logout() {
@@ -80,6 +104,22 @@ async function logout() {
         </span>
       </label>
       <p v-if="settingError" class="text-sm text-danger" role="alert">{{ settingError }}</p>
+    </section>
+
+    <section v-if="auth.isTrainer && pending" class="card space-y-3 p-4 text-sm">
+      <p class="label">Techniki ćwiczeń po polsku</p>
+      <p>{{ pending }} ćwiczeń z importu ma instrukcję „krok po kroku” po angielsku. Tłumaczenie robi Claude przez Twój klucz Anthropic.</p>
+      <div class="space-y-1.5">
+        <label class="flex items-start gap-2"><input v-model="trModel" type="radio" value="claude-opus-5-5" class="mt-0.5 size-5 accent-primary" :disabled="trBusy" /><span><strong>Claude Opus 5.5</strong> – najlepsza jakość, ok. 4–6 USD za całość</span></label>
+        <label class="flex items-start gap-2"><input v-model="trModel" type="radio" value="claude-haiku-5-5" class="mt-0.5 size-5 accent-primary" :disabled="trBusy" /><span><strong>Claude Haiku 5.5</strong> – tańszy, ok. 0,1–0,2 USD, nieco prostszy język</span></label>
+      </div>
+      <div v-if="trBusy || trProgress.total" class="space-y-1">
+        <div class="h-2 overflow-hidden rounded-full bg-surface-2"><div class="h-full bg-primary" :style="{ width: `${trProgress.total ? (trProgress.done / trProgress.total) * 100 : 0}%` }" /></div>
+        <p class="text-xs text-muted tabular-nums">{{ trProgress.done }} / {{ trProgress.total }} · koszt dotąd ok. {{ trProgress.usd.toFixed(2) }} USD</p>
+      </div>
+      <p v-if="trError" class="text-danger" role="alert">{{ trError }}</p>
+      <button v-if="!trBusy" class="btn-primary w-full" @click="runTranslate">Przetłumacz ({{ pending }})</button>
+      <button v-else class="btn-ghost w-full border border-line-strong" @click="trSignal.stop = true">Przerwij po bieżącej partii</button>
     </section>
 
     <button class="btn-ghost w-full" @click="logout">Wyloguj</button>

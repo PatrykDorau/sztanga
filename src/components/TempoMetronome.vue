@@ -22,7 +22,7 @@ const PHASES = [
   { key: 'down', label: 'W dół', hz: 440 },
   { key: 'hold', label: 'Pauza', hz: 587 },
   { key: 'up', label: 'W górę', hz: 880 },
-  { key: 'top', label: 'Góra', hz: 587 },
+  { key: 'top', label: 'Pauza', hz: 587 },
 ] as const
 const secs = reactive<number[]>([...init])
 const target = ref<number>(props.reps && props.reps > 0 ? props.reps : 0) // 0 = bez limitu

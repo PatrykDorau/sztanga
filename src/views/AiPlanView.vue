@@ -5,7 +5,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
-import { aiStatus, generatePlan, type PlanRequest } from '@/lib/ai'
+import { aiStatus, generatePlan, SPLIT_HINT, SPLIT_LABEL, type PlanRequest, type SplitType } from '@/lib/ai'
+import { useCalendarStore } from '@/stores/calendar'
+import { useExercisesStore } from '@/stores/exercises'
+import { allowedSet } from '@/lib/gymEquipment'
 import { buildRulePlan, loadRuleData, savePlanDraft } from '@/lib/planRules'
 import { CONTRAINDICATIONS, EQUIPMENT } from '@/lib/vocab'
 import ChipSelect from '@/components/ChipSelect.vue'
@@ -26,6 +29,15 @@ const form = reactive({
   equipment: ['dumbbell', 'barbell'] as string[],
   limitations: [] as string[],
   notes: '',
+  split: 'auto' as SplitType,
+  gym_id: '' as string,
+})
+const cal = useCalendarStore()
+const exStore = useExercisesStore()
+const gym = computed(() => cal.gymById(form.gym_id || null))
+// Siłownia z ustawionym sprzętem wyznacza sprzęt planu
+watch(gym, (g) => {
+  if (g?.equipment) form.equipment = [...g.equipment]
 })
 const busy = ref<false | 'rules' | 'ai'>(false)
 const aiOn = ref(false)
@@ -35,6 +47,7 @@ const LEVELS: Record<string, string> = { beginner: 'Początkujący', intermediat
 
 onMounted(async () => {
   clients.load()
+  cal.gyms.length || cal.loadGyms().catch(() => null)
   aiOn.value = (await aiStatus()).ai
 })
 const client = computed(() => clients.byId(form.client_id))
@@ -46,6 +59,7 @@ watch(
     if (c.goals && !form.goal) form.goal = c.goals
     if (c.equipment.length) form.equipment = [...c.equipment]
     form.limitations = [...c.limitations]
+    if (c.gym_id) form.gym_id = c.gym_id
   },
   { immediate: true },
 )
@@ -61,6 +75,8 @@ function request(): PlanRequest {
     equipment: form.equipment,
     limitations: form.limitations,
     notes: form.notes.trim() || null,
+    split: form.split,
+    gym_id: form.gym_id || null,
   }
 }
 
@@ -83,7 +99,8 @@ async function submit(mode: 'rules' | 'ai') {
       if (r.warnings.length) note = r.warnings.join(' ')
     } else {
       const { exercises, usage } = await loadRuleData()
-      const plan = buildRulePlan(request(), exercises, usage, `${form.client_id}${new Date().toISOString().slice(0, 10)}`, client.value?.client_group ?? null)
+      await exStore.load()
+      const plan = buildRulePlan(request(), exercises, usage, `${form.client_id}${new Date().toISOString().slice(0, 10)}`, client.value?.client_group ?? null, allowedSet(exStore.all, gym.value))
       id = await savePlanDraft(plan, form.client_id || null)
       note = 'rules'
     }
@@ -119,6 +136,22 @@ async function submit(mode: 'rules' | 'ai') {
       <div>
         <label class="label" for="goal">Cel</label>
         <textarea id="goal" v-model="form.goal" rows="3" class="input py-2" :disabled="!!busy" placeholder="np. siła w przysiadzie i martwym ciągu, powrót po kontuzji kolana, redukcja 5 kg" />
+      </div>
+      <div>
+        <p class="label">Typ treningu</p>
+        <div class="flex flex-wrap gap-2">
+          <button v-for="(l, k) in SPLIT_LABEL" :key="k" type="button" :class="form.split === k ? 'chip-on' : 'chip-off'" :aria-pressed="form.split === k" :disabled="!!busy" @click="form.split = k">{{ l }}</button>
+        </div>
+        <p class="mt-1 text-xs text-muted">{{ SPLIT_HINT[form.split] }}</p>
+      </div>
+      <div v-if="cal.gyms.length">
+        <label class="label" for="gym">Siłownia</label>
+        <select id="gym" v-model="form.gym_id" class="input" :disabled="!!busy">
+          <option value="">Dowolna (sprzęt poniżej)</option>
+          <option v-for="g in cal.gyms" :key="g.id" :value="g.id">{{ g.name }}{{ g.equipment || g.machines ? '' : ' – sprzęt nieustawiony' }}</option>
+        </select>
+        <p v-if="gym && (gym.equipment || gym.machines)" class="mt-1 text-xs text-muted">Plan użyje tylko sprzętu i maszyn dostępnych w {{ gym.name }}.</p>
+        <p v-else-if="gym" class="mt-1 text-xs text-muted">Ustaw sprzęt tej siłowni: <RouterLink :to="`/silownie/${gym.id}`" class="underline">Sprzęt {{ gym.code }}</RouterLink>.</p>
       </div>
       <div>
         <p class="label">Poziom</p>

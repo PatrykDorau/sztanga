@@ -11,6 +11,8 @@ import AssignProgramDialog from '@/components/AssignProgramDialog.vue'
 import ShareDialog from '@/components/ShareDialog.vue'
 import WorkoutCard from '@/components/WorkoutCard.vue'
 import Icon from '@/components/Icon.vue'
+import { allowedSet } from '@/lib/gymEquipment'
+import { useCalendarStore } from '@/stores/calendar'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -31,6 +33,8 @@ const busy = ref(false)
 const p = computed(() => (programs.current?.id === props.id ? programs.current : null))
 const client = computed(() => clients.byId(p.value?.client_id))
 const limitations = computed(() => client.value?.limitations ?? [])
+// Ćwiczenia możliwe w siłowni klienta (null = bez ograniczeń)
+const gymAllowed = computed(() => allowedSet(useExercisesStore().all, useCalendarStore().gymById(client.value?.gym_id)))
 const week = computed(() => p.value?.program_weeks[weekIdx.value] ?? null)
 
 const form = ref({ name: '', description: '', start_date: '', status: 'draft' as ProgramStatus })
@@ -234,7 +238,7 @@ const removeProgram = () =>
         </div>
 
         <div ref="daysEl" :key="week.id" class="space-y-3">
-          <WorkoutCard v-for="wo in week.workouts" :key="wo.id" :workout="wo" :limitations="limitations" />
+          <WorkoutCard v-for="wo in week.workouts" :key="wo.id" :workout="wo" :limitations="limitations" :allowed="gymAllowed" :gym-name="useCalendarStore().gymById(client?.gym_id)?.name" />
         </div>
 
         <button class="btn-ghost w-full" :disabled="busy" @click="act(() => programs.addWorkout(week!.id))"><Icon name="plus" class="size-4" />Dodaj trening</button>

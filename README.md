@@ -141,7 +141,7 @@ Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego proje
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`, wszystkie (001–017) zastosowane na projekcie w chmurze.
+Migracje w `supabase/migrations/`, wszystkie (001–021) zastosowane na projekcie w chmurze.
 
 Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).

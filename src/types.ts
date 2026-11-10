@@ -27,13 +27,16 @@ export interface Exercise {
   force: 'push' | 'pull' | 'static' | null
   image_urls: string[] // klatki ruchu (start / koniec)
   attribution: string | null // autor i licencja dla ćwiczeń z zewnętrznych baz
+  search_terms?: string | null // frazy potoczne do wyszukiwania
+  tags?: string[] // własne etykiety trenerki (wyświetlane obok nazwy, przeszukiwane)
+  cues_lang?: 'pl' | 'en' | null // język wskazówek technicznych
   source: string
   external_id: string | null
   created_at: string
   updated_at: string
 }
 
-export type ExerciseInput = Omit<Exercise, 'id' | 'created_at' | 'updated_at' | 'source' | 'external_id' | 'image_urls' | 'attribution' | 'mechanic' | 'force'>
+export type ExerciseInput = Omit<Exercise, 'id' | 'created_at' | 'updated_at' | 'source' | 'external_id' | 'image_urls' | 'attribution' | 'mechanic' | 'force' | 'search_terms'>
 
 export interface ExerciseRelation {
   from_exercise: string
@@ -220,6 +223,8 @@ export interface Gym {
   code: string
   color_id: number
   is_default: boolean
+  equipment?: string[] | null // dostępne kategorie sprzętu (null = wszystko)
+  machines?: string[] | null // dostępne maszyny – id ćwiczeń (null = wszystkie)
 }
 
 export interface CalendarBlock {

@@ -58,6 +58,35 @@ const DAY_TYPES: Record<string, { name: string; slots: Slot[] }> = {
   push: { name: 'Pchanie', slots: [S('main', ['push_h']), S('main', ['push_v']), S('acc', ['push_h']), S('acc', undefined, ['shoulders']), S('acc', undefined, ['triceps']), S('acc', undefined, ['chest']), S('core', ['core'])] },
   pull: { name: 'Przyciąganie', slots: [S('main', ['pull_v']), S('main', ['pull_h']), S('acc', ['hinge']), S('acc', undefined, ['middle back', 'traps']), S('acc', undefined, ['biceps']), S('acc', undefined, ['lats']), S('core', ['core'])] },
 }
+// Dodatkowe dni dla wybranych typów treningu
+Object.assign(DAY_TYPES, {
+  pushLegs: { name: 'Pchanie + czworogłowe', slots: [S('main', ['squat']), S('main', ['push_h']), S('main', ['push_v']), S('acc', ['lunge']), S('acc', undefined, ['chest', 'shoulders']), S('acc', undefined, ['triceps']), S('core', ['core'])] },
+  pullLegs: { name: 'Przyciąganie + tył uda', slots: [S('main', ['hinge']), S('main', ['pull_v']), S('main', ['pull_h']), S('acc', undefined, ['hamstrings', 'glutes']), S('acc', undefined, ['middle back', 'lats']), S('acc', undefined, ['biceps']), S('core', ['core'])] },
+  chest: { name: 'Klatka', slots: [S('main', ['push_h']), S('main', ['push_h']), S('acc', undefined, ['chest']), S('acc', undefined, ['chest']), S('acc', undefined, ['triceps']), S('core', ['core'])] },
+  back: { name: 'Plecy', slots: [S('main', ['pull_v']), S('main', ['pull_h']), S('acc', ['hinge']), S('acc', undefined, ['lats']), S('acc', undefined, ['middle back', 'traps']), S('acc', undefined, ['biceps'])] },
+  shoulders: { name: 'Barki', slots: [S('main', ['push_v']), S('acc', undefined, ['shoulders']), S('acc', undefined, ['shoulders']), S('acc', undefined, ['traps']), S('acc', undefined, ['shoulders']), S('core', ['core'])] },
+  arms: { name: 'Ręce', slots: [S('acc', undefined, ['biceps']), S('acc', undefined, ['triceps']), S('acc', undefined, ['biceps']), S('acc', undefined, ['triceps']), S('acc', undefined, ['forearms'])] },
+})
+/** Kolejność dni dla typu treningu. */
+function splitFor(type: string | undefined, days: number): string[] {
+  const cycle = (seq: string[]) => Array.from({ length: days }, (_, i) => seq[i % seq.length])
+  switch (type) {
+    case 'fbw':
+      return cycle(['fbA', 'fbB', 'fbC'])
+    case 'upper_lower':
+      return cycle(['upper', 'lower'])
+    case 'push_pull':
+      return cycle(['pushLegs', 'pullLegs'])
+    case 'ppl':
+      return cycle(['push', 'pull', 'lower'])
+    case 'bro':
+      return cycle(['chest', 'back', 'lower', 'shoulders', 'arms'])
+    default:
+      return SPLITS[days]
+  }
+}
+const SPLIT_DESC: Record<string, string> = { fbA: 'Trening całego ciała', upper: 'Podział góra–dół', pushLegs: 'Podział push–pull', push: 'Podział pchanie–przyciąganie–nogi', chest: 'Split na partie' }
+
 const SPLITS: Record<number, string[]> = {
   1: ['fbA'],
   2: ['fbA', 'fbB'],
@@ -122,7 +151,7 @@ function hash(s: string) {
   return (h >>> 0) / 4294967296
 }
 
-export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage: Map<string, number>, seed = '', group: string | null = null): PlanDraft {
+export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage: Map<string, number>, seed = '', group: string | null = null, allowed: Set<string> | null = null): PlanDraft {
   // Dzieci: zawsze dawki ogólnorozwojowe (więcej powtórzeń, umiarkowany wysiłek), bez pracy siłowej na niskich powtórzeniach.
   const child = group === 'child'
   const goal: Goal = child ? 'general' : detectGoal(req.goal)
@@ -131,6 +160,7 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
   const maxLevel = LEVEL_RANK[req.level]
   const pool = exercises.filter(
     (e) =>
+      (!allowed || allowed.has(e.id)) &&
       e.equipment.every((q) => equipment.has(q)) &&
       !e.contraindications.some((c) => limits.has(c)) &&
       fitsPattern(e) &&
@@ -173,7 +203,7 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
   const days = Math.max(1, Math.min(6, Math.round(req.days)))
   const weeks = Math.max(1, Math.min(8, Math.round(req.weeks)))
   const perWorkout = !req.minutes ? 6 : req.minutes <= 40 ? 4 : req.minutes <= 60 ? 6 : 7
-  const split = SPLITS[days]
+  const split = splitFor(req.split, days)
   const letters = 'ABCDEF'
 
   // Dobór ćwiczeń raz (tydzień 1) i powtarzanie w kolejnych tygodniach – progresja na tych samych ćwiczeniach.
@@ -204,7 +234,7 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
 
   const plan: PlanDraft = {
     name: `${GOAL_NAME[goal]} – ${days}× w tygodniu, ${weeks} tyg.`,
-    description: `Plan z reguł: ${req.goal.trim()}. ${days === 4 || days === 5 ? 'Podział góra–dół' : days === 6 ? 'Podział pchanie–przyciąganie–nogi' : 'Trening całego ciała'}, progresja serii i RPE${weeks >= 4 ? ', lżejszy ostatni tydzień' : ''}.`,
+    description: `Plan z reguł: ${req.goal.trim()}. ${SPLIT_DESC[split[0]] ?? 'Podział góra–dół'}, progresja serii i RPE${weeks >= 4 ? ', lżejszy ostatni tydzień' : ''}.`,
     weeks: [],
   }
   for (let w = 0; w < weeks; w++) {
