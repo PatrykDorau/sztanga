@@ -107,14 +107,14 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 ## Faza 6 – sportowcy i dzieci
 
 - **Sportowcy** (zakładka „Sport” na karcie klienta z grupy Sportowiec): ankieta gotowości 1–5 (sen, zmęczenie, bolesność,
-  stres, nastrój) – z trenerką na starcie sesji albo sam pod linkiem  bez konta; światło zielone / żółte /
+  stres, nastrój) – z trenerką na starcie sesji albo sam pod linkiem `/g/<token>` bez konta; światło zielone / żółte /
   czerwone, także względem własnej normy z 28 dni. Panel „Sportowcy – gotowość dziś” na Starcie.
 - **Obciążenie**: RPE całej sesji (0–10) i czas przy „Zakończ sesję” → obciążenie sRPE × min, ACWR (EWMA 7/28 dni)
   z ostrzeżeniem > 1,3 / > 1,5 i < 0,8. Brakujące RPE uzupełnia się na karcie.
 - **Dzieci** (zakładka „Rozwój”): bateria testów co kwartał (skok w dal, 20 m, 4×10 m, równowaga, brzuszki 30 s, skłon)
   z wykresem rozwoju, przypomnienie na Starcie, odznaki liczone z danych, zgody rodzica (kto i kiedy, wycofanie).
-- **Wyzwania drużynowe** (): wspólny cel grupy, wkład każdego dziecka, bez rankingów.
-- **Raport dla rodzica** (, bez konta): rodzic sam wyraża zgody; wyniki widać dopiero po zgodzie na udostępnianie.
+- **Wyzwania drużynowe** (`/wyzwania`): wspólny cel grupy, wkład każdego dziecka, bez rankingów.
+- **Raport dla rodzica** (`/r/<token>`, bez konta): rodzic sam wyraża zgody; wyniki widać dopiero po zgodzie na udostępnianie.
   Testy, frekwencja, odznaki, wyzwania, zatwierdzone podsumowania; zapis do PDF.
 - Metronom tempa (Start i przy ćwiczeniu w sesji): słupki faz, pełny ekran z jednym słupkiem.
 - Nie zrobione z planu Fazy 6: pomiar prędkości sztangi z kamery (VBT), zegarki (Garmin / Apple Health),
