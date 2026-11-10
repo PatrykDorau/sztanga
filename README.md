@@ -128,13 +128,20 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Nie zrobione z planu Fazy 6: pomiar prędkości sztangi z kamery (VBT), zegarki (Garmin / Apple Health),
   liczenie pajacyków z kamery, tryb grupowy na TV.
 
+## Biblioteka ćwiczeń
+
+948 ćwiczeń: free-exercise-db (domena publiczna) + 67 wyselekcjonowanych z wger.de (CC-BY-SA) i kilka opisanych od zera.
+Każde ma mięsień główny (kategoria) i pomocnicze, krótki opis po polsku, klatki ruchu (animacja start/koniec) albo film
+(42 filmy z wger, zmniejszone do 480p) i link do filmów z techniką na YouTube. Mapa: 191 progresji i alternatyw
+(łańcuchy dla przysiadu, zawiasu, wyciskań, podciągania, wiosłowania, brzucha, mocy). Jak to powstało: .
+
 ## Dostęp do bazy dla Claude
 
 Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego projektu jest w `.mcp.json` (`supabase-sztanga`) i działa po restarcie sesji w tym folderze (przy pierwszym użyciu logowanie i wybór organizacji Sztanga).
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`, wszystkie (001–014) zastosowane na projekcie w chmurze.
+Migracje w `supabase/migrations/`, wszystkie (001–017) zastosowane na projekcie w chmurze.
 
 Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).

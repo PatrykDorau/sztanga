@@ -39,7 +39,7 @@ const results = computed(() =>
   ex.all.filter((e) => {
     if (filters.scope === 'own' && hasImported.value && e.source !== 'own') return false
     if (filters.favOnly && !ex.favorites.has(e.id)) return false
-    if (filters.muscles.length && !filters.muscles.some((m) => e.muscle_groups.includes(m))) return false
+    if (filters.muscles.length && !filters.muscles.some((m) => (e.primary_muscles?.length ? e.primary_muscles : e.muscle_groups).includes(m))) return false
     if (filters.equipment.length && !filters.equipment.some((m) => e.equipment.includes(m))) return false
     if (filters.pattern.length && !filters.pattern.includes(e.movement_pattern ?? '')) return false
     if (filters.level.length && !filters.level.includes(e.level)) return false
@@ -137,7 +137,7 @@ function clearFilters() {
                 <p class="truncate font-medium">{{ e.name_pl }}</p>
                 <p v-if="e.name_en && e.name_en !== e.name_pl" class="truncate text-xs text-subtle" lang="en">{{ e.name_en }}</p>
                 <p class="truncate text-xs text-muted">
-                  {{ [...e.muscle_groups.slice(0, 2).map((m) => label(MUSCLES, m)), ...e.equipment.slice(0, 1).map((m) => label(EQUIPMENT, m))].join(' · ') }}
+                  {{ [...(e.primary_muscles?.length ? e.primary_muscles : e.muscle_groups.slice(0, 1)).map((m) => label(MUSCLES, m)), ...e.equipment.slice(0, 1).map((m) => label(EQUIPMENT, m))].join(' · ') }}
                 </p>
               </div>
               <button
