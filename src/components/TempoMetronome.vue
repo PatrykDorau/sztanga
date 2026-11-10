@@ -158,11 +158,82 @@ const step = (i: number, d: number) => (secs[i] = Math.max(i === 1 || i === 3 ? 
 /** Wypełnienie słupka: fazy minione = pełne, bieżąca = postęp, przyszłe = puste. */
 const fill = (i: number) => (state.value === 'done' ? 1 : state.value === 'idle' || state.value === 'countdown' ? 0 : i < phase.value ? 1 : i === phase.value ? progress.value : 0)
 const fmt = (v: number) => String(v).replace('.', ',')
+
+// ---------- Pełny ekran: jeden duży słupek naraz (tylko bieżąca faza) ----------
+const full = ref(false)
+const FULL_COLOR = ['bg-primary', 'bg-[var(--ref-ink)]', 'bg-[var(--success)]', 'bg-[var(--ref-ink)]']
+/** Następna faza o niezerowym czasie (podgląd „dalej: …”). */
+const nextPhase = computed(() => {
+  for (let k = 1; k <= 4; k++) {
+    const i = (phase.value + k) % 4
+    if (secs[i] > 0) return PHASES[i].label
+  }
+  return ''
+})
+async function enterFull() {
+  full.value = true
+  // Prawdziwy pełny ekran przeglądarki (chowa pasek adresu na telefonie); bez tego i tak zajmuje całe okno.
+  await document.documentElement.requestFullscreen?.().catch(() => null)
+}
+async function exitFull() {
+  full.value = false
+  if (document.fullscreenElement) await document.exitFullscreen().catch(() => null)
+}
+// Wyjście z pełnego ekranu gestem / klawiszem Esc – wracamy do zwykłego widoku.
+const onFs = () => !document.fullscreenElement && (full.value = false)
+document.addEventListener('fullscreenchange', onFs)
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', onFs)
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => null)
+})
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-[60] flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="mt-h" @click.self="!busy && emit('close')">
+    <!-- Pełny ekran: tylko bieżąca faza -->
+    <div v-if="full" class="fixed inset-0 z-[80] flex flex-col bg-black text-white select-none" role="dialog" aria-modal="true" aria-label="Metronom tempa – pełny ekran">
+      <div class="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2">
+        <p class="min-w-0 truncate text-sm text-white/70">{{ title ? `${title} · ` : '' }}tempo {{ tempoText }}</p>
+        <button type="button" class="flex size-11 shrink-0 items-center justify-center rounded-full bg-white/15" aria-label="Zamknij pełny ekran" @click="exitFull"><Icon name="x" class="size-6" /></button>
+      </div>
+
+      <div class="relative min-h-0 flex-1 px-4">
+        <div class="relative mx-auto h-full max-w-xl overflow-hidden rounded-3xl bg-white/10" aria-hidden="true">
+          <div
+            v-if="state === 'running' || state === 'paused' || state === 'done'"
+            class="absolute inset-x-0"
+            :class="[phase === 0 && state !== 'done' ? 'top-0' : 'bottom-0', state === 'done' ? 'bg-[var(--success)]' : FULL_COLOR[phase]]"
+            :style="{ height: `${(state === 'done' ? 1 : progress) * 100}%` }"
+          />
+          <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
+            <template v-if="state === 'running' || state === 'paused'">
+              <p class="font-display text-[clamp(3rem,14vw,7rem)] leading-none font-bold tracking-wide uppercase drop-shadow-lg">{{ PHASES[phase].label }}</p>
+              <p class="font-display text-[clamp(5rem,30vw,14rem)] leading-none font-bold tabular-nums drop-shadow-lg">{{ Math.ceil(left - 0.001) || 1 }}</p>
+              <p class="text-lg text-white/80 drop-shadow">{{ state === 'paused' ? 'pauza' : `dalej: ${nextPhase.toLowerCase()}` }}</p>
+            </template>
+            <p v-else-if="state === 'countdown'" class="font-display text-[clamp(8rem,40vw,18rem)] leading-none font-bold tabular-nums">{{ countdown }}</p>
+            <p v-else-if="state === 'done'" class="font-display text-[clamp(3rem,12vw,6rem)] leading-none font-bold uppercase drop-shadow-lg">Koniec serii</p>
+            <p v-else class="px-6 text-xl text-white/80">Jeden słupek naraz: w dół, pauza, w górę.<br />Naciśnij Start.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-3 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <p class="text-center font-display leading-none font-bold tabular-nums" aria-live="polite">
+          <span class="text-6xl">{{ rep }}</span><span v-if="target" class="text-3xl text-white/60"> / {{ target }}</span>
+          <span class="block pt-1 font-sans text-xs font-normal text-white/60">powtórzeń</span>
+        </p>
+        <div class="mx-auto grid max-w-xl gap-3" :class="busy ? 'grid-cols-2' : ''">
+          <template v-if="busy">
+            <button type="button" class="min-h-14 rounded-2xl bg-white/15 text-lg font-semibold" @click="stop">Stop</button>
+            <button type="button" class="btn-primary min-h-14 text-lg" :disabled="state === 'countdown'" @click="pause">{{ state === 'paused' ? 'Wznów' : 'Pauza' }}</button>
+          </template>
+          <button v-else type="button" class="btn-primary min-h-14 w-full text-lg" :disabled="repTime <= 0" @click="start">{{ state === 'done' ? 'Jeszcze raz' : 'Start' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="fixed inset-0 z-[60] flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="mt-h" @click.self="!busy && emit('close')">
       <div class="sheet space-y-4 sm:max-w-md">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
@@ -234,6 +305,7 @@ const fmt = (v: number) => String(v).replace('.', ',')
           </template>
           <button v-else type="button" class="btn-primary w-full" :disabled="repTime <= 0" @click="start">{{ state === 'done' ? 'Jeszcze raz' : 'Start' }}</button>
         </div>
+        <button type="button" class="btn-ghost w-full border border-line-strong" @click="enterFull"><Icon name="up" class="size-5" />Pełny ekran – jeden słupek naraz</button>
       </div>
     </div>
   </Teleport>
