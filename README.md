@@ -1,0 +1,58 @@
+# Trener – aplikacja dla trenerki personalnej
+
+PWA w Vue 3 + TypeScript + Vite + Pinia + Tailwind 4, backend Supabase (projekt `trener-app`, region Frankfurt).
+
+## Uruchomienie
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+npm run build
+```
+
+Klucze Supabase są w `.env.local` (nie trafia do gita, wzór w `.env.example`).
+Port 3000 jest celowy: to domyślny „Site URL” w Supabase Auth, więc magic link działa lokalnie.
+
+## Pierwsze logowanie trenerki
+
+1. Zaloguj się w aplikacji jej adresem e-mail (link z e-maila).
+2. Nowe konto dostaje rolę `client`. Nadaj rolę trenerki w Supabase → SQL Editor:
+
+```sql
+update public.profiles set role = 'trainer'
+where id = (select id from auth.users where email = 'ADRES@TRENERKI');
+```
+
+3. Wyloguj i zaloguj ponownie (albo odśwież) – pojawią się przyciski dodawania i edycji.
+
+Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytować tylko swoje imię.
+
+## Co jest zrobione (Faza 1)
+
+- Logowanie magic linkiem lub hasłem, role `trainer` / `client` / `parent`, RLS.
+- Baza ćwiczeń: nazwa PL/EN, partie, sprzęt, wzorzec ruchu, poziom, przeciwwskazania, wskazówki.
+- Graf powiązań: regresja / progresja / alternatywa, widok całego łańcucha.
+- Wideo z telefonu: nagranie lub galeria → kompresja do 720p w przeglądarce → prywatny bucket `exercise-media`.
+- Wyszukiwarka bez polskich znaków, filtry (partia, sprzęt, wzorzec, poziom), ulubione.
+- Import ~870 ćwiczeń z free-exercise-db (osobno od własnych, bez duplikatów).
+- PWA (instalacja na telefonie), nawigacja dolna, tryb ciemny.
+
+## Baza danych
+
+Migracje w `supabase/migrations/` (zastosowane już na projekcie w chmurze).
+
+| Tabela | Zawartość |
+| --- | --- |
+| `profiles` | rola i imię użytkownika (tworzony automatycznie przy rejestracji) |
+| `exercises` | baza ćwiczeń |
+| `exercise_relations` | `progression` (from → trudniejsze to) i `alternative`; regresja = progresja czytana odwrotnie |
+| `exercise_favorites` | ulubione per użytkownik |
+| storage `exercise-media` | wideo ćwiczeń (prywatny, odczyt przez podpisane linki) |
+
+## Do zrobienia w kolejnych fazach
+
+Faza 2 kreator planów · Faza 3 grafik i rezerwacje · Faza 4 sesje na żywo, udostępnianie, dashboard ·
+Faza 5 AI i analiza wideo · Faza 6 sportowcy i dzieci. Szczegóły w dokumencie planu projektu.
+
+Otwarte z Fazy 1: CI/CD (deploy na Netlify/Vercel) – do podpięcia po założeniu repo na GitHubie;
+polskie nazwy ćwiczeń z importu (przetłumaczone są tylko najczęstsze).
