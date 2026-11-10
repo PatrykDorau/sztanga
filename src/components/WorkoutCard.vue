@@ -64,12 +64,19 @@ async function remove() {
   <section class="card p-3" :data-id="workout.id">
     <header class="mb-2 flex items-center gap-1">
       <span data-day-handle class="cursor-grab touch-none p-1 text-stone-400" aria-label="Przeciągnij, by zmienić kolejność dni">⋮⋮</span>
-      <input v-if="renaming" v-model="name" class="input !min-h-9 flex-1" autofocus @blur="saveName" @keydown.enter.prevent="saveName" />
+      <input v-if="renaming" v-model="name" class="input !min-h-9 flex-1" v-focus @blur="saveName" @keydown.enter.prevent="saveName" />
       <button v-else class="flex-1 text-left font-semibold" @click="renaming = true">{{ workout.name }}</button>
       <button class="p-2 text-stone-400 hover:text-red-600" aria-label="Usuń trening" @click="remove"><Icon name="trash" class="size-4" /></button>
     </header>
 
-    <ul ref="listEl" :data-list="workout.id" class="min-h-2 space-y-1">
+    <!-- Pusty trening musi mieć wyraźną strefę upuszczania, inaczej nie da się do niego przeciągnąć ćwiczenia. -->
+    <ul
+      ref="listEl"
+      :data-list="workout.id"
+      class="space-y-1"
+      :class="workout.workout_exercises.length ? 'min-h-2' : 'flex min-h-14 items-center justify-center rounded-xl bg-stone-100 text-xs text-stone-500 before:content-[attr(data-hint)] dark:bg-stone-950'"
+      data-hint="Pusty – dodaj lub przeciągnij tu ćwiczenie"
+    >
       <li v-for="(we, i) in workout.workout_exercises" :key="we.id" :data-id="we.id">
         <div
           class="flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 p-2 dark:border-stone-800 dark:bg-stone-950"

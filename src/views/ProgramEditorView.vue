@@ -38,6 +38,8 @@ async function load() {
   try {
     await Promise.all([programs.open(props.id), clients.load(), ex.load()])
     weekIdx.value = 0
+    showSettings.value = false
+    assigning.value = false
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -142,10 +144,12 @@ const removeProgram = () =>
         <div class="min-w-0 flex-1">
           <h1 class="truncate text-lg leading-tight font-bold">{{ p.name }}</h1>
           <p class="truncate text-xs text-stone-500">
-            <template v-if="p.is_template">Szablon</template>
-            <RouterLink v-else-if="client" :to="`/klienci/${client.id}`" class="underline">{{ client.full_name }}</RouterLink>
-            · {{ label(STATUSES, p.status) }}
-            <template v-if="p.start_date"> · od {{ new Date(p.start_date).toLocaleDateString('pl-PL') }}</template>
+            <template v-if="p.is_template">Szablon · {{ p.program_weeks.length }} tyg.</template>
+            <template v-else>
+              <RouterLink v-if="client" :to="`/klienci/${client.id}`" class="underline">{{ client.full_name }}</RouterLink>
+              · {{ label(STATUSES, p.status) }}
+              <template v-if="p.start_date"> · od {{ new Date(p.start_date).toLocaleDateString('pl-PL') }}</template>
+            </template>
           </p>
         </div>
         <RouterLink :to="`/plany/${p.id}/druk`" class="p-2" aria-label="Wersja do druku"><Icon name="download" class="size-5" /></RouterLink>

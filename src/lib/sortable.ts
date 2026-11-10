@@ -21,6 +21,7 @@ export function useSortable(
         handle: opts.handle,
         animation: 150,
         ghostClass: 'opacity-40',
+        emptyInsertThreshold: 24,
         onStart(evt) {
           nextSibling = evt.item.nextSibling
         },

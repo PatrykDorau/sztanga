@@ -17,7 +17,7 @@ const router = createRouter({
     { path: '/klienci/:id/edycja', name: 'client-edit', component: () => import('@/views/ClientFormView.vue'), props: true, meta: { trainer: true } },
     { path: '/plany', name: 'programs', component: () => import('@/views/ProgramsView.vue'), meta: { trainer: true } },
     { path: '/plany/:id', name: 'program', component: () => import('@/views/ProgramEditorView.vue'), props: true, meta: { trainer: true } },
-    { path: '/plany/:id/druk', name: 'program-print', component: () => import('@/views/ProgramPrintView.vue'), props: true, meta: { trainer: true, bare: true } },
+    { path: '/plany/:id/druk', name: 'program-print', component: () => import('@/views/ProgramPrintView.vue'), props: true, meta: { bare: true } }, // klient też: RLS pokazuje mu tylko jego nie-szkicowe plany
     { path: '/profil', name: 'profile', component: () => import('@/views/ProfileView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

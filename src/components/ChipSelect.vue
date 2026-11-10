@@ -3,10 +3,14 @@
 const props = defineProps<{ options: Record<string, string>; single?: boolean; scroll?: boolean }>()
 const model = defineModel<string[]>({ required: true })
 
+// Zmieniamy tablicę w miejscu: przypisanie nowej tablicy dociera do rodzica dopiero po re-renderze,
+// więc kilka szybkich kliknięć pod rząd nadpisywało się nawzajem (zostawał tylko ostatni wybór).
 function toggle(key: string) {
-  const has = model.value.includes(key)
-  if (props.single) model.value = has ? [] : [key]
-  else model.value = has ? model.value.filter((k) => k !== key) : [...model.value, key]
+  const arr = model.value
+  const i = arr.indexOf(key)
+  if (props.single) arr.splice(0, arr.length, ...(i >= 0 ? [] : [key]))
+  else if (i >= 0) arr.splice(i, 1)
+  else arr.push(key)
 }
 </script>
 

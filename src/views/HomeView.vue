@@ -2,11 +2,16 @@
 import { computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useExercisesStore } from '@/stores/exercises'
+import { useProgramsStore } from '@/stores/programs'
 import Icon from '@/components/Icon.vue'
 
 const auth = useAuthStore()
 const ex = useExercisesStore()
-onMounted(() => ex.load())
+const programs = useProgramsStore()
+onMounted(() => Promise.all([ex.load(), programs.loadList()]))
+
+// Dla klienta RLS zwraca tylko jego plany, które nie są szkicem.
+const myPlans = computed(() => (auth.isTrainer ? [] : programs.list.filter((p) => !p.is_template && p.status !== 'draft')))
 
 const own = computed(() => ex.all.filter((e) => e.source === 'own'))
 const withVideo = computed(() => own.value.filter((e) => e.video_path).length)
@@ -37,6 +42,19 @@ const GOAL = 30
         <RouterLink to="/cwiczenia/nowe" class="btn-primary"><Icon name="plus" class="size-4" />Dodaj ćwiczenie</RouterLink>
         <RouterLink to="/cwiczenia" class="btn-ghost"><Icon name="search" class="size-4" />Przeglądaj</RouterLink>
       </div>
+    </section>
+
+    <section v-else-if="myPlans.length" class="space-y-2">
+      <h2 class="font-semibold">Twój plan</h2>
+      <RouterLink v-for="p in myPlans" :key="p.id" :to="`/plany/${p.id}/druk`" class="card flex items-center justify-between gap-3 p-4">
+        <div class="min-w-0">
+          <p class="truncate font-medium">{{ p.name }}</p>
+          <p class="text-xs text-stone-500">
+            {{ p.status === 'active' ? 'aktywny' : 'zakończony' }}<template v-if="p.start_date"> · od {{ new Date(p.start_date).toLocaleDateString('pl-PL') }}</template>
+          </p>
+        </div>
+        <span class="flex items-center gap-1 text-sm font-medium text-brand-700 dark:text-brand-500"><Icon name="download" class="size-4" />Zobacz / PDF</span>
+      </RouterLink>
     </section>
 
     <section v-else-if="auth.profile" class="card p-5">

@@ -14,9 +14,15 @@ const programs = useProgramsStore()
 const clients = useClientsStore()
 const ex = useExercisesStore()
 const ready = ref(false)
+const missing = ref(false)
 
 onMounted(async () => {
-  await Promise.all([programs.open(props.id), clients.load(), ex.load()])
+  try {
+    await Promise.all([programs.open(props.id), clients.load(), ex.load()])
+  } catch {
+    // Brak planu albo brak dostępu (np. klient, a plan jest szkicem) – RLS zwraca 0 wierszy.
+    missing.value = true
+  }
   ready.value = true
 })
 
@@ -44,7 +50,7 @@ function rest(sec: number | null) {
     <div class="sticky top-0 flex items-center gap-2 border-b border-stone-200 bg-white p-3 print:hidden">
       <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
       <span class="flex-1 text-sm text-stone-500">Podgląd wydruku</span>
-      <button class="btn-primary" @click="print"><Icon name="download" class="size-4" />Drukuj / PDF</button>
+      <button v-if="p && ready" class="btn-primary" @click="print"><Icon name="download" class="size-4" />Drukuj / PDF</button>
     </div>
 
     <article v-if="p && ready" class="mx-auto max-w-3xl p-6 print:p-0">
@@ -100,7 +106,7 @@ function rest(sec: number | null) {
         </div>
       </section>
     </article>
-    <p v-else class="p-10 text-center text-stone-500">Ładowanie…</p>
+    <p v-else class="p-10 text-center text-stone-500">{{ missing ? 'Ten plan nie jest dostępny.' : 'Ładowanie…' }}</p>
   </div>
 </template>
 

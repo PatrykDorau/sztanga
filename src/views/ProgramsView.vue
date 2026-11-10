@@ -49,7 +49,7 @@ async function create() {
       <form v-if="creating && tab === 'templates'" class="card space-y-3 p-4" @submit.prevent="create">
         <div>
           <label class="label" for="tn">Nazwa szablonu</label>
-          <input id="tn" v-model="newName" class="input" placeholder="np. Full body początkujący" autofocus />
+          <input id="tn" v-model="newName" class="input" placeholder="np. Full body początkujący" v-focus />
         </div>
         <div>
           <label class="label" for="tw">Liczba tygodni</label>

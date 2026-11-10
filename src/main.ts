@@ -6,4 +6,9 @@ import router from './router'
 import { initTheme } from './lib/theme'
 
 initTheme()
-createApp(App).use(createPinia()).use(router).mount('#app')
+createApp(App)
+  .use(createPinia())
+  .use(router)
+  // v-focus zamiast autofocus: działa też w elementach pokazywanych później (v-if).
+  .directive('focus', { mounted: (el: HTMLElement) => el.focus() })
+  .mount('#app')
