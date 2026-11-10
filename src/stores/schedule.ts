@@ -12,7 +12,7 @@ import type {
 } from '@/types'
 
 const SESSION_COLS =
-  'id, client_id, starts_at, ends_at, status, workout_id, series_id, notes, booked_by_client, cancelled_at, cancel_reason'
+  'id, client_id, starts_at, ends_at, status, workout_id, series_id, notes, booked_by_client, cancelled_at, cancel_reason, gym_id, gcal_event_id'
 
 function ok<T>(res: { data: T; error: unknown }): T {
   if (res.error) throw res.error
@@ -96,14 +96,14 @@ export const useScheduleStore = defineStore('schedule', () => {
   }
 
   // ===== Sesje (trenerka) =====
-  async function createSession(input: { client_id: string; starts_at: string; ends_at: string; workout_id?: string | null; notes?: string | null }) {
+  async function createSession(input: { client_id: string; starts_at: string; ends_at: string; workout_id?: string | null; notes?: string | null; gym_id?: string | null }) {
     const row = ok(await supabase.from('sessions').insert({ ...input, status: 'confirmed' }).select(SESSION_COLS).single()) as Session
     upsertLocal([row])
     return row
   }
 
   /** Sesja cykliczna: zapis serii i wygenerowanie terminów na 8 tygodni naprzód. */
-  async function createSeries(input: { client_id: string; weekday: number; start_time: string; duration_minutes: number; start_date: string; end_date?: string | null }) {
+  async function createSeries(input: { client_id: string; weekday: number; start_time: string; duration_minutes: number; start_date: string; end_date?: string | null; gym_id?: string | null }) {
     const sr = ok(await supabase.from('session_series').insert(input).select('id').single()) as { id: string }
     const n = ok(await supabase.rpc('generate_series_sessions', { sid: sr.id })) as number
     return { id: sr.id, created: n }
@@ -153,7 +153,7 @@ export const useScheduleStore = defineStore('schedule', () => {
 
   // ===== Klient =====
   async function freeSlots(fromDay: string, toDay: string) {
-    return ok(await supabase.rpc('free_slots', { from_day: fromDay, to_day: toDay })) as { starts_at: string; ends_at: string }[]
+    return ok(await supabase.rpc('free_slots', { from_day: fromDay, to_day: toDay })) as { starts_at: string; ends_at: string; gym_id: string | null }[]
   }
 
   async function book(slotIso: string) {

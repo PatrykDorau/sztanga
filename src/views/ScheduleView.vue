@@ -11,12 +11,17 @@ import NewSessionSheet from '@/components/NewSessionSheet.vue'
 import SessionCard from '@/components/SessionCard.vue'
 import SessionSheet from '@/components/SessionSheet.vue'
 import Icon from '@/components/Icon.vue'
+import GymBadge from '@/components/GymBadge.vue'
+import { useCalendarStore } from '@/stores/calendar'
+import { hm } from '@/lib/dates'
+import type { CalendarBlock, Session } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
 const schedule = useScheduleStore()
 const clients = useClientsStore()
 const programs = useProgramsStore()
+const cal = useCalendarStore()
 
 const selected = ref(route.query.d ? new Date(String(route.query.d) + 'T12:00') : new Date())
 const mode = ref<'day' | 'week'>('day')
@@ -31,7 +36,10 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    await schedule.loadRange(weekStart.value, addDays(weekStart.value, 7))
+    await Promise.all([
+      schedule.loadRange(weekStart.value, addDays(weekStart.value, 7)),
+      cal.loadBlocks(weekStart.value, addDays(weekStart.value, 7)).catch(() => null),
+    ])
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -39,7 +47,7 @@ async function load() {
   }
 }
 onMounted(async () => {
-  await Promise.all([clients.load(), programs.loadList(), load(), schedule.loadRequests().catch(() => null)])
+  await Promise.all([clients.load(), programs.loadList(), load(), schedule.loadRequests().catch(() => null), cal.loadGyms(), cal.loadStatus().catch(() => null)])
 })
 watch(weekStart, (a, b) => a.getTime() !== b?.getTime() && load())
 watch(selected, (d) => router.replace({ query: { d: ymd(d) } }))
@@ -47,6 +55,18 @@ watch(selected, (d) => router.replace({ query: { d: ymd(d) } }))
 const sessionsOn = (d: Date) => schedule.sessions.filter((s) => sameDay(new Date(s.starts_at), d))
 const activeOn = (d: Date) => sessionsOn(d).filter((s) => ['pending', 'confirmed', 'completed'].includes(s.status)).length
 const daySessions = computed(() => sessionsOn(selected.value))
+// Dzień = sesje + wydarzenia z Google Calendar (Wolne / Zajęte / Do przypisania), po kolei w czasie.
+const blocksOn = (d: Date) => cal.blocks.filter((b) => !b.all_day && sameDay(new Date(b.starts_at), d))
+type Row = { kind: 'session'; at: string; s: Session } | { kind: 'block'; at: string; b: CalendarBlock }
+const dayRows = computed<Row[]>(() =>
+  [
+    ...daySessions.value.map((s) => ({ kind: 'session' as const, at: s.starts_at, s })),
+    ...blocksOn(selected.value).map((b) => ({ kind: 'block' as const, at: b.starts_at, b })),
+  ].sort((a, b) => a.at.localeCompare(b.at)),
+)
+const allDayOn = (d: Date) => cal.blocks.filter((b) => b.all_day && new Date(b.starts_at) <= d && new Date(b.ends_at) > d)
+const BLOCK_LABEL = { free: 'Wolne', busy: 'Zajęte', unmatched: 'Do przypisania', session: '' }
+const unmatchedCount = computed(() => cal.blocks.filter((b) => b.kind === 'unmatched').length)
 const pendingCount = computed(() => schedule.sessions.filter((s) => s.status === 'pending').length)
 const newRequests = computed(() => schedule.requests.filter((r) => r.status === 'new').length)
 const today = new Date()
@@ -64,6 +84,10 @@ const shift = (n: number) => (selected.value = addDays(selected.value, n))
           <RouterLink to="/grafik/zgloszenia" class="icon-btn relative" :aria-label="`Zgłoszenia na konsultację${newRequests ? ` (${newRequests} nowe)` : ''}`">
             <Icon name="bell" class="size-5" />
             <span v-if="newRequests" class="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">{{ newRequests }}</span>
+          </RouterLink>
+          <RouterLink to="/grafik/google" class="icon-btn relative" :aria-label="`Google Calendar${unmatchedCount ? ` (${unmatchedCount} do przypisania)` : ''}`">
+            <Icon name="calendar" class="size-5" :class="cal.status?.connected ? 'text-success' : ''" />
+            <span v-if="unmatchedCount" class="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">{{ unmatchedCount }}</span>
           </RouterLink>
           <RouterLink to="/grafik/raport" class="icon-btn" aria-label="Raport miesięczny"><Icon name="clipboard" class="size-5" /></RouterLink>
           <RouterLink to="/grafik/dostepnosc" class="icon-btn" aria-label="Dostępność i zasady rezerwacji"><Icon name="clock" class="size-5" /></RouterLink>
@@ -115,14 +139,38 @@ const shift = (n: number) => (selected.value = addDays(selected.value, n))
 
       <template v-if="mode === 'day'">
         <h2 class="text-xl font-bold first-letter:uppercase">{{ dayLabel(selected) }}</h2>
-        <p v-if="loading && !daySessions.length" class="text-muted">Ładowanie…</p>
-        <div v-else-if="!daySessions.length" class="card p-6 text-center">
+        <p v-for="b in allDayOn(selected)" :key="b.gcal_event_id" class="tag !text-sm">Cały dzień: {{ b.title || 'zajęte' }}</p>
+        <p v-if="loading && !dayRows.length" class="text-muted">Ładowanie…</p>
+        <div v-else-if="!dayRows.length" class="card p-6 text-center">
           <p class="font-semibold">Brak sesji</p>
           <p class="text-sm text-muted">Dodaj sesję albo pozwól klientom rezerwować w godzinach dostępności.</p>
         </div>
         <ul class="space-y-2">
-          <li v-for="s in daySessions" :key="s.id">
-            <SessionCard :session="s" :title="clientName(s.client_id)" :subtitle="s.notes ?? undefined" @open="openId = s.id" />
+          <li v-for="r in dayRows" :key="r.kind === 'session' ? r.s.id : r.b.gcal_event_id">
+            <SessionCard v-if="r.kind === 'session'" :session="r.s" :title="clientName(r.s.client_id)" :subtitle="r.s.notes ?? undefined" @open="openId = r.s.id" />
+            <!-- Wydarzenie z Google Calendar: Wolne (dashed), Zajęte (szare), Do przypisania (ostrzeżenie) -->
+            <component
+              :is="r.b.kind === 'unmatched' ? 'RouterLink' : 'div'"
+              v-else
+              to="/grafik/google"
+              class="flex items-center gap-3 rounded-2xl p-3"
+              :class="{
+                'border-2 border-dashed border-line-strong': r.b.kind === 'free',
+                'bg-surface-2 text-muted': r.b.kind === 'busy',
+                'warn-box !p-3': r.b.kind === 'unmatched',
+              }"
+            >
+              <div class="w-14 shrink-0 text-center">
+                <p class="font-display text-lg leading-none font-bold tabular-nums">{{ hm(r.b.starts_at) }}</p>
+                <p class="text-[11px] tabular-nums opacity-80">{{ hm(r.b.ends_at) }}</p>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-xs font-semibold tracking-wide uppercase">{{ BLOCK_LABEL[r.b.kind] }}</p>
+                <p v-if="r.b.kind !== 'free'" class="truncate text-sm">{{ r.b.title || '—' }}</p>
+              </div>
+              <GymBadge v-if="r.b.kind === 'free'" :gym-id="r.b.gym_id" />
+              <Icon name="calendar" class="size-4 shrink-0 opacity-60" aria-label="z Google Calendar" />
+            </component>
           </li>
         </ul>
       </template>

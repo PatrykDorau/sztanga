@@ -7,8 +7,11 @@ import { addDays, dayLabel, hm, shortDay, ymd } from '@/lib/dates'
 import { SESSION_STATUSES, label } from '@/lib/vocab'
 import type { Session } from '@/types'
 import Icon from '@/components/Icon.vue'
+import GymBadge from '@/components/GymBadge.vue'
+import { useCalendarStore } from '@/stores/calendar'
 
 const schedule = useScheduleStore()
+const cal = useCalendarStore()
 const myClientId = ref<string | null>(null)
 const tab = ref<'mine' | 'book'>('mine')
 const loading = ref(true)
@@ -18,7 +21,7 @@ const info = ref('')
 const horizon = computed(() => schedule.settings?.booking_horizon_days ?? 28)
 const days = computed(() => Array.from({ length: Math.min(horizon.value, 28) }, (_, i) => addDays(new Date(), i)))
 const day = ref(ymd(new Date()))
-const slots = ref<{ starts_at: string; ends_at: string }[]>([])
+const slots = ref<{ starts_at: string; ends_at: string; gym_id: string | null }[]>([])
 const slotsLoading = ref(false)
 const picked = ref<string | null>(null)
 const cancelling = ref<string | null>(null)
@@ -31,6 +34,7 @@ onMounted(async () => {
     myClientId.value = data?.id ?? null
     await Promise.all([
       schedule.loadSettings(),
+      cal.loadGyms().catch(() => null),
       schedule.loadRange(addDays(new Date(), -30), addDays(new Date(), 120)),
       schedule.loadWaitlist(),
     ])
@@ -129,6 +133,7 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
               <div>
                 <p class="font-display text-2xl leading-none font-bold tabular-nums">{{ hm(s.starts_at) }}</p>
                 <p class="mt-1 text-sm text-muted first-letter:uppercase">{{ dayLabel(new Date(s.starts_at)) }}</p>
+                <p v-if="cal.gymById(s.gym_id)" class="mt-1 flex items-center gap-1 text-sm"><GymBadge :gym-id="s.gym_id" />{{ cal.gymById(s.gym_id)!.name }}</p>
               </div>
               <span class="tag" :class="s.status === 'pending' ? '!bg-warn-soft !text-warn-fg' : ''">{{ label(SESSION_STATUSES, s.status) }}</span>
             </div>
@@ -185,7 +190,10 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
               :aria-pressed="picked === sl.starts_at"
               @click="picked = sl.starts_at"
             >
-              {{ hm(sl.starts_at) }}
+              <span class="flex flex-col items-center leading-tight">
+                <span>{{ hm(sl.starts_at) }}</span>
+                <span v-if="cal.gyms.length > 1 && cal.gymById(sl.gym_id)" class="text-[11px] font-medium opacity-80">{{ cal.gymById(sl.gym_id)!.name }}</span>
+              </span>
             </button>
           </div>
           <button class="btn-primary w-full" :disabled="!picked || busy || !myClientId" @click="book">

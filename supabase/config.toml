@@ -1,0 +1,10 @@
+# Konfiguracja dla Supabase CLI (wdrażanie Edge Functions).
+project_id = "kbqbmdzjuusbmyhrdqke"
+
+# Obie funkcje sprawdzają uprawnienia same: Google (token kanału), baza (sekret z Vault), trenerka (JWT + is_trainer).
+# Wywołania od Google i z bazy nie mają JWT Supabase, więc weryfikację JWT na bramce wyłączamy.
+[functions.gcal-auth]
+verify_jwt = false
+
+[functions.gcal-sync]
+verify_jwt = false

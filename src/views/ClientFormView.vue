@@ -3,6 +3,8 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useScheduleStore } from '@/stores/schedule'
 import { useClientsStore } from '@/stores/clients'
+import { useCalendarStore } from '@/stores/calendar'
+import { splitTitle } from '../../supabase/functions/_shared/titles'
 import { CONTRAINDICATIONS, EQUIPMENT, GROUPS } from '@/lib/vocab'
 import type { ClientGroup } from '@/types'
 import ChipSelect from '@/components/ChipSelect.vue'
@@ -13,6 +15,7 @@ const clients = useClientsStore()
 const router = useRouter()
 const route = useRoute()
 const schedule = useScheduleStore()
+const calendar = useCalendarStore()
 
 const form = reactive({
   full_name: '',
@@ -39,6 +42,8 @@ onMounted(async () => {
       const r = schedule.requests.find((x) => x.id === route.query.req)
       if (r) Object.assign(form, { full_name: r.full_name, email: r.email ?? '', phone: r.phone ?? '', notes: r.message ?? '' })
     }
+    // Nowy klient z wydarzenia w Google Calendar (lista "Do przypisania").
+    if (calendar.pendingAlias) form.full_name = splitTitle(calendar.pendingAlias).base
     return
   }
   Object.assign(form, {
@@ -75,6 +80,12 @@ async function submit() {
       props.id,
     )
     if (route.query.req) await schedule.setRequestStatus(String(route.query.req), 'converted').catch(() => null)
+    if (calendar.pendingAlias && !props.id) {
+      // Tytuł z kalendarza (np. "Zuzanna Kocur 2os") wskazuje teraz na nowego klienta – import go podłączy.
+      const alias = calendar.pendingAlias
+      calendar.pendingAlias = null
+      await calendar.assign(alias, c.id).catch(() => null)
+    }
     router.replace(`/klienci/${c.id}`)
   } catch (e) {
     error.value = (e as Error).message

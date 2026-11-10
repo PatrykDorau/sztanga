@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/grafik', name: 'schedule', component: () => import('@/views/ScheduleView.vue'), meta: { trainer: true } },
     { path: '/grafik/dostepnosc', name: 'availability', component: () => import('@/views/AvailabilityView.vue'), meta: { trainer: true } },
     { path: '/grafik/zgloszenia', name: 'requests', component: () => import('@/views/RequestsView.vue'), meta: { trainer: true } },
+    { path: '/grafik/google', name: 'google', component: () => import('@/views/GoogleCalendarView.vue'), meta: { trainer: true } },
     { path: '/grafik/raport', name: 'report', component: () => import('@/views/ReportView.vue'), meta: { trainer: true } },
     { path: '/sesja/:id', name: 'live', component: () => import('@/views/LiveSessionView.vue'), props: true, meta: { trainer: true, bare: true } },
     // Plan pod linkiem – bez logowania, dane tylko przez funkcję get_shared_plan(token).
