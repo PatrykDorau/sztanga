@@ -104,13 +104,29 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Model `claude-opus-5-5` z zapasowym modelem po odmowie (`fallbacks: "default"`). Wymaga sekretu `ANTHROPIC_API_KEY`
   w Supabase → Edge Functions → Secrets.
 
+## Faza 6 – sportowcy i dzieci
+
+- **Sportowcy** (zakładka „Sport” na karcie klienta z grupy Sportowiec): ankieta gotowości 1–5 (sen, zmęczenie, bolesność,
+  stres, nastrój) – z trenerką na starcie sesji albo sam pod linkiem  bez konta; światło zielone / żółte /
+  czerwone, także względem własnej normy z 28 dni. Panel „Sportowcy – gotowość dziś” na Starcie.
+- **Obciążenie**: RPE całej sesji (0–10) i czas przy „Zakończ sesję” → obciążenie sRPE × min, ACWR (EWMA 7/28 dni)
+  z ostrzeżeniem > 1,3 / > 1,5 i < 0,8. Brakujące RPE uzupełnia się na karcie.
+- **Dzieci** (zakładka „Rozwój”): bateria testów co kwartał (skok w dal, 20 m, 4×10 m, równowaga, brzuszki 30 s, skłon)
+  z wykresem rozwoju, przypomnienie na Starcie, odznaki liczone z danych, zgody rodzica (kto i kiedy, wycofanie).
+- **Wyzwania drużynowe** (): wspólny cel grupy, wkład każdego dziecka, bez rankingów.
+- **Raport dla rodzica** (, bez konta): rodzic sam wyraża zgody; wyniki widać dopiero po zgodzie na udostępnianie.
+  Testy, frekwencja, odznaki, wyzwania, zatwierdzone podsumowania; zapis do PDF.
+- Metronom tempa (Start i przy ćwiczeniu w sesji): słupki faz, pełny ekran z jednym słupkiem.
+- Nie zrobione z planu Fazy 6: pomiar prędkości sztangi z kamery (VBT), zegarki (Garmin / Apple Health),
+  liczenie pajacyków z kamery, tryb grupowy na TV.
+
 ## Dostęp do bazy dla Claude
 
 Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego projektu jest w `.mcp.json` (`supabase-sztanga`) i działa po restarcie sesji w tym folderze (przy pierwszym użyciu logowanie i wybór organizacji Sztanga).
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`, wszystkie (001–007) zastosowane na projekcie w chmurze.
+Migracje w `supabase/migrations/`, wszystkie (001–011) zastosowane na projekcie w chmurze.
 
 Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).
@@ -129,10 +145,7 @@ Edge Functions wdraża `npm run fn:deploy -- gcal-sync` (ten sam token, bez Dock
 | `program_weeks` → `workouts` → `workout_exercises` | tygodnie z fazą, treningi, ćwiczenia z dawką i regułą progresji |
 | storage `exercise-media` | wideo ćwiczeń (prywatny, odczyt przez podpisane linki) |
 
-## Do zrobienia w kolejnych fazach
+## Do zrobienia
 
-Faza 3 grafik i rezerwacje · Faza 4 sesje na żywo, udostępnianie, dashboard ·
-Faza 5 AI i analiza wideo · Faza 6 sportowcy i dzieci. Szczegóły w dokumencie planu projektu.
-
-Otwarte z Fazy 1: CI/CD (deploy na Netlify/Vercel) – do podpięcia po założeniu repo na GitHubie;
-polskie nazwy ćwiczeń z importu (przetłumaczone są tylko najczęstsze).
+Z Fazy 6: VBT z kamery, zegarki, wyzwania liczone kamerą, tryb grupowy na TV. Interpretacja testów z platformy skokowej
+i dynamometru (czeka na dane sprzętu). Przypomnienia push / e-mail. Publikacja aplikacji Google (tryb testowy = token na 7 dni).

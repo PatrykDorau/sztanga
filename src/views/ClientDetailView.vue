@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ClientMovement from '@/components/ClientMovement.vue'
+import ClientSport from '@/components/ClientSport.vue'
+import ClientKid from '@/components/ClientKid.vue'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
 import { CONTRAINDICATIONS, EQUIPMENT, GROUPS, STATUSES, label } from '@/lib/vocab'
@@ -28,15 +30,17 @@ const booking = ref(false)
 const openSession = ref<string | null>(null)
 const progress = useProgressStore()
 const live = useLiveStore()
-type Tab = 'overview' | 'progress' | 'history' | 'ruch'
+type Tab = 'overview' | 'progress' | 'history' | 'ruch' | 'sport' | 'kid'
 const route = useRoute()
-const tab = ref<Tab>((['progress', 'history', 'ruch'] as string[]).includes(String(route.query.tab)) ? (route.query.tab as Tab) : 'overview')
-const TABS: [Tab, string][] = [
+const tab = ref<Tab>((['progress', 'history', 'ruch', 'sport', 'kid'] as string[]).includes(String(route.query.tab)) ? (route.query.tab as Tab) : 'overview')
+// Sportowcy: gotowość i obciążenie; dzieci: testy, odznaki, zgody i raport dla rodzica.
+const TABS = computed<[Tab, string][]>(() => [
   ['overview', 'Przegląd'],
+  ...(c.value?.client_group === 'athlete' ? [['sport', 'Sport'] as [Tab, string]] : c.value?.client_group === 'child' ? [['kid', 'Rozwój'] as [Tab, string]] : []),
   ['progress', 'Postępy'],
   ['history', 'Historia'],
   ['ruch', 'Ruch'],
-]
+])
 
 /** Sesja bez terminu w grafiku (np. dodatkowy trening) – zaczyna się pusta. */
 function startLive() {
@@ -78,7 +82,7 @@ async function newPlan() {
         <h1 class="min-w-0 flex-1 truncate font-display text-2xl font-bold">{{ c.full_name }}</h1>
         <RouterLink :to="`/klienci/${c.id}/edycja`" class="icon-btn" aria-label="Edytuj klienta"><Icon name="edit" class="size-6" /></RouterLink>
       </div>
-      <div class="mx-2 grid grid-cols-4 rounded-xl bg-surface-2 p-1" role="tablist">
+      <div class="mx-2 grid rounded-xl bg-surface-2 p-1" :style="{ gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))` }" role="tablist">
         <button
           v-for="[k, l] in TABS"
           :key="k"
@@ -97,6 +101,8 @@ async function newPlan() {
       <ClientProgress v-if="tab === 'progress'" :client-id="c.id" />
       <ClientHistory v-else-if="tab === 'history'" :client-id="c.id" />
       <ClientMovement v-else-if="tab === 'ruch'" :client-id="c.id" />
+      <ClientSport v-else-if="tab === 'sport'" :client-id="c.id" :first-name="c.full_name.split(' ')[0]" />
+      <ClientKid v-else-if="tab === 'kid'" :client-id="c.id" :first-name="c.full_name.split(' ')[0]" />
 
       <template v-else>
       <button class="btn-primary w-full" @click="startLive"><Icon name="dumbbell" class="size-5" />Sesja teraz (bez terminu)</button>

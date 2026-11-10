@@ -34,6 +34,8 @@ export interface LiveDraft {
   notes: string
   summary: string
   finished_at?: string
+  srpe?: number | null // RPE całej sesji 0–10 (obciążenie = sRPE × minuty)
+  duration_min?: number | null
 }
 
 const DRAFTS = 'live:drafts'
@@ -143,6 +145,8 @@ export const useLiveStore = defineStore('live', () => {
           notes: d.notes.trim() || null,
           summary: summary || null,
           summary_status: summary ? 'draft' : 'none',
+          srpe: d.srpe ?? null,
+          duration_min: d.duration_min ?? null,
         })
         .select('id')
         .single()

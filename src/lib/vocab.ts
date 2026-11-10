@@ -130,6 +130,11 @@ export const MEASUREMENTS: Record<string, { label: string; unit: string }> = {
   plank: { label: 'Deska', unit: 's' },
   pushups: { label: 'Pompki (max)', unit: 'powt.' },
   broad_jump: { label: 'Skok w dal', unit: 'cm' },
+  // testy sprawności dzieci (Faza 6)
+  sprint_20m: { label: 'Bieg 20 m', unit: 's' },
+  shuttle_4x10: { label: 'Bieg wahadłowy 4×10 m', unit: 's' },
+  balance_s: { label: 'Stanie na jednej nodze', unit: 's' },
+  situps_30s: { label: 'Brzuszki w 30 s', unit: 'powt.' },
 }
 
 /** Kolory wydarzeń Google Calendar (colorId 1–11) – nazwy jak w polskim interfejsie Google. */

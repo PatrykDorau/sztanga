@@ -81,9 +81,9 @@ async function addMeasurement() {
     busy.value = false
   }
 }
-const lowerIsBetter = (k: string | null) => k === 'waist' || k === 'hips'
+const lowerIsBetter = (k: string | null) => ['waist', 'hips', 'sprint_20m', 'shuttle_4x10'].includes(k ?? '')
 // Rekord ma sens tylko w testach sprawności – przy masie ciała i obwodach kierunek zależy od celu klienta.
-const isPerformanceTest = (k: string | null) => ['sit_reach', 'plank', 'pushups', 'broad_jump'].includes(k ?? '')
+const isPerformanceTest = (k: string | null) => ['sit_reach', 'plank', 'pushups', 'broad_jump', 'sprint_20m', 'shuttle_4x10', 'balance_s', 'situps_30s'].includes(k ?? '')
 </script>
 
 <template>

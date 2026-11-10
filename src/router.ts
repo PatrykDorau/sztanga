@@ -31,6 +31,9 @@ const router = createRouter({
     { path: '/analiza/:id', name: 'analysis-view', component: () => import('@/views/AnalysisView.vue'), props: true, meta: { trainer: true } },
     { path: '/sesja/:id', name: 'live', component: () => import('@/views/LiveSessionView.vue'), props: true, meta: { trainer: true, bare: true } },
     // Plan pod linkiem – bez logowania, dane tylko przez funkcję get_shared_plan(token).
+    { path: '/g/:token', name: 'readiness-link', component: () => import('@/views/ReadinessLinkView.vue'), props: true, meta: { public: true, bare: true } },
+    { path: '/r/:token', name: 'parent-report', component: () => import('@/views/ParentReportView.vue'), props: true, meta: { public: true, bare: true } },
+    { path: '/wyzwania', name: 'challenges', component: () => import('@/views/ChallengesView.vue'), meta: { trainer: true } },
     { path: '/p/:token', name: 'shared-plan', component: () => import('@/views/SharedPlanView.vue'), props: true, meta: { public: true } },
     { path: '/terminy', name: 'my-sessions', component: () => import('@/views/MySessionsView.vue') },
     // Publiczny formularz dla nowych klientów – bez logowania.
