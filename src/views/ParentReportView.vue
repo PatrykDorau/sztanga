@@ -10,6 +10,7 @@ import Icon from '@/components/Icon.vue'
 
 interface Report {
   first_name: string
+  consent_required?: boolean
   consents: { kind: Consent['kind']; by: string; at: string }[]
   shared: boolean
   tests: { kind: string; value: number; unit: string; on: string }[]
@@ -81,7 +82,7 @@ const date = (d: string) => new Date(d).toLocaleDateString('pl-PL', { day: 'nume
       </header>
 
       <!-- Zgody -->
-      <section v-if="!r.shared || !has('parent_data')" class="card mb-6 space-y-3 p-5 print:hidden">
+      <section v-if="r.consent_required && (!r.shared || !has('parent_data'))" class="card mb-6 space-y-3 p-5 print:hidden">
         <h2 class="text-lg font-bold">Zgody rodzica / opiekuna</h2>
         <p class="text-sm text-muted">Żeby prowadzić zajęcia i pokazać Ci wyniki, potrzebujemy Twojej zgody. Możesz ją w każdej chwili wycofać u trenerki.</p>
         <form class="space-y-3" @submit.prevent="consent">

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
 import { themePref, type ThemePref } from '@/lib/theme'
+import { loadAppSettings, parentConsent, setParentConsent } from '@/lib/appSettings'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -24,6 +25,17 @@ async function saveName() {
   await auth.loadProfile()
   saved.value = true
   setTimeout(() => (saved.value = false), 1500)
+}
+
+if (auth.isTrainer) loadAppSettings()
+const settingError = ref('')
+async function toggleConsent(e: Event) {
+  settingError.value = ''
+  const v = (e.target as HTMLInputElement).checked
+  await setParentConsent(v).catch((err) => {
+    settingError.value = (err as Error).message
+    ;(e.target as HTMLInputElement).checked = !v
+  })
 }
 
 async function logout() {
@@ -56,6 +68,18 @@ async function logout() {
           {{ t.label }}
         </button>
       </div>
+    </section>
+
+    <section v-if="auth.isTrainer" class="card space-y-2 p-4">
+      <p class="label">Funkcje</p>
+      <label class="flex items-start gap-3 text-sm">
+        <input type="checkbox" class="mt-0.5 size-5 accent-primary" :checked="parentConsent" @change="toggleConsent" />
+        <span>
+          <strong>Zgody rodzica w aplikacji</strong> – formularz zgód w raporcie dla rodzica i sekcja „Zgody rodzica” na karcie dziecka.
+          Wyłączone: raport pokazuje wyniki od razu, a zgody zbierasz poza aplikacją.
+        </span>
+      </label>
+      <p v-if="settingError" class="text-sm text-danger" role="alert">{{ settingError }}</p>
     </section>
 
     <button class="btn-ghost w-full" @click="logout">Wyloguj</button>
