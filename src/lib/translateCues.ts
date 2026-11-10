@@ -1,4 +1,4 @@
-// Tłumaczenie zaimportowanych instrukcji technicznych (EN → PL) przez funkcję „ai” (Claude), partiami po 20.
+// Tłumaczenie zaimportowanych instrukcji technicznych (EN → PL) przez funkcję „ai” (Claude), partiami po 10, 4 naraz.
 // Wynik zapisuje się od razu – przerwanie i ponowne uruchomienie kontynuuje od nieprzetłumaczonych.
 import { supabase } from '@/lib/supabase'
 
@@ -17,20 +17,29 @@ export async function translateAll(model: TranslateModel, onProgress: (done: num
   const rows = (data ?? []) as { id: string; name_en: string | null; name_pl: string; cues: string | null }[]
   let done = 0
   let usd = 0
-  for (let i = 0; i < rows.length && !signal.stop; i += 20) {
-    const batch = rows.slice(i, i + 20).filter((r) => r.cues)
-    const { data: res, error: e } = await supabase.functions.invoke('ai', {
-      body: { action: 'translate', model, items: batch.map((r) => ({ id: r.id, name: r.name_en ?? r.name_pl, text: r.cues })) },
-    })
-    if (e) throw new Error((await (e as { context?: Response }).context?.json?.().catch(() => null))?.error ?? e.message)
-    const out = res as { items: { id: string; pl: string }[]; usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number } }
-    for (const it of out.items) {
-      const { error: ue } = await supabase.from('exercises').update({ cues: it.pl.trim(), cues_lang: 'pl' }).eq('id', it.id)
-      if (ue) throw ue
+  onProgress(0, rows.length, 0)
+  const batches: (typeof rows)[] = []
+  // Po 10 – przy 20 długie instrukcje potrafiły przekroczyć limit odpowiedzi modelu.
+  for (let i = 0; i < rows.length; i += 10) batches.push(rows.slice(i, i + 10).filter((r) => r.cues))
+  // 4 partie naraz – każda to osobne wywołanie Claude (ok. minuta), więc całość trwa kilkanaście minut zamiast godziny.
+  let next = 0
+  async function worker() {
+    while (next < batches.length && !signal.stop) {
+      const batch = batches[next++]
+      const { data: res, error: e } = await supabase.functions.invoke('ai', {
+        body: { action: 'translate', model, items: batch.map((r) => ({ id: r.id, name: r.name_en ?? r.name_pl, text: r.cues })) },
+      })
+      if (e) throw new Error((await (e as { context?: Response }).context?.json?.().catch(() => null))?.error ?? e.message)
+      const out = res as { items: { id: string; pl: string }[]; usage?: { input_tokens: number; output_tokens: number } }
+      for (const it of out.items) {
+        const { error: ue } = await supabase.from('exercises').update({ cues: it.pl.trim(), cues_lang: 'pl' }).eq('id', it.id)
+        if (ue) throw ue
+      }
+      if (out.usage) usd += (out.usage.input_tokens * PRICE[model][0] + out.usage.output_tokens * PRICE[model][1]) / 1e6
+      done += batch.length
+      onProgress(done, rows.length, usd)
     }
-    if (out.usage) usd += (out.usage.input_tokens * PRICE[model][0] + out.usage.output_tokens * PRICE[model][1]) / 1e6
-    done += batch.length
-    onProgress(done, rows.length, usd)
   }
+  await Promise.all(Array.from({ length: 4 }, worker))
   return { done, usd }
 }

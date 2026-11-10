@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { themePref, type ThemePref } from '@/lib/theme'
 import { loadAppSettings, parentConsent, setParentConsent } from '@/lib/appSettings'
 import { pendingCount, translateAll, type TranslateModel } from '@/lib/translateCues'
+import InstallApp from '@/components/InstallApp.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -121,6 +122,8 @@ async function logout() {
       <button v-if="!trBusy" class="btn-primary w-full" @click="runTranslate">Przetłumacz ({{ pending }})</button>
       <button v-else class="btn-ghost w-full border border-line-strong" @click="trSignal.stop = true">Przerwij po bieżącej partii</button>
     </section>
+
+    <InstallApp />
 
     <button class="btn-ghost w-full" @click="logout">Wyloguj</button>
   </main>

@@ -4,8 +4,10 @@ import './style.css'
 import App from './App.vue'
 import router from './router'
 import { initTheme } from './lib/theme'
+import { initInstall } from './lib/install'
 
 initTheme()
+initInstall()
 createApp(App)
   .use(createPinia())
   .use(router)
