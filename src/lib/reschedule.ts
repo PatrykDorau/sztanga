@@ -1,5 +1,6 @@
 // Zmiana stałego terminu (sesje cykliczne): propozycje z wolnych okien w kalendarzu, link dla klienta, zatwierdzenie.
 import { supabase } from '@/lib/supabase'
+import type { useScheduleStore } from '@/stores/schedule'
 
 export const WEEKDAY_PL = ['', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela']
 
@@ -11,7 +12,11 @@ export interface WeeklySlot {
 }
 export interface RescheduleOffer {
   id: string
-  client_id: string
+  client_id: string | null // null = nowa osoba (jeszcze nie klient)
+  prospect_name: string | null
+  contact_name: string | null
+  contact_phone: string | null
+  contact_email: string | null
   series_id: string | null
   token: string
   slots: WeeklySlot[]
@@ -90,13 +95,50 @@ export async function offers(clientId?: string) {
   if (clientId) q = q.eq('client_id', clientId)
   return ok(await q) as RescheduleOffer[]
 }
-export async function createOffer(input: { client_id: string; series_id: string | null; slots: WeeklySlot[]; note: string | null }) {
+export async function createOffer(input: { client_id: string | null; prospect_name?: string | null; series_id: string | null; slots: WeeklySlot[]; note: string | null }) {
   return ok(await supabase.from('reschedule_offers').insert(input).select('*').single()) as RescheduleOffer
 }
 export async function setOfferStatus(id: string, status: RescheduleOffer['status']) {
   ok(await supabase.from('reschedule_offers').update({ status, ...(status === 'applied' ? { applied_at: new Date().toISOString() } : {}) }).eq('id', id))
 }
 export const offerUrl = (o: RescheduleOffer) => `${location.origin}/t/${o.token}`
+
+/** Kto wybrał: klient z bazy albo nowa osoba z linku. */
+export const offerWho = (o: RescheduleOffer, clientName?: string | null) => clientName ?? o.contact_name ?? o.prospect_name ?? 'Nowa osoba'
+
+/**
+ * Akceptacja wyboru: nowa osoba → nowy klient; stary stały termin (jeśli był) odwołany od dziś, nowa seria od najbliższego
+ * wybranego dnia (sesje trafiają do grafiku i Kalendarza Google), propozycja oznaczona jako zrealizowana.
+ */
+export async function applyOffer(o: RescheduleOffer, schedule: ReturnType<typeof useScheduleStore>, fallbackGym: string | null) {
+  if (!o.chosen) throw new Error('Brak wybranego terminu.')
+  const s = o.chosen
+  let clientId = o.client_id
+  if (!clientId) {
+    const { data, error } = await supabase
+      .from('clients')
+      .insert({ full_name: (o.contact_name ?? o.prospect_name ?? 'Nowy klient').trim(), phone: o.contact_phone, email: o.contact_email, gym_id: s.gym_id ?? fallbackGym })
+      .select('id')
+      .single()
+    if (error) throw error
+    clientId = data.id as string
+    ok(await supabase.from('reschedule_offers').update({ client_id: clientId }).eq('id', o.id))
+  }
+  const old = o.series_id ? ((ok(await supabase.from('session_series').select('*').eq('id', o.series_id).maybeSingle()) as Series | null) ?? null) : null
+  if (old) await schedule.cancelSeriesFrom(old.id, new Date().toISOString(), 'Zmiana terminu')
+  await schedule.createSeries({
+    client_id: clientId,
+    weekday: s.weekday,
+    start_time: s.start_time,
+    duration_minutes: s.duration_minutes,
+    start_date: nextDate(s.weekday),
+    gym_id: s.gym_id ?? old?.gym_id ?? fallbackGym,
+  })
+  await setOfferStatus(o.id, 'applied')
+  o.status = 'applied'
+  o.client_id = clientId
+  return clientId
+}
 
 /** Pierwszy dzień (od jutra) o podanym dniu tygodnia – od niego startuje nowa seria. */
 export function nextDate(weekday: number) {

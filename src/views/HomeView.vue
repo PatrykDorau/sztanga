@@ -15,7 +15,7 @@ import SessionCard from '@/components/SessionCard.vue'
 import SessionSheet from '@/components/SessionSheet.vue'
 import TempoMetronome from '@/components/TempoMetronome.vue'
 import { useSportStore } from '@/stores/sport'
-import { offers as rescheduleOffers, slotLabel, type RescheduleOffer } from '@/lib/reschedule'
+import { offers as rescheduleOffers, offerWho, slotLabel, type RescheduleOffer } from '@/lib/reschedule'
 import { LIGHT_LABEL, readinessStatus, TEST_EVERY_DAYS, CHILD_TESTS, type Light } from '@/lib/sport'
 
 const auth = useAuthStore()
@@ -179,10 +179,10 @@ onMounted(async () => {
       </section>
 
       <section v-if="changes.length" class="card space-y-2 p-4">
-        <h2 class="text-lg font-bold">Zmiany stałych terminów do zatwierdzenia</h2>
-        <RouterLink v-for="o in changes" :key="o.id" :to="`/klienci/${o.client_id}`" class="flex items-center gap-2 text-sm">
+        <h2 class="text-lg font-bold">Stałe terminy do akceptacji</h2>
+        <RouterLink v-for="o in changes" :key="o.id" to="/grafik/zgloszenia" class="flex items-center gap-2 text-sm">
           <Icon name="swap" class="size-4 text-primary-fg" />
-          <span class="flex-1"><strong>{{ clients.byId(o.client_id)?.full_name ?? 'Klient' }}</strong> wybrał(a) {{ o.chosen ? slotLabel(o.chosen) : '' }}</span>
+          <span class="flex-1"><strong>{{ offerWho(o, o.client_id ? clients.byId(o.client_id)?.full_name : null) }}</strong><span v-if="!o.client_id" class="text-muted"> (nowa osoba)</span> wybrał(a) {{ o.chosen ? slotLabel(o.chosen) : '' }}</span>
           <Icon name="chevron" class="size-4 text-subtle" />
         </RouterLink>
       </section>
