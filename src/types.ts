@@ -167,3 +167,39 @@ export interface WaitlistEntry {
   day: string
   notified_at: string | null
 }
+
+export interface SetLog {
+  id?: string
+  exercise_id: string
+  workout_exercise_id: string | null
+  position: number
+  set_index: number
+  reps: number | null
+  load_kg: number | null
+  rpe: number | null
+  done: boolean
+  notes?: string | null
+}
+
+export interface SessionLog {
+  id: string
+  client_id: string
+  session_id: string | null
+  workout_id: string | null
+  started_at: string
+  finished_at: string | null
+  notes: string | null
+  summary: string | null
+  summary_status: 'none' | 'draft' | 'approved'
+  set_logs?: SetLog[]
+}
+
+export interface Measurement {
+  id: string
+  client_id: string
+  measured_on: string
+  kind: string
+  value: number
+  unit: string
+  notes: string | null
+}

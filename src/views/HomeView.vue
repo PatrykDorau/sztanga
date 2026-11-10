@@ -5,7 +5,10 @@ import { useExercisesStore } from '@/stores/exercises'
 import { useProgramsStore } from '@/stores/programs'
 import { useClientsStore } from '@/stores/clients'
 import { useScheduleStore } from '@/stores/schedule'
-import { addDays, dayLabel, hm } from '@/lib/dates'
+import { addDays, dayLabel, hm, startOfWeek, ymd } from '@/lib/dates'
+import { useLiveStore } from '@/stores/live'
+import { useProgressStore } from '@/stores/progress'
+import { clientStatus } from '@/lib/analytics'
 import Icon from '@/components/Icon.vue'
 import ProgressRing from '@/components/ProgressRing.vue'
 import SessionCard from '@/components/SessionCard.vue'
@@ -50,6 +53,35 @@ const withoutPlan = computed(
 )
 const templates = computed(() => programs.list.filter((p) => p.is_template).length)
 const GOAL = 30
+
+// ===== Sesje na żywo: niedokończone i niewysłane (offline) =====
+const live = useLiveStore()
+onMounted(() => live.flush())
+
+// ===== Raport tygodnia (liczony w aplikacji; wysyłka e-mail/push dojdzie z serwerem powiadomień) =====
+const report = ref<{ stalled: string[]; absent: string[]; nextWeek: number; freeSlots: number } | null>(null)
+onMounted(async () => {
+  if (!auth.isTrainer) return
+  try {
+    const progress = useProgressStore()
+    const [logs] = await Promise.all([progress.loadAllRecent(60), clients.load()])
+    const mon = startOfWeek(addDays(new Date(), 7))
+    const [next, slots] = await Promise.all([
+      schedule.loadRange(mon, addDays(mon, 7)),
+      schedule.freeSlots(ymd(mon), ymd(addDays(mon, 6))).catch(() => []),
+    ])
+    const act = clients.all.filter((c) => !c.archived)
+    const st = act.map((c) => ({ c, s: clientStatus(logs.filter((l) => l.client_id === c.id)) }))
+    report.value = {
+      stalled: st.filter((x) => x.s.trend === 'flat' || x.s.trend === 'down').map((x) => x.c.full_name),
+      absent: st.filter((x) => x.s.daysSince === null || x.s.daysSince >= 14).map((x) => x.c.full_name),
+      nextWeek: next.filter((s) => ['pending', 'confirmed'].includes(s.status)).length,
+      freeSlots: slots.length,
+    }
+  } catch {
+    report.value = null
+  }
+})
 </script>
 
 <template>
@@ -69,6 +101,17 @@ const GOAL = 30
     </header>
 
     <template v-if="auth.isTrainer">
+      <RouterLink v-for="d in live.active" :key="d.client_uuid" :to="`/sesja/${d.client_uuid}`" class="card pressable flex items-center gap-3 border-primary p-4 hover:bg-surface-2">
+        <Icon name="dumbbell" class="size-6 text-primary-fg" />
+        <span class="flex-1"><strong>Sesja w toku</strong> – {{ clients.byId(d.client_id)?.full_name ?? 'klient' }}</span>
+        <Icon name="chevron" class="size-5 text-subtle" />
+      </RouterLink>
+      <div v-if="live.queue.length" class="warn-box" role="status">
+        <Icon name="clock" class="size-5 shrink-0" />
+        <span class="flex-1">{{ live.queue.length }} {{ live.queue.length === 1 ? 'sesja czeka' : 'sesje czekają' }} na wysłanie (brak zasięgu).</span>
+        <button class="font-semibold underline" :disabled="live.syncing" @click="live.flush()">Wyślij</button>
+      </div>
+
       <section>
         <div class="mb-2 flex items-baseline justify-between">
           <h2 class="text-xl font-bold">Dziś</h2>
@@ -89,6 +132,23 @@ const GOAL = 30
           <p class="text-sm text-muted">{{ withVideo }} z filmikiem · cel {{ GOAL }}–50</p>
           <RouterLink to="/cwiczenia/nowe" class="btn-primary mt-3 w-full"><Icon name="plus" class="size-5" />Dodaj ćwiczenie</RouterLink>
         </div>
+      </section>
+
+      <section v-if="report" class="card space-y-3 p-4">
+        <h2 class="text-xl font-bold">Raport tygodnia</h2>
+        <div class="grid grid-cols-2 gap-2 text-sm">
+          <div class="rounded-xl bg-surface-2 p-3">
+            <p class="font-display text-2xl font-bold tabular-nums">{{ report.nextWeek }}</p>
+            <p class="text-muted">sesji w przyszłym tyg.</p>
+          </div>
+          <div class="rounded-xl bg-surface-2 p-3">
+            <p class="font-display text-2xl font-bold tabular-nums">{{ report.freeSlots }}</p>
+            <p class="text-muted">wolnych slotów</p>
+          </div>
+        </div>
+        <p v-if="report.stalled.length" class="text-sm"><strong>Bez progresji od 3 tyg.:</strong> {{ report.stalled.join(', ') }}</p>
+        <p v-if="report.absent.length" class="text-sm"><strong>Dawno nie byli (14+ dni):</strong> {{ report.absent.join(', ') }}</p>
+        <p v-if="!report.stalled.length && !report.absent.length" class="text-sm text-muted">Wszyscy klienci trenują regularnie.</p>
       </section>
 
       <section class="grid grid-cols-2 gap-3">

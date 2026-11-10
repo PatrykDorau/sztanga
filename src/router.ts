@@ -22,6 +22,9 @@ const router = createRouter({
     { path: '/grafik/dostepnosc', name: 'availability', component: () => import('@/views/AvailabilityView.vue'), meta: { trainer: true } },
     { path: '/grafik/zgloszenia', name: 'requests', component: () => import('@/views/RequestsView.vue'), meta: { trainer: true } },
     { path: '/grafik/raport', name: 'report', component: () => import('@/views/ReportView.vue'), meta: { trainer: true } },
+    { path: '/sesja/:id', name: 'live', component: () => import('@/views/LiveSessionView.vue'), props: true, meta: { trainer: true, bare: true } },
+    // Plan pod linkiem – bez logowania, dane tylko przez funkcję get_shared_plan(token).
+    { path: '/p/:token', name: 'shared-plan', component: () => import('@/views/SharedPlanView.vue'), props: true, meta: { public: true } },
     { path: '/terminy', name: 'my-sessions', component: () => import('@/views/MySessionsView.vue') },
     // Publiczny formularz dla nowych klientów – bez logowania.
     { path: '/konsultacja', name: 'consultation', component: () => import('@/views/ConsultationView.vue'), meta: { public: true } },

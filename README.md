@@ -49,6 +49,29 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Wersja do druku / PDF (`/plany/:id/druk`).
 - Klient z kontem widzi tylko swoje plany, i to dopiero gdy nie są szkicem.
 
+## Faza 3 – grafik i rezerwacje (kod gotowy, migracja do zastosowania)
+
+- Grafik tygodnia/dnia, sesje pojedyncze i cykliczne (co tydzień), trening z planu przypisany do sesji.
+- Statusy: do akceptacji, potwierdzona, odbyta, nieobecność, odwołana (także cała seria od danej daty).
+- Dostępność: szablon tygodnia + wyjątki (dzień wolny / dodatkowe godziny), zasady rezerwacji.
+- Klient: wolne terminy (), rezerwacja (), odwołanie w limicie godzin (), lista oczekujących.
+- Publiczny formularz  dla nowych osób + lista zgłoszeń, raport miesięczny.
+- Do zrobienia później: przypomnienia push/e-mail/SMS i synchronizacja z Google Calendar (wymagają kluczy i serwera powiadomień).
+
+## Faza 4 – sesje na żywo i udostępnianie (kod gotowy, migracja do zastosowania)
+
+- Sesja na żywo (): serie, ciężar, powtórzenia, timer przerw (superserie po ostatnim ćwiczeniu), podmiana na regresję/progresję.
+- Praca offline: sesja zapisuje się na telefonie, wysyła po zakończeniu, a bez zasięgu czeka w kolejce.
+- Udostępnianie planu linkiem () bez konta, z filmikami, PDF i zatwierdzonymi podsumowaniami; dostęp można cofnąć.
+- Dashboard klienta: statystyki miesiąca vs poprzedni, wykres 1RM/maks./objętość, rekordy, serie na partię, pomiary i testy.
+- Historia z podsumowaniami po sesji (szkic → akceptacja trenerki → widoczne dla klienta).
+- Zbiorczy widok klientów (postęp / bez zmian / dawno nie był) i raport tygodnia na Starcie.
+- Do zrobienia z fazą 5: dyktowanie i podsumowania pisane przez AI (Claude przez Edge Function), wysyłka raportu e-mailem/push.
+
+## Dostęp do bazy dla Claude
+
+Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego projektu jest w () i działa po restarcie sesji w tym folderze (przy pierwszym użyciu logowanie i wybór organizacji Sztanga).
+
 ## Baza danych
 
 Migracje w `supabase/migrations/` (zastosowane już na projekcie w chmurze).

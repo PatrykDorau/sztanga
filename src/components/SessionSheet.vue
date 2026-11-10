@@ -8,6 +8,8 @@ import { dayLabel, hm } from '@/lib/dates'
 import { SESSION_STATUSES, label } from '@/lib/vocab'
 import type { ProgramTree, SessionStatus } from '@/types'
 import Icon from './Icon.vue'
+import { useRouter } from 'vue-router'
+import { useLiveStore } from '@/stores/live'
 
 const props = defineProps<{ id: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -36,6 +38,16 @@ const workoutName = computed(() => {
   }
   return null
 })
+// Start sesji na żywo – z przypisanym treningiem z planu (dawki z planu) albo pusta.
+const live = useLiveStore()
+const router = useRouter()
+function startLive() {
+  const workout = plan.value?.program_weeks.flatMap((w) => w.workouts).find((w) => w.id === s.value!.workout_id) ?? null
+  const id = live.start({ client_id: s.value!.client_id, session_id: s.value!.id, workout })
+  router.push(`/sesja/${id}`)
+}
+const hasDraft = computed(() => live.active.some((d) => d.session_id === props.id))
+
 const isOpen = computed(() => s.value && ['pending', 'confirmed'].includes(s.value.status))
 const isPast = computed(() => s.value && new Date(s.value.starts_at) < new Date())
 
@@ -78,6 +90,10 @@ const remove = () => (armedDelete.value ? run(() => schedule.removeSession(props
         <span v-if="s.booked_by_client" class="tag">zarezerwowana przez klienta</span>
       </div>
       <p v-if="s.cancel_reason" class="text-sm text-muted">Powód odwołania: {{ s.cancel_reason }}</p>
+
+      <button v-if="s.status === 'confirmed'" class="btn-primary w-full !min-h-12 text-base" @click="startLive">
+        <Icon name="dumbbell" class="size-5" />{{ hasDraft ? 'Wróć do sesji na żywo' : 'Rozpocznij sesję' }}
+      </button>
 
       <div v-if="s.status === 'pending'" class="grid grid-cols-2 gap-2">
         <button class="btn-primary" :disabled="busy" @click="setStatus('confirmed')"><Icon name="check" class="size-5" />Akceptuj</button>
