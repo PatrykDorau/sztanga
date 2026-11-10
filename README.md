@@ -120,6 +120,8 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 - Metronom tempa (Start i przy ćwiczeniu w sesji): słupki faz, pełny ekran z jednym słupkiem.
 - **Zmiana stałego terminu** (karta klienta → „Zmiana terminu”): terminy wolne co tydzień z dostępności, grafiku i Google
   Calendar, do edycji; klient wybiera pod linkiem `/t/<token>`, trenerka zatwierdza (stara seria odwołana, nowa od najbliższego dnia).
+  Także dla nowych osób (Grafik → Zgłoszenia → „Terminy dla nowej osoby”): osoba podaje imię i telefon, wybór czeka w Zgłoszeniach,
+  akceptacja tworzy klienta i stały termin (migracja 014).
 - **Tempo i prędkość** w analizie ruchu: czasy faz, średnia i szczytowa prędkość w górę (m/s), zakres, spadek prędkości w serii;
   z ciężarem – moc i 1RM z profilu obciążenie–prędkość (min. 2 nagrania z różnymi ciężarami). Migracja 013: `load_kg`,
   `clients.gym_id` (filtr siłowni na liście klientów), `reschedule_offers`.
@@ -132,7 +134,7 @@ Projekt Supabase jest w organizacji **Sztanga**. Połączenie MCP dla tego proje
 
 ## Baza danych
 
-Migracje w `supabase/migrations/`, wszystkie (001–013) zastosowane na projekcie w chmurze.
+Migracje w `supabase/migrations/`, wszystkie (001–014) zastosowane na projekcie w chmurze.
 
 Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Management API Supabase,
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).

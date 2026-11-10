@@ -4,6 +4,10 @@ import { useRouter } from 'vue-router'
 import { useScheduleStore } from '@/stores/schedule'
 import type { ConsultationRequest } from '@/types'
 import Icon from '@/components/Icon.vue'
+import RescheduleSheet from '@/components/RescheduleSheet.vue'
+import { applyOffer, offers, offerUrl, offerWho, setOfferStatus, slotLabel, type RescheduleOffer } from '@/lib/reschedule'
+import { useClientsStore } from '@/stores/clients'
+import { useCalendarStore } from '@/stores/calendar'
 
 const router = useRouter()
 const schedule = useScheduleStore()
@@ -12,6 +16,41 @@ const copied = ref(false)
 const link = `${window.location.origin}/konsultacja`
 
 onMounted(() => schedule.loadRequests().catch((e) => (error.value = e.message)))
+
+// ===== Stałe terminy wybrane przez klientów / nowe osoby – do akceptacji =====
+const clients = useClientsStore()
+const calendar = useCalendarStore()
+const termOffers = ref<RescheduleOffer[]>([])
+const proposing = ref(false)
+const busyId = ref<string | null>(null)
+async function loadOffers() {
+  await Promise.all([clients.load(), calendar.gyms.length ? null : calendar.loadGyms().catch(() => null)])
+  termOffers.value = await offers().catch(() => [])
+}
+onMounted(loadOffers)
+const waiting = computed(() => termOffers.value.filter((o) => o.status === 'chosen'))
+const sentNew = computed(() => termOffers.value.filter((o) => o.status === 'open' && !o.client_id))
+const nameOf = (o: RescheduleOffer) => offerWho(o, o.client_id ? clients.byId(o.client_id)?.full_name : null)
+async function accept(o: RescheduleOffer) {
+  if (!confirm(`${o.client_id ? 'Zmienić stały termin' : 'Dodać nowego klienta i stały termin'}: ${nameOf(o)} – ${o.chosen ? slotLabel(o.chosen) : ''}?`)) return
+  busyId.value = o.id
+  error.value = ''
+  try {
+    const id = await applyOffer(o, schedule, calendar.defaultGym?.id ?? null)
+    await clients.load(true).catch(() => null)
+    termOffers.value = termOffers.value.filter((x) => x.id !== o.id)
+    router.push(`/klienci/${id}`)
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busyId.value = null
+  }
+}
+async function reject(o: RescheduleOffer) {
+  if (!confirm(`Odrzucić wybór ${nameOf(o)}?`)) return
+  await setOfferStatus(o.id, 'cancelled')
+  termOffers.value = termOffers.value.filter((x) => x.id !== o.id)
+}
 
 const STATUS: Record<ConsultationRequest['status'], string> = { new: 'Nowe', contacted: 'Kontakt', converted: 'Klient', rejected: 'Odrzucone' }
 const open = computed(() => schedule.requests.filter((r) => r.status === 'new' || r.status === 'contacted'))
@@ -49,6 +88,39 @@ function toClient(r: ConsultationRequest) {
         </div>
       </section>
 
+      <section class="space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="text-xl font-bold">Stałe terminy</h2>
+          <button class="btn-ghost !min-h-10 border border-line-strong text-sm" @click="proposing = true"><Icon name="plus" class="size-4" />Terminy dla nowej osoby</button>
+        </div>
+        <p v-if="!waiting.length" class="text-sm text-muted">Brak wyborów do akceptacji.</p>
+        <article v-for="o in waiting" :key="o.id" class="card space-y-2 border-primary/50 p-4">
+          <p class="font-semibold">
+            {{ nameOf(o) }} <span v-if="!o.client_id" class="tag ml-1">nowa osoba</span>
+          </p>
+          <p class="text-sm">
+            Wybrany termin: <strong>{{ o.chosen ? slotLabel(o.chosen) : '—' }}</strong>
+            <span v-if="o.chosen?.gym_id" class="text-muted"> · {{ calendar.gymById(o.chosen.gym_id)?.name }}</span>
+          </p>
+          <p v-if="!o.client_id" class="text-sm text-muted">{{ [o.contact_phone, o.contact_email].filter(Boolean).join(' · ') }}</p>
+          <p v-if="o.chosen_note" class="text-sm italic">„{{ o.chosen_note }}”</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="btn-ghost border border-line-strong" :disabled="busyId === o.id" @click="reject(o)">Odrzuć</button>
+            <button class="btn-primary" :disabled="busyId === o.id" @click="accept(o)">{{ busyId === o.id ? 'Dodawanie…' : 'Akceptuj i dodaj do grafiku' }}</button>
+          </div>
+        </article>
+        <details v-if="sentNew.length" class="text-sm">
+          <summary class="cursor-pointer text-muted">Wysłane do nowych osób, bez wyboru ({{ sentNew.length }})</summary>
+          <ul class="mt-2 space-y-1">
+            <li v-for="o in sentNew" :key="o.id" class="flex items-center gap-2">
+              <span class="flex-1 truncate">{{ o.prospect_name ?? 'bez nazwy' }} · {{ o.slots.length }} terminów</span>
+              <a :href="offerUrl(o)" target="_blank" rel="noopener" class="underline">link</a>
+              <button class="text-danger underline" @click="setOfferStatus(o.id, 'cancelled').then(loadOffers)">anuluj</button>
+            </li>
+          </ul>
+        </details>
+      </section>
+
       <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
       <p v-if="!schedule.requests.length" class="text-center text-muted">Brak zgłoszeń.</p>
 
@@ -75,5 +147,6 @@ function toClient(r: ConsultationRequest) {
         </li>
       </ul>
     </div>
+    <RescheduleSheet v-if="proposing" @close="((proposing = false), loadOffers())" />
   </main>
 </template>

@@ -5,9 +5,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useScheduleStore } from '@/stores/schedule'
 import { useCalendarStore } from '@/stores/calendar'
 import {
+  applyOffer,
   clientSeries,
   createOffer,
-  nextDate,
   offers,
   offerUrl,
   setOfferStatus,
@@ -21,7 +21,9 @@ import {
 } from '@/lib/reschedule'
 import Icon from '@/components/Icon.vue'
 
-const props = defineProps<{ clientId: string; clientName: string }>()
+// clientId puste = propozycja dla nowej osoby (jeszcze nie klient) – imię i kontakt poda sama w linku.
+const props = defineProps<{ clientId?: string | null; clientName?: string | null }>()
+const prospect = ref('')
 const emit = defineEmits<{ close: []; changed: [] }>()
 const schedule = useScheduleStore()
 const calendar = useCalendarStore()
@@ -47,9 +49,9 @@ async function load() {
   error.value = ''
   try {
     await Promise.all([schedule.settings ? null : schedule.loadSettings(), calendar.gyms.length ? null : calendar.loadGyms().catch(() => null)])
-    series.value = await clientSeries(props.clientId)
+    series.value = props.clientId ? await clientSeries(props.clientId) : []
     seriesId.value ??= series.value[0]?.id ?? null
-    list.value = await offers(props.clientId)
+    list.value = props.clientId ? await offers(props.clientId) : []
     creating.value = !list.value.some((o) => o.status === 'open' || o.status === 'chosen')
     await suggest()
   } catch (e) {
@@ -103,7 +105,7 @@ async function create() {
   busy.value = true
   error.value = ''
   try {
-    const o = await createOffer({ client_id: props.clientId, series_id: seriesId.value, slots: chosenSlots.value, note: note.value.trim() || null })
+    const o = await createOffer({ client_id: props.clientId ?? null, prospect_name: prospect.value.trim() || null, series_id: seriesId.value, slots: chosenSlots.value, note: note.value.trim() || null })
     list.value.unshift(o)
     creating.value = false
     await share(o)
@@ -137,18 +139,8 @@ async function apply(o: RescheduleOffer) {
   busy.value = true
   error.value = ''
   try {
-    if (old) await schedule.cancelSeriesFrom(old.id, new Date().toISOString(), 'Zmiana terminu')
-    await schedule.createSeries({
-      client_id: props.clientId,
-      weekday: s.weekday,
-      start_time: s.start_time,
-      duration_minutes: s.duration_minutes,
-      start_date: nextDate(s.weekday),
-      gym_id: s.gym_id ?? old?.gym_id ?? null,
-    })
-    await setOfferStatus(o.id, 'applied')
-    o.status = 'applied'
-    series.value = await clientSeries(props.clientId)
+    await applyOffer(o, schedule, calendar.defaultGym?.id ?? null)
+    if (props.clientId) series.value = await clientSeries(props.clientId)
     emit('changed')
   } catch (e) {
     error.value = (e as Error).message
@@ -166,7 +158,7 @@ const hm = (t: string) => t.slice(0, 5)
       <div class="flex items-start justify-between gap-3">
         <div>
           <h2 id="rs-h" class="text-lg font-semibold">Zmiana stałego terminu</h2>
-          <p class="text-sm text-muted">{{ clientName }}</p>
+          <p class="text-sm text-muted">{{ clientName ?? 'Nowa osoba – poda imię i kontakt w linku' }}</p>
         </div>
         <button type="button" class="icon-btn -m-2" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
       </div>
@@ -204,6 +196,10 @@ const hm = (t: string) => t.slice(0, 5)
           </select>
         </div>
         <p v-else-if="current" class="text-sm">Obecnie: <strong>{{ WEEKDAY_PL[current.weekday] }} {{ hm(current.start_time) }}</strong> ({{ current.duration_minutes }} min)</p>
+        <label v-else-if="!clientId" class="block"><span class="label">Dla kogo (opcjonalnie)</span>
+          <input v-model="prospect" class="input" maxlength="120" placeholder="np. Kasia z Instagrama" />
+          <span class="mt-1 block text-xs text-muted">Osoba poda imię i telefon w linku. Po Twojej akceptacji powstanie klient i stały termin w grafiku.</span>
+        </label>
         <p v-else class="text-sm text-muted">Klient nie ma sesji cyklicznej – po wyborze utworzy się nowa.</p>
 
         <div>
