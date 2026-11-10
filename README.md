@@ -133,7 +133,7 @@ Rola zmienia się wyłącznie przez SQL: z poziomu API użytkownik może edytowa
 948 ćwiczeń: free-exercise-db (domena publiczna) + 67 wyselekcjonowanych z wger.de (CC-BY-SA) i kilka opisanych od zera.
 Każde ma mięsień główny (kategoria) i pomocnicze, krótki opis po polsku, klatki ruchu (animacja start/koniec) albo film
 (42 filmy z wger, zmniejszone do 480p) i link do filmów z techniką na YouTube. Mapa: 191 progresji i alternatyw
-(łańcuchy dla przysiadu, zawiasu, wyciskań, podciągania, wiosłowania, brzucha, mocy). Jak to powstało: .
+(łańcuchy dla przysiadu, zawiasu, wyciskań, podciągania, wiosłowania, brzucha, mocy). Jak to powstało: `scripts/exercise-library/`.
 
 ## Dostęp do bazy dla Claude
 
