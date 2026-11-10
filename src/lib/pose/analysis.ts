@@ -39,6 +39,14 @@ export interface Series {
   shift: number[] // środek bioder vs środek kostek [% szer. bioder] (obraz)
   bodyLine: number[] // 180 − kąt bark–biodro–kostka (bliższa strona)
   wristDrift: number[] // dłonie vs środek stopy [% długości tułowia] (obraz, wartość bezwzględna)
+  kneeInL: number[] // kolano względem linii biodro–kostka, do środka = plus [% szer. bioder] (obraz)
+  kneeInR: number[]
+  shiftS: number[] // jak shift, ze znakiem: plus = w lewą stronę ćwiczącego
+  hipTilt: number[] // różnica wysokości bioder [% szer. bioder]: plus = lewe biodro niżej
+  torsoRatio: number[] // długość tułowia / długość podudzia (bliższa strona, obraz) – skraca się, gdy plecy się zaokrąglają
+  hipSag: number[] // biodro względem linii bark–kostka [% jej długości]: plus = biodra opadają (obraz)
+  wristDy: number[] // różnica wysokości nadgarstków [% szer. barków]: plus = lewy niżej
+  heel: number[] // pięta względem palców [% długości stopy]: rośnie, gdy pięta się odrywa
   leftVis: number[]
   rightVis: number[]
 }
@@ -46,7 +54,8 @@ export interface Series {
 export function computeSeries(tr: Track): Series {
   const n = tr.poses.length
   const s: Series = {
-    kneeL: [], kneeR: [], hipL: [], hipR: [], elbowL: [], elbowR: [], trunk: [], valgus: [], shift: [], bodyLine: [], wristDrift: [], leftVis: [], rightVis: [],
+    kneeL: [], kneeR: [], hipL: [], hipR: [], elbowL: [], elbowR: [], trunk: [], valgus: [], shift: [], bodyLine: [], wristDrift: [],
+    kneeInL: [], kneeInR: [], shiftS: [], hipTilt: [], torsoRatio: [], hipSag: [], wristDy: [], heel: [], leftVis: [], rightVis: [],
   }
   const W = tr.width || 1
   const H = tr.height || 1
@@ -90,6 +99,36 @@ export function computeSeries(tr: Track): Series {
     const torsoPx = Math.hypot((px(J.lSh) + px(J.rSh)) / 2 - (px(J.lHip) + px(J.rHip)) / 2, (py(J.lSh) + py(J.rSh)) / 2 - (py(J.lHip) + py(J.rHip)) / 2)
     const footX = (px(J.lAnk) + px(J.rAnk) + px(J.lFoot) + px(J.rFoot)) / 4
     s.wristDrift.push(torsoPx > 1 ? (Math.abs((px(J.lWr) + px(J.rWr)) / 2 - footX) / torsoPx) * 100 : NaN)
+
+    // Kolano względem linii biodro–kostka (na wysokości kolana); do środka ciała = plus.
+    const kneeIn = (hip: number, kn: number, an: number, otherHip: number) => {
+      const dy = py(an) - py(hip)
+      if (Math.abs(dy) < 1 || hipW <= 1) return NaN
+      const xLine = px(hip) + ((px(an) - px(hip)) * (py(kn) - py(hip))) / dy
+      return (((px(kn) - xLine) * Math.sign(px(otherHip) - px(hip))) / hipW) * 100
+    }
+    s.kneeInL.push(kneeIn(J.lHip, J.lKnee, J.lAnk, J.rHip))
+    s.kneeInR.push(kneeIn(J.rHip, J.rKnee, J.rAnk, J.lHip))
+    const toLeft = Math.sign(px(J.lHip) - px(J.rHip))
+    s.shiftS.push(hipW > 1 ? ((((px(J.lHip) + px(J.rHip)) / 2 - (px(J.lAnk) + px(J.rAnk)) / 2) * toLeft) / hipW) * 100 : NaN)
+    s.hipTilt.push(hipW > 1 ? ((py(J.lHip) - py(J.rHip)) / hipW) * 100 : NaN)
+
+    const d2 = (a: number, b: number) => Math.hypot(px(a) - px(b), py(a) - py(b))
+    const nearLeft = near[0] === J.lSh
+    const [nKnee, nAnk, nHeel, nFoot] = nearLeft ? [J.lKnee, J.lAnk, J.lHeel, J.lFoot] : [J.rKnee, J.rAnk, J.rHeel, J.rFoot]
+    const shin = d2(nKnee, nAnk)
+    s.torsoRatio.push(shin > 1 ? d2(near[0], near[1]) / shin : NaN)
+    const bodyLen = d2(near[0], nAnk)
+    if (bodyLen > 1) {
+      const ux = (px(nAnk) - px(near[0])) / bodyLen
+      const uy = (py(nAnk) - py(near[0])) / bodyLen
+      const along = (px(near[1]) - px(near[0])) * ux + (py(near[1]) - py(near[0])) * uy
+      s.hipSag.push(((py(near[1]) - (py(near[0]) + along * uy)) / bodyLen) * 100)
+    } else s.hipSag.push(NaN)
+    const shW = d2(J.lSh, J.rSh)
+    s.wristDy.push(shW > 1 ? ((py(J.lWr) - py(J.rWr)) / shW) * 100 : NaN)
+    const footLen = d2(nHeel, nFoot)
+    s.heel.push(footLen > 1 ? ((py(nFoot) - py(nHeel)) / footLen) * 100 : NaN)
   }
   return s
 }
@@ -292,15 +331,27 @@ export function repMetrics(profile: Profile, s: Series, sig: number[], t: number
   put('con', t[end] - t[p1])
 
   const pick = (l: number[], r: number[]) => sidePick(view, s, bottom, l, r)
+  // Dolna połowa ruchu (tam pojawia się większość błędów: kolana, biodra, plecy).
+  const [lo0, lo1] = lowHalf(sig, rep)
+  // Biodra wstają szybciej niż barki: o ile tułów pochyla się bardziej w pierwszej połowie drogi w górę.
+  const hipRise = () => maxIn(s.trunk, bottom, Math.max(bottom, Math.round(bottom + (end - bottom) * 0.5))) - around(s.trunk, bottom)
+  // Skrócenie tułowia (bark–biodro) względem pozycji wyprostowanej – pośredni znak zaokrąglenia pleców.
+  const backRound = () => {
+    const ref = Math.max(around(s.torsoRatio, start, 3), around(s.torsoRatio, end, 3))
+    return ref > 0 ? (1 - minIn(s.torsoRatio, start, end) / ref) * 100 : NaN
+  }
   if (profile.key === 'squat') {
     const knee = pick(s.kneeL, s.kneeR)
     put('depth_knee', knee ? minIn(knee, start, end) : sig[bottom])
     const hip = pick(s.hipL, s.hipR) ?? s.hipL.map((v, i) => (v + s.hipR[i]) / 2)
     put('depth_hip', minIn(hip, start, end))
     put('trunk', around(s.trunk, bottom))
-    put('valgus', around(s.valgus, bottom))
+    put('valgus', minIn(s.valgus, lo0, lo1))
     put('asym', Math.abs(around(s.kneeL, bottom) - around(s.kneeR, bottom)))
     put('shift', around(s.shift, bottom))
+    put('hip_rise', hipRise())
+    put('back', backRound())
+    put('heel_lift', maxIn(s.heel, start, end) - around(s.heel, start, 3))
   } else if (profile.key === 'deadlift') {
     put('hip_bottom', sig[bottom])
     const knee = pick(s.kneeL, s.kneeR) ?? s.kneeL
@@ -308,12 +359,30 @@ export function repMetrics(profile: Profile, s: Series, sig: number[], t: number
     put('trunk', around(s.trunk, bottom))
     put('lockout', maxIn(sig, bottom, end))
     put('bar_drift', maxIn(s.wristDrift, start, end))
+    put('hip_rise', hipRise())
+    put('back', backRound())
+  } else if (profile.key === 'press') {
+    put('elbow_bottom', sig[bottom])
+    put('lockout', maxIn(sig, bottom, end))
+    put('wrist_asym', percentile(s.wristDy.slice(bottom, end + 1).map(Math.abs), 0.9))
+    put('lean', maxIn(s.trunk, start, end))
   } else {
     put('elbow_bottom', sig[bottom])
     put('body_line', maxIn(s.bodyLine.map(Math.abs), start, end))
   }
   void at
   return out
+}
+
+/** Zakres klatek, w których kąt sygnałowy jest w dolnej połowie zakresu powtórzenia. */
+export function lowHalf(sig: number[], rep: Pick<Rep, 'start' | 'bottom' | 'end'>): [number, number] {
+  const top = Math.max(sig[rep.start], sig[rep.end])
+  const midv = sig[rep.bottom] + (top - sig[rep.bottom]) * 0.5
+  let a = rep.bottom
+  let b = rep.bottom
+  while (a > rep.start && sig[a - 1] <= midv) a--
+  while (b < rep.end && sig[b + 1] <= midv) b++
+  return [a, b]
 }
 
 // ===================== Całość =====================
@@ -341,6 +410,25 @@ export function analyze(tr: Track, ex: ExerciseKey, forceView?: View): AnalysisR
   // Wszystkie powtórzenia z jednego ujęcia → to jest ujęcie nagrania.
   const repViews = new Set(reps.map((r) => r.view))
   return { view: repViews.size === 1 && reps.length ? reps[0].view! : view, reps, series, signal }
+}
+
+/**
+ * Pomiary od nowa dla zapisanych granic powtórzeń (starsze analizy nie mają nowszych pomiarów;
+ * granice i ujęcia zostają takie, jak zapisano).
+ */
+export function remeasure(tr: Track, ex: ExerciseKey, reps: Omit<Rep, 'metrics'>[], fallbackView: View): AnalysisResult {
+  const profile = PROFILES[ex]
+  const base = analyze(tr, ex, fallbackView === 'unknown' ? undefined : fallbackView)
+  const n = tr.poses.length
+  const ok = reps.every((r) => r.start >= 0 && r.end < n && r.start <= r.bottom && r.bottom <= r.end)
+  if (!ok) return base
+  return {
+    ...base,
+    reps: reps.map((r) => {
+      const v = r.view ?? fallbackView
+      return { start: r.start, bottom: r.bottom, end: r.end, view: v, metrics: repMetrics(profile, base.series, base.signal, tr.t, r, v) }
+    }),
+  }
 }
 
 /** Średnie pomiarów ze wszystkich powtórzeń. */

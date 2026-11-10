@@ -63,6 +63,7 @@ export interface Track {
   height: number
   t: number[] // czas klatki [s]
   poses: (Pose | null)[] // null = nie wykryto osoby
+  smoothed?: boolean // punkty już ustabilizowane (filter.ts)
 }
 
 // ---------- Kodowanie: liczby całkowite w płaskiej tablicy na klatkę (~6 KB/s nagrania w JSON) ----------
@@ -120,6 +121,7 @@ export interface PackedTrack {
   w: number
   h: number
   n: number // liczba klatek
+  s?: 1 // punkty ustabilizowane przed zapisem
   z: string // base64(gzip(Int32[n] czasy + Int16[n·17·6] punkty))
 }
 export type StoredTrack = EncodedTrack | PackedTrack
@@ -171,7 +173,7 @@ export async function packTrack(tr: Track): Promise<PackedTrack> {
   raw.set(new Uint8Array(times.buffer), 0)
   raw.set(new Uint8Array(pts.buffer), times.byteLength)
   const z = toB64(await pipe(raw, new CompressionStream('gzip')))
-  return { v: 2, fps: tr.fps, w: tr.width, h: tr.height, n, z }
+  return { v: 2, fps: tr.fps, w: tr.width, h: tr.height, n, z, ...(tr.smoothed ? { s: 1 as const } : {}) }
 }
 
 export async function unpackTrack(e: StoredTrack): Promise<Track> {
@@ -197,5 +199,5 @@ export async function unpackTrack(e: StoredTrack): Promise<Track> {
       }),
     )
   }
-  return { fps: e.fps, width: e.w, height: e.h, t, poses }
+  return { fps: e.fps, width: e.w, height: e.h, t, poses, smoothed: e.s === 1 }
 }

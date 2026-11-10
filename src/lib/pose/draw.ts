@@ -6,7 +6,7 @@ export function cssVar(name: string, fallback: string) {
 }
 
 /** Rysuje pozę w obszarze W×H (współrzędne MediaPipe 0..1). mirror = obraz odbity (kamera przednia). */
-export function drawSkeleton(g: CanvasRenderingContext2D, p: Pose, W: number, H: number, mirror = false) {
+export function drawSkeleton(g: CanvasRenderingContext2D, p: Pose, W: number, H: number, mirror = false, hot?: number[]) {
   const lc = cssVar('--chart-1', '#ea580c')
   const rc = cssVar('--div-neg', '#4c7ef0')
   const X = (x: number) => (mirror ? 1 - x : x) * W
@@ -32,6 +32,23 @@ export function drawSkeleton(g: CanvasRenderingContext2D, p: Pose, W: number, H:
     g.beginPath()
     g.arc(X(p[i].x), p[i].y * H, Math.max(2, W / 180), 0, Math.PI * 2)
     g.fill()
+  }
+  // Punkty, których dotyczy wybrana uwaga: wyraźny pierścień.
+  if (hot?.length) {
+    const hc = cssVar('--div-pos', '#e5484d')
+    for (const i of hot) {
+      if (p[i].v < 0.3) continue
+      const r = Math.max(12, W / 26)
+      g.beginPath()
+      g.arc(X(p[i].x), p[i].y * H, r, 0, Math.PI * 2)
+      g.fillStyle = hc
+      g.globalAlpha = 0.22
+      g.fill()
+      g.globalAlpha = 1
+      g.lineWidth = Math.max(3, W / 160)
+      g.strokeStyle = hc
+      g.stroke()
+    }
   }
 }
 

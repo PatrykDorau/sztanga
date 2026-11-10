@@ -37,3 +37,26 @@ console.log('\nz-score vs wzorzec:', Object.fromEntries(PROFILES.squat.metrics.m
   console.log(`\n== zapis: JSON ${(v1 / 1024).toFixed(0)} KB → gzip ${(v2 / 1024).toFixed(0)} KB (${(v1 / v2).toFixed(1)}×), błąd ≤ ${maxErr.toFixed(4)}, puste klatki ${nulls ? 'OK' : 'BŁĄD'}, powtórzenia ${same ? 'OK' : 'BŁĄD'}`)
   if (!nulls || !same || maxErr > 0.001) process.exit(1)
 }
+
+// Uwagi trenerskie + stabilizacja punktów
+{
+  const { coach } = await import('../src/lib/pose/coaching')
+  const { smoothTrack, jitter } = await import('../src/lib/pose/filter')
+  for (const [name, raw] of [
+    ['front, koślawienie 4–6', makeTrack('front', { reps: 6, valgusReps: [4, 5, 6] })],
+    ['side, płytko', makeTrack('side', { reps: 3, depth: 125, seed: 11 })],
+    ['side, czysto', makeTrack('side', { reps: 5, seed: 3 })],
+  ] as const) {
+    const tr = smoothTrack(raw)
+    const r = analyze(tr, 'squat')
+    const c = coach(tr, 'squat', r)
+    console.log(`\n== uwagi: ${name} (drgania ${(jitter(raw) * 1e4).toFixed(1)} → ${(jitter(tr) * 1e4).toFixed(1)}, powt. ${r.reps.length}/${analyze(raw, 'squat').reps.length})`)
+    console.log('  ', c.headline)
+    c.findings.forEach((f) => console.log(`   [${f.severity}] ${f.title} (${f.repsText}) kl. ${f.frame}\n      ${f.obs}\n      „${f.cue}”`))
+    console.log('   dobrze:', c.good.join(' · '))
+    c.notes.forEach((n) => console.log('   uwaga:', n))
+  }
+  const v = coach(smoothTrack(makeTrack('front', { reps: 6, valgusReps: [4, 5, 6] })), 'squat', analyze(smoothTrack(makeTrack('front', { reps: 6, valgusReps: [4, 5, 6] })), 'squat'))
+  const f = v.findings.find((x) => x.key === 'valgus')
+  if (!f || f.reps.join() !== '4,5,6') { console.error('BŁĄD: koślawienie powinno być w powt. 4–6'); process.exit(1) }
+}
