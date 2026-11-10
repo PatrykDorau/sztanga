@@ -14,6 +14,8 @@ import ProgressRing from '@/components/ProgressRing.vue'
 import SessionCard from '@/components/SessionCard.vue'
 import SessionSheet from '@/components/SessionSheet.vue'
 import TempoMetronome from '@/components/TempoMetronome.vue'
+import { useSportStore } from '@/stores/sport'
+import { LIGHT_LABEL, readinessStatus, TEST_EVERY_DAYS, CHILD_TESTS, type Light } from '@/lib/sport'
 
 const auth = useAuthStore()
 const ex = useExercisesStore()
@@ -61,6 +63,50 @@ onMounted(() => live.flush())
 
 // ===== Raport tygodnia (liczony w aplikacji; wysyłka e-mail/push dojdzie z serwerem powiadomień) =====
 const metronome = ref(false)
+
+// ===== Faza 6: sportowcy dziś (ankieta gotowości) i dzieci do testu kwartalnego =====
+const sport = useSportStore()
+const plToday = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' })
+const kidsTests = ref<Map<string, string>>(new Map()) // dziecko → data ostatniego testu
+onMounted(async () => {
+  if (!auth.isTrainer) return
+  await sport.loadReadiness(new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)).catch(() => null)
+  const { data } = await (await import('@/lib/supabase')).supabase
+    .from('measurements')
+    .select('client_id, measured_on')
+    .in('kind', CHILD_TESTS.map((t) => t.kind))
+    .order('measured_on', { ascending: false })
+    .limit(2000)
+  const m = new Map<string, string>()
+  for (const r of data ?? []) if (!m.has(r.client_id)) m.set(r.client_id, r.measured_on)
+  kidsTests.value = m
+})
+const ORDER: Record<Light | 'none', number> = { red: 0, yellow: 1, none: 2, green: 3 }
+/** Sportowcy z dzisiejszą sesją (albo dzisiejszą ankietą): światło gotowości, najpierw czerwoni. */
+const athletesToday = computed(() => {
+  const ids = new Set([
+    ...todaySessions.value.filter((s) => s.status !== 'cancelled').map((s) => s.client_id),
+    ...sport.readiness.filter((r) => r.day === plToday).map((r) => r.client_id),
+  ])
+  return [...ids]
+    .map((id) => clients.byId(id))
+    .filter((c): c is NonNullable<typeof c> => !!c && c.client_group === 'athlete')
+    .map((c) => {
+      const r = sport.readiness.find((x) => x.client_id === c.id && x.day === plToday)
+      const st = r ? readinessStatus(r, sport.readiness) : null
+      return { c, st, light: (st?.light ?? 'none') as Light | 'none' }
+    })
+    .sort((a, b) => ORDER[a.light] - ORDER[b.light])
+})
+const kidsDue = computed(() =>
+  clients.all
+    .filter((c) => c.client_group === 'child' && !c.archived)
+    .filter((c) => {
+      const last = kidsTests.value.get(c.id)
+      return !last || Date.now() - new Date(last).getTime() >= TEST_EVERY_DAYS * 864e5
+    }),
+)
+const LIGHT_CLS = { green: 'bg-success-soft text-success', yellow: 'bg-warn-soft text-warn-fg', red: 'bg-danger-soft text-danger', none: 'bg-surface-2 text-muted' } as const
 const report = ref<{ stalled: string[]; absent: string[]; nextWeek: number; freeSlots: number } | null>(null)
 onMounted(async () => {
   if (!auth.isTrainer) return
@@ -127,6 +173,30 @@ onMounted(async () => {
         </ul>
       </section>
 
+      <section v-if="athletesToday.length" class="space-y-2">
+        <h2 class="text-xl font-bold">Sportowcy – gotowość dziś</h2>
+        <ul class="space-y-2">
+          <li v-for="a in athletesToday" :key="a.c.id">
+            <RouterLink :to="`/klienci/${a.c.id}?tab=sport`" class="card pressable flex items-center gap-3 p-3 hover:bg-surface-2">
+              <span class="size-3 shrink-0 rounded-full" :class="{ 'bg-success': a.light === 'green', 'bg-[var(--warn-line)]': a.light === 'yellow', 'bg-danger': a.light === 'red', 'bg-line-strong': a.light === 'none' }" aria-hidden="true" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate font-semibold">{{ a.c.full_name }}</span>
+                <span class="block truncate text-xs text-muted">{{ a.st ? (a.st.reasons.join(' · ') || 'bez uwag') : 'brak ankiety – wyślij link albo zapytaj na starcie' }}</span>
+              </span>
+              <span class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums" :class="LIGHT_CLS[a.light]">{{ a.st ? `${a.st.score} · ${LIGHT_LABEL[a.st.light]}` : 'brak' }}</span>
+            </RouterLink>
+          </li>
+        </ul>
+      </section>
+
+      <section v-if="kidsDue.length" class="card space-y-2 p-4">
+        <h2 class="text-lg font-bold">Dzieci do testu sprawności</h2>
+        <p class="text-sm text-muted">Test co kwartał – ostatni ponad {{ TEST_EVERY_DAYS }} dni temu albo jeszcze nie było.</p>
+        <div class="flex flex-wrap gap-2">
+          <RouterLink v-for="k in kidsDue.slice(0, 12)" :key="k.id" :to="`/klienci/${k.id}?tab=kid`" class="chip border-line-strong bg-surface">{{ k.full_name }}</RouterLink>
+        </div>
+      </section>
+
       <section class="card flex items-center gap-4 p-4">
         <ProgressRing :value="own.length" :max="GOAL" :label="`${own.length} z ${GOAL} ćwiczeń w bazie`" />
         <div class="min-w-0 flex-1">
@@ -175,6 +245,15 @@ onMounted(async () => {
         <div class="min-w-0 flex-1">
           <h2 class="text-xl font-bold">Asystent</h2>
           <p class="text-sm text-muted">Zapytaj np. „kiedy Ania ostatnio robiła martwy ciąg i z jakim ciężarem?”</p>
+        </div>
+        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
+      </RouterLink>
+
+      <RouterLink to="/wyzwania" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
+        <Icon name="trophy" class="size-7 shrink-0 text-primary-fg" />
+        <div class="min-w-0 flex-1">
+          <h2 class="text-xl font-bold">Wyzwania drużynowe</h2>
+          <p class="text-sm text-muted">Wspólny cel dla grupy dzieci – bez rankingów.</p>
         </div>
         <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
       </RouterLink>

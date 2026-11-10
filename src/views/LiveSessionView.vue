@@ -12,6 +12,9 @@ import ExercisePicker from '@/components/ExercisePicker.vue'
 import ExerciseThumb from '@/components/ExerciseThumb.vue'
 import Icon from '@/components/Icon.vue'
 import TempoMetronome from '@/components/TempoMetronome.vue'
+import ReadinessForm from '@/components/ReadinessForm.vue'
+import { CR10, LIGHT_LABEL, readinessStatus, type Readiness } from '@/lib/sport'
+import { useSportStore } from '@/stores/sport'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -24,6 +27,35 @@ const d = computed(() => live.drafts[props.id])
 const finishedClientId = ref<string | null>(null)
 const client = computed(() => clients.byId(d.value?.client_id ?? finishedClientId.value))
 const picking = ref(false)
+// ===== Sportowiec: ankieta gotowości na starcie =====
+const sport = useSportStore()
+const plToday = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' })
+const isAthlete = computed(() => client.value?.client_group === 'athlete')
+const ready = ref<Readiness | null>(null)
+const readyHistory = ref<Readiness[]>([])
+const askingReady = ref(false)
+const savingReady = ref(false)
+watch(
+  isAthlete,
+  async (a) => {
+    if (!a || !d.value) return
+    const rows = await sport.loadReadiness(new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), d.value.client_id).catch(() => [])
+    readyHistory.value = rows
+    ready.value = rows.find((r) => r.day === plToday) ?? null
+  },
+  { immediate: true },
+)
+const readyStatus = computed(() => (ready.value ? readinessStatus(ready.value, readyHistory.value) : null))
+async function saveReady(v: Omit<Readiness, 'client_id' | 'day'>) {
+  savingReady.value = true
+  try {
+    ready.value = await sport.saveReadiness({ ...v, client_id: d.value!.client_id, day: plToday })
+    askingReady.value = false
+  } finally {
+    savingReady.value = false
+  }
+}
+const LIGHT_CLS = { green: 'bg-success-soft text-success', yellow: 'bg-warn-soft text-warn-fg', red: 'bg-danger-soft text-danger' } as const
 // Metronom tempa dla wybranego ćwiczenia (tempo i liczba powtórzeń z planu).
 const metro = ref<{ tempo: string | null; reps: number | null; title: string } | null>(null)
 function openMetro(e: NonNullable<typeof d.value>['exercises'][number]) {
@@ -100,6 +132,7 @@ function draftSummary() {
 }
 function openFinish() {
   if (!d.value!.summary) d.value!.summary = draftSummary()
+  d.value!.duration_min ??= Math.max(1, Math.round((Date.now() - new Date(d.value!.started_at).getTime()) / 60000))
   finishing.value = true
 }
 async function finish() {
@@ -150,6 +183,19 @@ function discard() {
         <Icon name="alert" class="size-5 shrink-0" />
         <span>Ograniczenia: {{ client.limitations.map((l) => label(CONTRAINDICATIONS, l)).join(', ') }}</span>
       </p>
+
+      <section v-if="isAthlete" class="card p-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <p class="font-semibold">Gotowość</p>
+          <template v-if="readyStatus">
+            <span class="rounded-full px-2.5 py-0.5 text-sm font-bold" :class="LIGHT_CLS[readyStatus.light]">{{ readyStatus.score }}/100 · {{ LIGHT_LABEL[readyStatus.light] }}</span>
+            <span v-if="readyStatus.reasons.length" class="text-sm text-muted">{{ readyStatus.reasons.join(' · ') }}</span>
+          </template>
+          <span v-else class="text-sm text-muted">brak ankiety na dziś</span>
+          <button class="ml-auto text-sm font-semibold text-primary-fg underline" @click="askingReady = !askingReady">{{ ready ? 'Popraw' : 'Wypełnij teraz' }}</button>
+        </div>
+        <ReadinessForm v-if="askingReady" class="mt-3" :initial="ready ?? undefined" :busy="savingReady" @submit="saveReady" />
+      </section>
 
       <section v-for="(e, ei) in d.exercises" :key="e.key" class="card p-3" :class="e.group_label ? 'border-l-4 !border-l-primary' : ''">
         <div class="mb-2 flex items-start gap-3">
@@ -245,6 +291,7 @@ function discard() {
       <button class="rounded-xl px-3 py-2 text-sm font-semibold ring-1 ring-current" @click="restUntil = null">Pomiń</button>
     </div>
 
+    <TempoMetronome v-if="metro" :tempo="metro.tempo" :reps="metro.reps" :title="metro.title" @close="metro = null" />
     <ExercisePicker v-if="picking" title="Dodaj ćwiczenie" :limitations="client?.limitations" @pick="addExercise" @close="picking = false" />
 
     <div v-if="finishing" class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Zakończ sesję" @click.self="finishing = false" @keydown.esc="finishing = false">
@@ -256,6 +303,30 @@ function discard() {
           <textarea v-model="d.summary" rows="8" class="input py-2 text-sm" />
           <span class="mt-1 block text-xs text-muted">Klient zobaczy je dopiero po Twojej akceptacji na karcie klienta.</span>
         </label>
+        <fieldset class="space-y-2">
+          <legend class="label">RPE całej sesji (0–10) – jak ciężki był cały trening?</legend>
+          <div class="grid grid-cols-11 gap-1">
+            <button
+              v-for="n in 11"
+              :key="n - 1"
+              type="button"
+              class="min-h-11 rounded-lg border text-sm font-bold tabular-nums"
+              :class="d.srpe === n - 1 ? 'border-primary bg-primary text-on-primary' : 'border-line-strong bg-surface'"
+              :aria-pressed="d.srpe === n - 1"
+              :aria-label="`RPE ${n - 1}: ${CR10[n - 1]}`"
+              @click="d.srpe = d.srpe === n - 1 ? null : n - 1"
+            >
+              {{ n - 1 }}
+            </button>
+          </div>
+          <p class="text-xs text-muted">{{ d.srpe != null ? CR10[d.srpe] : 'Opcjonalnie – dla sportowców liczy obciążenie i ACWR.' }}</p>
+          <label class="flex items-center gap-2 text-sm">
+            Czas treningu
+            <input v-model.number="d.duration_min" type="number" min="1" max="600" inputmode="numeric" class="input !min-h-10 w-20 text-center" />
+            min
+            <span v-if="d.srpe != null && d.duration_min" class="ml-auto text-muted tabular-nums">obciążenie {{ Math.round(d.srpe * d.duration_min) }}</span>
+          </label>
+        </fieldset>
         <div class="grid grid-cols-2 gap-2">
           <button class="btn-ghost" @click="finishing = false">Wróć</button>
           <button class="btn-primary" :disabled="saving" @click="finish">{{ saving ? 'Zapisywanie…' : 'Zapisz sesję' }}</button>
@@ -267,6 +338,5 @@ function discard() {
   <main v-else class="px-4 pt-10 text-center text-muted">
     Nie ma takiej sesji na tym urządzeniu.
     <RouterLink to="/grafik" class="btn-ghost mt-4">Grafik</RouterLink>
-    <TempoMetronome v-if="metro" :tempo="metro.tempo" :reps="metro.reps" :title="metro.title" @close="metro = null" />
-  </main>
+</main>
 </template>
