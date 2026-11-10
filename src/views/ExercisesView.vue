@@ -135,6 +135,7 @@ function clearFilters() {
               <ExerciseThumb :exercise="e" />
               <div class="min-w-0 flex-1">
                 <p class="truncate font-medium">{{ e.name_pl }}</p>
+                <p v-if="e.name_en && e.name_en !== e.name_pl" class="truncate text-xs text-subtle" lang="en">{{ e.name_en }}</p>
                 <p class="truncate text-xs text-muted">
                   {{ [...e.muscle_groups.slice(0, 2).map((m) => label(MUSCLES, m)), ...e.equipment.slice(0, 1).map((m) => label(EQUIPMENT, m))].join(' · ') }}
                 </p>

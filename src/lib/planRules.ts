@@ -9,6 +9,7 @@ import type { PlanRequest } from '@/lib/ai'
 export interface RuleExercise {
   id: string
   name_pl: string
+  name_en?: string | null
   movement_pattern: string | null
   muscle_groups: string[]
   equipment: string[]
@@ -95,6 +96,23 @@ const PATTERN_MUSCLES: Record<string, string[]> = {
   pull_v: ['lats', 'biceps', 'middle back'],
   core: ['abdominals', 'lower back', 'obliques'],
 }
+// Klasyka: sprawdzone ćwiczenia bazowe mają pierwszeństwo przed egzotycznymi wariantami z importu (nazwy angielskie z bazy).
+const STAPLES = new Set(
+  `barbell squat|barbell full squat|front barbell squat|goblet squat|dumbbell squat|bodyweight squat|leg press|hack squat|
+barbell deadlift|romanian deadlift|stiff-legged barbell deadlift|stiff-legged dumbbell deadlift|sumo deadlift|trap bar deadlift|barbell glute bridge|barbell hip thrust|butt lift (bridge)|single leg glute bridge|hyperextensions (back extensions)|pull through|
+barbell bench press - medium grip|dumbbell bench press|incline dumbbell press|barbell incline bench press - medium grip|pushups|push-ups with feet elevated|incline push-up|dips - chest version|machine bench press|dumbbell flyes|close-grip barbell bench press|
+standing military press|barbell shoulder press|dumbbell shoulder press|seated dumbbell press|standing dumbbell press|machine shoulder (military) press|side lateral raise|face pull|reverse flyes|
+bent over barbell row|one-arm dumbbell row|bent over two-dumbbell row|seated cable rows|inverted row|dumbbell incline row|
+pullups|chin-up|wide-grip lat pulldown|close-grip front lat pulldown|band assisted pull-up|
+dumbbell lunges|barbell lunge|dumbbell rear lunge|split squat with dumbbells|split squats|dumbbell step ups|bodyweight walking lunge|barbell walking lunge|
+plank|side bridge|dead bug|crunches|reverse crunch|hanging leg raise|pallof press|russian twist|mountain climbers|
+dumbbell bicep curl|barbell curl|hammer curls|triceps pushdown|triceps pushdown - rope attachment|lying leg curls|seated leg curl|leg extensions|standing calf raises|seated calf raise|one-arm kettlebell swings`
+    .split('|')
+    .map((s) => s.trim()),
+)
+const FREE_WEIGHTS = ['barbell', 'dumbbell', 'kettlebells']
+// Warianty specjalistyczne – nie do planu z automatu (zwłaszcza dla początkujących).
+const SPECIAL = /łańcuch|z gum|odciążeniem|z bloków|z podpór|z deską|trójbojow|samochodu|kłody|beczki|opon|sań|saniami|jarzm|rikszą|Atlasa|grubym gryfem|Conana|zarzut|rwani|podrzut|wybicie|with (bands|chains)/i
 const fitsPattern = (e: RuleExercise) => !e.movement_pattern || !PATTERN_MUSCLES[e.movement_pattern] || PATTERN_MUSCLES[e.movement_pattern].includes(e.muscle_groups[0])
 
 /** Deterministyczny „los” (ten sam klient i data → ten sam plan; inny klient → inny dobór przy remisie). */
@@ -120,15 +138,37 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
       !['mobility', 'cardio', 'other'].includes(e.movement_pattern ?? '') &&
       !(e.movement_pattern === 'plyo' && (goal === 'rehab' || limits.size)),
   )
-  const score = (e: RuleExercise) =>
-    (usage.get(e.id) ?? 0) * 5 + (e.source === 'own' ? 3 : 0) + (e.video_path ? 2 : 0) + (LEVEL_RANK[e.level] === maxLevel ? 2 : 1) + hash(seed + e.id)
+  // Sprzęt: gdy klient ma coś więcej niż masę ciała, ćwiczenia z tym sprzętem idą przed ćwiczeniami bez obciążenia;
+  // ćwiczenia główne – najlepiej wolne ciężary i ruchy wielostawowe; warianty specjalistyczne (łańcuchy, gumy, strongman) na koniec.
+  const hasGear = [...equipment].some((q) => q !== 'body only')
+  const gear = (e: RuleExercise, role: Slot['role']) => {
+    const uses = e.equipment.filter((q) => q !== 'body only')
+    if (!uses.length) return hasGear && role !== 'core' ? -4 : 0
+    const any = (list: string[]) => uses.some((q) => list.includes(q))
+    let s = 3
+    if (role === 'main') s += any(FREE_WEIGHTS) ? 4 : any(['machine', 'cable']) ? 1 : -2
+    else if (role === 'acc') s += any(['dumbbell', 'cable', 'machine', 'kettlebells', 'e-z curl bar']) ? 2 : 0
+    if (uses.includes('other') || (role === 'main' && uses.includes('bands'))) s -= 3
+    return s
+  }
+  const compound = (e: RuleExercise, role: Slot['role']) => (role !== 'main' ? 0 : e.muscle_groups.length >= 3 ? 3 : e.muscle_groups.length === 2 ? 1.5 : -2)
+  const score = (e: RuleExercise, role: Slot['role']) =>
+    (usage.get(e.id) ?? 0) * 5 +
+    (e.source === 'own' ? 3 : 0) +
+    (e.video_path ? 2 : 0) +
+    (LEVEL_RANK[e.level] === maxLevel ? 2 : 1) +
+    gear(e, role) +
+    compound(e, role) +
+    (SPECIAL.test(e.name_pl) ? (req.level === 'advanced' ? -2 : -6) : 0) +
+    (STAPLES.has((e.name_en ?? '').toLowerCase()) ? (role === 'main' ? 8 : 4) : 0) +
+    hash(seed + e.id)
   const candidates = (slot: Slot) =>
     pool
       // Slot wzorca: ten wzorzec ruchu; slot mięśnia: główna grupa mięśniowa ćwiczenia (bez core i plyometrii).
       .filter((e) =>
         slot.patterns ? slot.patterns.includes(e.movement_pattern ?? '') : slot.muscles!.includes(e.muscle_groups[0]) && !['core', 'plyo'].includes(e.movement_pattern ?? ''),
       )
-      .sort((a, b) => score(b) - score(a))
+      .sort((a, b) => score(b, slot.role) - score(a, slot.role))
 
   const days = Math.max(1, Math.min(6, Math.round(req.days)))
   const weeks = Math.max(1, Math.min(8, Math.round(req.weeks)))
@@ -194,7 +234,7 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
 /** Ćwiczenia z bazy i to, jak często trenerka ich używa w planach (ranking). */
 export async function loadRuleData() {
   const [ex, we] = await Promise.all([
-    supabase.from('exercises').select('id, name_pl, movement_pattern, muscle_groups, equipment, level, contraindications, source, video_path'),
+    supabase.from('exercises').select('id, name_pl, name_en, movement_pattern, muscle_groups, equipment, level, contraindications, source, video_path'),
     supabase.from('workout_exercises').select('exercise_id').limit(10000),
   ])
   if (ex.error) throw ex.error

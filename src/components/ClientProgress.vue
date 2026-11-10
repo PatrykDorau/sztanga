@@ -48,22 +48,31 @@ const mKind = ref<string | null>(null)
 watch(kinds, (k) => (mKind.value ??= k[0] ?? null), { immediate: true })
 const mPoints = computed(() => measurements.value.filter((m) => m.kind === mKind.value).map((m) => ({ x: m.measured_on, y: Number(m.value) })))
 const adding = ref(false)
-const mf = reactive({ kind: 'weight', value: '', day: new Date().toISOString().slice(0, 10) })
+const mf = reactive({ kind: 'weight', value: '', day: new Date().toISOString().slice(0, 10), customName: '', customUnit: '' })
+const CUSTOM = '__custom'
+// Własne rodzaje już użyte u tego klienta (nazwa wpisana przez trenerkę) – do ponownego wyboru z listy.
+const customKinds = computed(() => kinds.value.filter((k) => !MEASUREMENTS[k]))
+const unitOf = (k: string | null) => (k ? (MEASUREMENTS[k]?.unit ?? measurements.value.find((m) => m.kind === k)?.unit ?? '') : '')
 const busy = ref(false)
 const error = ref('')
 async function addMeasurement() {
   busy.value = true
   error.value = ''
   try {
+    const kind = mf.kind === CUSTOM ? mf.customName.trim() : mf.kind
+    const value = Number(mf.value.replace(',', '.'))
+    if (!kind) throw new Error('Wpisz nazwę pomiaru.')
+    if (!Number.isFinite(value)) throw new Error('Wartość musi być liczbą.')
     await progress.addMeasurement({
       client_id: props.clientId,
-      kind: mf.kind,
-      value: Number(mf.value.replace(',', '.')),
-      unit: MEASUREMENTS[mf.kind].unit,
+      kind,
+      value,
+      unit: mf.kind === CUSTOM ? mf.customUnit.trim() : unitOf(kind),
       measured_on: mf.day,
       notes: null,
     })
-    mKind.value = mf.kind
+    mKind.value = kind
+    if (mf.kind === CUSTOM) Object.assign(mf, { kind, customName: '', customUnit: '' })
     mf.value = ''
     adding.value = false
   } catch (e) {
@@ -153,8 +162,16 @@ const isPerformanceTest = (k: string | null) => ['sit_reach', 'plank', 'pushups'
       </div>
       <form v-if="adding" class="card grid grid-cols-2 gap-3 p-4" @submit.prevent="addMeasurement">
         <label class="col-span-2"><span class="label">Rodzaj</span>
-          <select v-model="mf.kind" class="input"><option v-for="(m, k) in MEASUREMENTS" :key="k" :value="k">{{ m.label }} ({{ m.unit }})</option></select>
+          <select v-model="mf.kind" class="input">
+            <option v-for="(m, k) in MEASUREMENTS" :key="k" :value="k">{{ m.label }} ({{ m.unit }})</option>
+            <option v-for="k in customKinds" :key="k" :value="k">{{ k }}{{ unitOf(k) ? ` (${unitOf(k)})` : '' }}</option>
+            <option :value="CUSTOM">Własny rodzaj…</option>
+          </select>
         </label>
+        <template v-if="mf.kind === CUSTOM">
+          <label><span class="label">Nazwa pomiaru</span><input v-model="mf.customName" class="input" maxlength="40" placeholder="np. CMJ, obwód łydki" required /></label>
+          <label><span class="label">Jednostka</span><input v-model="mf.customUnit" class="input" maxlength="10" placeholder="np. cm, N, s" /></label>
+        </template>
         <label><span class="label">Wartość</span><input v-model="mf.value" inputmode="decimal" class="input" required /></label>
         <label><span class="label">Data</span><input v-model="mf.day" type="date" class="input" required /></label>
         <p v-if="error" class="col-span-2 text-sm text-danger" role="alert">{{ error }}</p>
@@ -163,7 +180,7 @@ const isPerformanceTest = (k: string | null) => ['sit_reach', 'plank', 'pushups'
       <div v-if="kinds.length" class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
         <button v-for="k in kinds" :key="k" :class="mKind === k ? 'chip-on' : 'chip-off'" class="shrink-0" @click="mKind = k">{{ MEASUREMENTS[k]?.label ?? k }}</button>
       </div>
-      <LineChart v-if="mKind" :points="mPoints" :unit="MEASUREMENTS[mKind]?.unit ?? ''" :title="MEASUREMENTS[mKind]?.label ?? mKind" :higher-is-better="!lowerIsBetter(mKind)" :mark-best="isPerformanceTest(mKind)" />
+      <LineChart v-if="mKind" :points="mPoints" :unit="unitOf(mKind)" :title="MEASUREMENTS[mKind]?.label ?? mKind" :higher-is-better="!lowerIsBetter(mKind)" :mark-best="isPerformanceTest(mKind)" />
     </section>
   </div>
 </template>
