@@ -36,7 +36,10 @@ async function create() {
     <header class="page-header space-y-3 px-4 pb-3">
       <div class="flex items-center justify-between">
         <h1 class="page-title">Plany</h1>
-        <button v-if="tab === 'templates'" class="btn-primary" @click="creating = !creating"><Icon name="plus" class="size-5" />Szablon</button>
+        <div class="flex gap-2">
+          <RouterLink to="/plany/ai" class="btn-ghost border border-line-strong"><Icon name="star" class="size-5" />Generator</RouterLink>
+          <button v-if="tab === 'templates'" class="btn-primary" @click="creating = !creating"><Icon name="plus" class="size-5" />Szablon</button>
+        </div>
       </div>
       <div class="grid grid-cols-2 rounded-xl bg-surface-2 p-1">
         <button class="rounded-lg py-2 text-sm font-medium" :class="tab === 'templates' ? 'bg-surface shadow text-fg' : 'text-muted'" @click="tab = 'templates'">Szablony</button>

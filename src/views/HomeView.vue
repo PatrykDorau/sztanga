@@ -168,6 +168,15 @@ onMounted(async () => {
         </RouterLink>
       </section>
 
+      <RouterLink to="/asystent" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
+        <Icon name="search" class="size-7 shrink-0 text-primary-fg" />
+        <div class="min-w-0 flex-1">
+          <h2 class="text-xl font-bold">Asystent</h2>
+          <p class="text-sm text-muted">Zapytaj np. „kiedy Ania ostatnio robiła martwy ciąg i z jakim ciężarem?”</p>
+        </div>
+        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
+      </RouterLink>
+
       <RouterLink to="/analiza" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
         <Icon name="video" class="size-7 shrink-0 text-primary-fg" />
         <div class="min-w-0 flex-1">

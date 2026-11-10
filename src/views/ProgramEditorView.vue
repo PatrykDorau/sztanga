@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useClientsStore } from '@/stores/clients'
 import { useExercisesStore } from '@/stores/exercises'
 import { useProgramsStore } from '@/stores/programs'
@@ -14,6 +14,8 @@ import Icon from '@/components/Icon.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
+// Szkic z generatora AI (?ai=1 albo ?ai=<ostrzeżenia>) – przypomnienie, że trzeba go przejrzeć.
+const aiNote = ref(useRoute().query.ai ? String(useRoute().query.ai) : '')
 const programs = useProgramsStore()
 const clients = useClientsStore()
 const ex = useExercisesStore()
@@ -159,6 +161,11 @@ const removeProgram = () =>
         <button class="icon-btn" aria-label="Ustawienia planu" @click="showSettings = !showSettings"><Icon name="edit" class="size-5" /></button>
       </div>
 
+      <p v-if="aiNote" class="warn-box mx-2 mt-2 text-sm">
+        <Icon name="star" class="size-5 shrink-0" />
+        <span class="flex-1">{{ aiNote === 'rules' ? 'Szkic z generatora (reguły)' : 'Szkic ułożony przez AI' }} z Twojej bazy ćwiczeń – przejrzyj dawki i kolejność, zanim aktywujesz plan.<template v-if="aiNote !== '1' && aiNote !== 'rules'"> {{ aiNote }}</template></span>
+        <button type="button" class="icon-btn -my-2 -mr-2" aria-label="Zamknij" @click="aiNote = ''"><Icon name="x" class="size-4" /></button>
+      </p>
       <nav class="mt-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none]" aria-label="Tygodnie">
         <button
           v-for="(w, i) in p.program_weeks"

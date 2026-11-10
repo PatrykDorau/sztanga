@@ -30,7 +30,7 @@ const progress = useProgressStore()
 const live = useLiveStore()
 type Tab = 'overview' | 'progress' | 'history' | 'ruch'
 const route = useRoute()
-const tab = ref<Tab>(route.query.tab === 'ruch' ? 'ruch' : 'overview')
+const tab = ref<Tab>((['progress', 'history', 'ruch'] as string[]).includes(String(route.query.tab)) ? (route.query.tab as Tab) : 'overview')
 const TABS: [Tab, string][] = [
   ['overview', 'Przegląd'],
   ['progress', 'Postępy'],
