@@ -48,15 +48,15 @@ function rest(sec: number | null) {
 <template>
   <div class="print-page min-h-dvh bg-white text-stone-900">
     <div class="sticky top-0 flex items-center gap-2 border-b border-stone-200 bg-white p-3 print:hidden">
-      <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
-      <span class="flex-1 text-sm text-stone-500">Podgląd wydruku</span>
+      <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
+      <span class="flex-1 text-sm text-muted">Podgląd wydruku</span>
       <button v-if="p && ready" class="btn-primary" @click="print"><Icon name="download" class="size-4" />Drukuj / PDF</button>
     </div>
 
     <article v-if="p && ready" class="mx-auto max-w-3xl p-6 print:p-0">
-      <header class="mb-6 border-b-2 border-brand-700 pb-3">
-        <h1 class="text-2xl font-bold">{{ p.name }}</h1>
-        <p class="text-sm text-stone-600">
+      <header class="mb-6 border-b-2 border-primary pb-3">
+        <h1 class="page-title">{{ p.name }}</h1>
+        <p class="text-sm text-muted">
           <template v-if="client">{{ client.full_name }}</template>
           <template v-if="p.start_date"> · start {{ new Date(p.start_date).toLocaleDateString('pl-PL') }}</template>
           · {{ p.program_weeks.length }} tyg.
@@ -67,15 +67,15 @@ function rest(sec: number | null) {
       <section v-for="(w, wi) in p.program_weeks" :key="w.id" class="mb-6 break-inside-avoid-page">
         <h2 class="mb-2 text-lg font-semibold">
           Tydzień {{ wi + 1 }}
-          <span v-if="w.phase" class="text-sm font-normal text-stone-600">– {{ label(PHASES, w.phase) }}</span>
-          <span v-if="weekDate(wi)" class="text-sm font-normal text-stone-500"> (od {{ weekDate(wi) }})</span>
+          <span v-if="w.phase" class="text-sm font-normal text-muted">– {{ label(PHASES, w.phase) }}</span>
+          <span v-if="weekDate(wi)" class="text-sm font-normal text-muted"> (od {{ weekDate(wi) }})</span>
         </h2>
         <div v-for="wo in w.workouts" :key="wo.id" class="mb-4 break-inside-avoid">
           <h3 class="mb-1 font-semibold">{{ wo.name }}</h3>
-          <p v-if="wo.notes" class="mb-1 text-sm text-stone-600">{{ wo.notes }}</p>
+          <p v-if="wo.notes" class="mb-1 text-sm text-muted">{{ wo.notes }}</p>
           <table class="w-full border-collapse text-sm">
             <thead>
-              <tr class="border-b border-stone-300 text-left text-xs text-stone-500">
+              <tr class="border-b border-stone-300 text-left text-xs text-muted">
                 <th class="w-8 py-1 font-medium"></th>
                 <th class="py-1 font-medium">Ćwiczenie</th>
                 <th class="w-12 py-1 text-center font-medium">Serie</th>
@@ -87,13 +87,13 @@ function rest(sec: number | null) {
             </thead>
             <tbody>
               <tr v-for="(we, i) in wo.workout_exercises" :key="we.id" class="border-b border-stone-200 align-top">
-                <td class="py-1.5 font-semibold text-brand-700">
+                <td class="py-1.5 font-semibold text-primary-fg">
                   {{ we.group_label ? we.group_label + (wo.workout_exercises.slice(0, i).filter((x) => x.group_label === we.group_label).length + 1) : i + 1 }}
                 </td>
                 <td class="py-1.5">
                   {{ ex.byId(we.exercise_id)?.name_pl }}
-                  <span v-if="we.tempo" class="text-xs text-stone-500"> · tempo {{ we.tempo }}</span>
-                  <p v-if="we.notes" class="text-xs text-stone-600">{{ we.notes }}</p>
+                  <span v-if="we.tempo" class="text-xs text-muted"> · tempo {{ we.tempo }}</span>
+                  <p v-if="we.notes" class="text-xs text-muted">{{ we.notes }}</p>
                 </td>
                 <td class="py-1.5 text-center">{{ we.sets ?? '' }}</td>
                 <td class="py-1.5 text-center">{{ we.reps ?? '' }}</td>
@@ -106,7 +106,7 @@ function rest(sec: number | null) {
         </div>
       </section>
     </article>
-    <p v-else class="p-10 text-center text-stone-500">{{ missing ? 'Ten plan nie jest dostępny.' : 'Ładowanie…' }}</p>
+    <p v-else class="p-10 text-center text-muted">{{ missing ? 'Ten plan nie jest dostępny.' : 'Ładowanie…' }}</p>
   </div>
 </template>
 

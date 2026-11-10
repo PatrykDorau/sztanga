@@ -32,9 +32,9 @@ async function newPlan() {
 <template>
   <main v-if="c" class="pb-6">
     <header class="flex items-center gap-1 px-2 pt-4">
-      <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
+      <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
       <h1 class="min-w-0 flex-1 truncate text-lg font-bold">{{ c.full_name }}</h1>
-      <RouterLink :to="`/klienci/${c.id}/edycja`" class="p-2" aria-label="Edytuj"><Icon name="edit" class="size-6" /></RouterLink>
+      <RouterLink :to="`/klienci/${c.id}/edycja`" class="icon-btn" aria-label="Edytuj"><Icon name="edit" class="size-6" /></RouterLink>
     </header>
 
     <div class="space-y-4 px-4">
@@ -46,23 +46,23 @@ async function newPlan() {
 
       <section class="card space-y-3 p-4 text-sm">
         <div v-if="c.goals">
-          <p class="text-xs font-medium tracking-wide text-stone-500 uppercase">Cele</p>
+          <p class="text-xs font-medium tracking-wide text-muted uppercase">Cele</p>
           <p class="whitespace-pre-line">{{ c.goals }}</p>
         </div>
-        <div v-if="c.limitations.length" class="flex gap-2 rounded-xl bg-amber-50 p-3 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+        <div v-if="c.limitations.length" class="flex gap-2 warn-box">
           <Icon name="alert" class="size-5 shrink-0" />
           <p><strong>Ograniczenia:</strong> {{ c.limitations.map((x) => label(CONTRAINDICATIONS, x)).join(', ') }}</p>
         </div>
         <div v-if="c.equipment.length">
-          <p class="text-xs font-medium tracking-wide text-stone-500 uppercase">Sprzęt</p>
+          <p class="text-xs font-medium tracking-wide text-muted uppercase">Sprzęt</p>
           <p>{{ c.equipment.map((x) => label(EQUIPMENT, x)).join(', ') }}</p>
         </div>
         <div v-if="c.notes">
-          <p class="text-xs font-medium tracking-wide text-stone-500 uppercase">Notatki</p>
+          <p class="text-xs font-medium tracking-wide text-muted uppercase">Notatki</p>
           <p class="whitespace-pre-line">{{ c.notes }}</p>
         </div>
-        <p v-if="c.email || c.phone" class="text-stone-500">{{ [c.email, c.phone].filter(Boolean).join(' · ') }}</p>
-        <p v-if="!c.goals && !c.limitations.length && !c.notes" class="text-stone-500">
+        <p v-if="c.email || c.phone" class="text-muted">{{ [c.email, c.phone].filter(Boolean).join(' · ') }}</p>
+        <p v-if="!c.goals && !c.limitations.length && !c.notes" class="text-muted">
           Uzupełnij cele i ograniczenia – kreator planu z nich korzysta.
         </p>
       </section>
@@ -76,9 +76,9 @@ async function newPlan() {
             <RouterLink :to="`/plany/${p.id}`" class="card flex items-center justify-between gap-3 p-3">
               <div class="min-w-0">
                 <p class="truncate font-medium">{{ p.name }}</p>
-                <p class="text-xs text-stone-500">{{ p.start_date ? `od ${new Date(p.start_date).toLocaleDateString('pl-PL')}` : 'bez daty startu' }}</p>
+                <p class="text-xs text-muted">{{ p.start_date ? `od ${new Date(p.start_date).toLocaleDateString('pl-PL')}` : 'bez daty startu' }}</p>
               </div>
-              <span class="tag" :class="p.status === 'active' ? '!bg-brand-100 !text-brand-900 dark:!bg-brand-900/50 dark:!text-brand-100' : ''">{{ label(STATUSES, p.status) }}</span>
+              <span class="tag" :class="p.status === 'active' ? '!bg-success-soft !text-success' : ''">{{ label(STATUSES, p.status) }}</span>
             </RouterLink>
           </li>
         </ul>
@@ -91,5 +91,5 @@ async function newPlan() {
 
     <AssignProgramDialog v-if="assigning" :client-id="c.id" @close="assigning = false" @done="(id) => router.push(`/plany/${id}`)" />
   </main>
-  <main v-else class="px-4 pt-10 text-center text-stone-500">{{ clients.loaded ? 'Nie znaleziono klienta.' : 'Ładowanie…' }}</main>
+  <main v-else class="px-4 pt-10 text-center text-muted">{{ clients.loaded ? 'Nie znaleziono klienta.' : 'Ładowanie…' }}</main>
 </template>

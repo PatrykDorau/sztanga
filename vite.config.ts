@@ -19,8 +19,8 @@ export default defineConfig({
         short_name: 'Trener',
         lang: 'pl',
         description: 'Aplikacja trenerki personalnej',
-        theme_color: '#0f766e',
-        background_color: '#0b1210',
+        theme_color: '#0b0d10',
+        background_color: '#0b0d10',
         display: 'standalone',
         start_url: '/',
         icons: [
@@ -30,6 +30,12 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/index.html',
         runtimeCaching: [
+          {
+            // Fonty Barlow – po pierwszym wczytaniu działają offline.
+            urlPattern: ({ url }) => url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com',
+            handler: 'CacheFirst',
+            options: { cacheName: 'fonts', expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+          },
           {
             urlPattern: ({ url }) => url.hostname === 'raw.githubusercontent.com',
             handler: 'CacheFirst',

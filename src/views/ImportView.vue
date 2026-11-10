@@ -31,26 +31,26 @@ async function run() {
 <template>
   <main class="pb-6">
     <header class="flex items-center gap-1 px-2 pt-4">
-      <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
+      <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
       <h1 class="text-lg font-bold">Import bazy startowej</h1>
     </header>
     <div class="space-y-4 px-4">
-      <div class="card space-y-2 p-4 text-sm text-stone-700 dark:text-stone-300">
+      <div class="card space-y-2 p-4 text-sm text-fg">
         <p>
           Zaimportuje ok. 870 ćwiczeń z otwartej bazy
           <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" class="underline">free-exercise-db</a>
           (domena publiczna) – z obrazkami, partiami, sprzętem i instrukcjami po angielsku.
         </p>
         <p>Zaimportowane ćwiczenia są oddzielone od Twoich: na liście domyślnie widać tylko „Moje”. Możesz je edytować, tłumaczyć i łączyć w łańcuchy regresji/progresji.</p>
-        <p class="text-stone-500">Ponowny import nie tworzy duplikatów.</p>
+        <p class="text-muted">Ponowny import nie tworzy duplikatów.</p>
       </div>
 
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
 
       <div v-if="state === 'busy'" class="card p-4">
         <p class="mb-2 text-sm">Importowanie… {{ done }} / {{ total || '?' }}</p>
-        <div class="h-2 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
-          <div class="h-full bg-brand-600 transition-all" :style="{ width: total ? (done / total) * 100 + '%' : '5%' }" />
+        <div class="h-2 overflow-hidden rounded-full bg-surface-2">
+          <div class="h-full bg-primary transition-all" :style="{ width: total ? (done / total) * 100 + '%' : '5%' }" />
         </div>
       </div>
 

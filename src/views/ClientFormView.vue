@@ -81,7 +81,7 @@ async function remove() {
 <template>
   <main class="pb-6">
     <header class="flex items-center gap-1 px-2 pt-4">
-      <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
+      <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
       <h1 class="text-lg font-bold">{{ id ? 'Edytuj klienta' : 'Nowy klient' }}</h1>
     </header>
     <form class="space-y-5 px-4" @submit.prevent="submit">
@@ -114,7 +114,7 @@ async function remove() {
       <div>
         <p class="label">Ograniczenia / kontuzje</p>
         <ChipSelect v-model="form.limitations" :options="CONTRAINDICATIONS" />
-        <p class="mt-1 text-xs text-stone-500">Kreator ostrzeże, gdy dodasz ćwiczenie z pasującym przeciwwskazaniem.</p>
+        <p class="mt-1 text-xs text-muted">Kreator ostrzeże, gdy dodasz ćwiczenie z pasującym przeciwwskazaniem.</p>
       </div>
       <div>
         <p class="label">Dostępny sprzęt</p>
@@ -125,9 +125,9 @@ async function remove() {
         <textarea id="no" v-model="form.notes" rows="3" class="input py-2" />
       </div>
       <label v-if="id" class="flex items-center gap-2 text-sm">
-        <input v-model="form.archived" type="checkbox" class="size-5 accent-brand-700" /> Klient w archiwum
+        <input v-model="form.archived" type="checkbox" class="size-5 accent-primary" /> Klient w archiwum
       </label>
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
       <button class="btn-primary w-full" :disabled="busy">{{ id ? 'Zapisz' : 'Dodaj klienta' }}</button>
       <button v-if="id" type="button" class="btn-danger w-full" @click="remove"><Icon name="trash" class="size-4" />Usuń klienta</button>
     </form>

@@ -138,12 +138,12 @@ const removeProgram = () =>
 
 <template>
   <main v-if="p" class="pb-6">
-    <header class="sticky top-0 z-10 bg-stone-50/95 px-2 pt-4 pb-2 backdrop-blur dark:bg-stone-950/95">
+    <header class="page-header px-2 pb-2">
       <div class="flex items-center gap-1">
-        <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
+        <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
         <div class="min-w-0 flex-1">
           <h1 class="truncate text-lg leading-tight font-bold">{{ p.name }}</h1>
-          <p class="truncate text-xs text-stone-500">
+          <p class="truncate text-xs text-muted">
             <template v-if="p.is_template">Szablon · {{ p.program_weeks.length }} tyg.</template>
             <template v-else>
               <RouterLink v-if="client" :to="`/klienci/${client.id}`" class="underline">{{ client.full_name }}</RouterLink>
@@ -152,8 +152,8 @@ const removeProgram = () =>
             </template>
           </p>
         </div>
-        <RouterLink :to="`/plany/${p.id}/druk`" class="p-2" aria-label="Wersja do druku"><Icon name="download" class="size-5" /></RouterLink>
-        <button class="p-2" aria-label="Ustawienia planu" @click="showSettings = !showSettings"><Icon name="edit" class="size-5" /></button>
+        <RouterLink :to="`/plany/${p.id}/druk`" class="icon-btn" aria-label="Wersja do druku"><Icon name="download" class="size-5" /></RouterLink>
+        <button class="icon-btn" aria-label="Ustawienia planu" @click="showSettings = !showSettings"><Icon name="edit" class="size-5" /></button>
       </div>
 
       <nav class="mt-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none]" aria-label="Tygodnie">
@@ -161,13 +161,13 @@ const removeProgram = () =>
           v-for="(w, i) in p.program_weeks"
           :key="w.id"
           class="flex min-w-14 shrink-0 flex-col items-center rounded-xl border px-2 py-1.5 text-xs"
-          :class="i === weekIdx ? 'border-brand-700 bg-brand-700 text-white' : 'border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-900'"
+          :class="i === weekIdx ? 'border-primary bg-primary text-on-primary font-semibold' : 'border-line-strong bg-surface'"
           @click="weekIdx = i"
         >
           <span class="font-semibold">Tydz. {{ i + 1 }}</span>
           <span class="opacity-75">{{ w.phase ? label(PHASES, w.phase) : weekDate(i) || '—' }}</span>
         </button>
-        <button class="flex min-w-12 shrink-0 items-center justify-center rounded-xl border border-dashed border-stone-300 text-stone-500 dark:border-stone-700" aria-label="Dodaj tydzień" :disabled="busy" @click="addWeek">
+        <button class="flex min-w-12 shrink-0 items-center justify-center rounded-xl border border-dashed border-line-strong text-muted" aria-label="Dodaj tydzień" :disabled="busy" @click="addWeek">
           <Icon name="plus" class="size-5" />
         </button>
       </nav>
@@ -196,7 +196,7 @@ const removeProgram = () =>
           </div>
         </div>
         <button class="btn-primary w-full" :disabled="busy">Zapisz</button>
-        <div class="grid grid-cols-2 gap-2 border-t border-stone-200 pt-3 dark:border-stone-800">
+        <div class="grid grid-cols-2 gap-2 border-t border-line pt-3">
           <button v-if="p.is_template" type="button" class="btn-ghost" @click="assigning = true">Przypisz klientowi</button>
           <button v-else type="button" class="btn-ghost" :disabled="busy" @click="saveAsTemplate">Zapisz jako szablon</button>
           <button type="button" class="btn-ghost" :disabled="busy" @click="duplicate">Duplikuj</button>
@@ -204,7 +204,7 @@ const removeProgram = () =>
         </div>
       </form>
 
-      <div v-if="p.description && !showSettings" class="text-sm text-stone-600 dark:text-stone-400">{{ p.description }}</div>
+      <div v-if="p.description && !showSettings" class="text-sm text-muted">{{ p.description }}</div>
 
       <template v-if="week">
         <div>
@@ -232,7 +232,7 @@ const removeProgram = () =>
         <section class="card space-y-2 p-4">
           <p class="text-sm font-semibold">Kolejny tydzień</p>
           <button class="btn-primary w-full" :disabled="busy" @click="duplicateWeek(true)"><Icon name="up" class="size-4" />Kopiuj z progresją</button>
-          <p class="text-xs text-stone-500">Ćwiczenia z regułą progresji dostaną wyższy ciężar lub więcej powtórzeń – sprawdź i popraw przed udostępnieniem.</p>
+          <p class="text-xs text-muted">Ćwiczenia z regułą progresji dostaną wyższy ciężar lub więcej powtórzeń – sprawdź i popraw przed udostępnieniem.</p>
           <div class="grid grid-cols-2 gap-2 pt-1">
             <button class="btn-ghost" :disabled="busy" @click="duplicateWeek(false)">Kopiuj bez zmian</button>
             <button class="btn-danger" :disabled="busy" @click="removeWeek"><Icon name="trash" class="size-4" />Usuń tydzień</button>
@@ -240,10 +240,10 @@ const removeProgram = () =>
         </section>
       </template>
 
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
     </div>
 
     <AssignProgramDialog v-if="assigning" :template-id="p.id" @close="assigning = false" @done="(id) => ((assigning = false), router.push(`/plany/${id}`))" />
   </main>
-  <main v-else class="px-4 pt-10 text-center text-stone-500">{{ loading ? 'Ładowanie…' : error || 'Nie znaleziono planu.' }}</main>
+  <main v-else class="px-4 pt-10 text-center text-muted">{{ loading ? 'Ładowanie…' : error || 'Nie znaleziono planu.' }}</main>
 </template>

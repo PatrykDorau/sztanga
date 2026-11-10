@@ -91,6 +91,18 @@ const save = () =>
   })
 
 const swap = (exerciseId: string) => run(() => programs.updateExercise(props.item.id, { exercise_id: exerciseId }))
+
+// Alternatywa dla przeciągania (dostępność i praca jedną ręką): przesunięcie o jedno miejsce.
+const siblings = computed(() => {
+  for (const w of programs.current?.program_weeks ?? []) {
+    const wo = w.workouts.find((x) => x.id === props.item.workout_id)
+    if (wo) return wo.workout_exercises
+  }
+  return []
+})
+const index = computed(() => siblings.value.findIndex((x) => x.id === props.item.id))
+const move = (delta: number) =>
+  run(() => programs.moveExercise(props.item.id, props.item.workout_id, props.item.workout_id, index.value + delta))
 const remove = () =>
   run(async () => {
     await programs.removeExercise(props.item.id, props.item.workout_id)
@@ -99,21 +111,20 @@ const remove = () =>
 </script>
 
 <template>
-  <div class="fixed inset-0 z-30 flex items-end bg-black/40 sm:items-center sm:justify-center" @click.self="emit('close')">
+  <div class="fixed inset-0 z-30 flex items-end bg-scrim sm:items-center sm:justify-center" role="dialog" aria-modal="true" @click.self="emit('close')" @keydown.esc="emit('close')">
     <form
-      class="card max-h-[92dvh] w-full space-y-4 overflow-y-auto rounded-b-none p-5 sm:max-w-lg sm:rounded-2xl"
-      style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))"
+      class="sheet space-y-4"
       @submit.prevent="save"
     >
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">
           <h2 class="text-lg leading-tight font-semibold">{{ exercise?.name_pl }}</h2>
-          <RouterLink :to="`/cwiczenia/${item.exercise_id}`" class="text-xs text-stone-500 underline">karta ćwiczenia</RouterLink>
+          <RouterLink :to="`/cwiczenia/${item.exercise_id}`" class="text-xs text-muted underline">karta ćwiczenia</RouterLink>
         </div>
-        <button type="button" class="p-1" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
+        <button type="button" class="icon-btn -m-2" aria-label="Zamknij" @click="emit('close')"><Icon name="x" class="size-5" /></button>
       </div>
 
-      <div v-if="warnings.length" class="flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+      <div v-if="warnings.length" class="flex gap-2 warn-box">
         <Icon name="alert" class="size-5 shrink-0" />
         <p>Przeciwwskazanie zgodne z ograniczeniem klienta: <strong>{{ warnings.map((w) => label(CONTRAINDICATIONS, w)).join(', ') }}</strong>.</p>
       </div>
@@ -167,7 +178,7 @@ const remove = () =>
             {{ g || 'brak' }}
           </button>
         </div>
-        <p class="mt-1 text-xs text-stone-500">Sąsiednie ćwiczenia z tą samą literą wykonuje się naprzemiennie.</p>
+        <p class="mt-1 text-xs text-muted">Sąsiednie ćwiczenia z tą samą literą wykonuje się naprzemiennie.</p>
       </div>
 
       <div>
@@ -178,7 +189,7 @@ const remove = () =>
           <button type="button" :class="f.prog_kind === 'reps' ? 'chip-on' : 'chip-off'" @click="(f.prog_kind = 'reps'), (f.prog_step = 1)">+ powt.</button>
           <input v-if="f.prog_kind" v-model="f.prog_step" inputmode="decimal" class="input !w-20" aria-label="Krok progresji" />
         </div>
-        <p v-if="preview" class="mt-1 text-xs text-stone-500">{{ preview }}</p>
+        <p v-if="preview" class="mt-1 text-xs text-muted">{{ preview }}</p>
       </div>
 
       <div>
@@ -186,9 +197,11 @@ const remove = () =>
         <textarea id="notes" v-model="f.notes" rows="2" class="input py-2" />
       </div>
 
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
       <div class="flex gap-2">
         <button type="button" class="btn-danger" :disabled="busy" aria-label="Usuń z treningu" @click="remove"><Icon name="trash" class="size-4" /></button>
+        <button type="button" class="btn-ghost !px-3" :disabled="busy || index <= 0" aria-label="Przesuń wyżej" @click="move(-1)"><Icon name="up" class="size-4" /></button>
+        <button type="button" class="btn-ghost !px-3" :disabled="busy || index >= siblings.length - 1" aria-label="Przesuń niżej" @click="move(1)"><Icon name="down" class="size-4" /></button>
         <button class="btn-primary flex-1" :disabled="busy">Zapisz</button>
       </div>
     </form>

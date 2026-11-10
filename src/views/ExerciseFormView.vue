@@ -118,7 +118,7 @@ async function submit() {
 <template>
   <main class="pb-6">
     <header class="flex items-center gap-1 px-2 pt-4">
-      <button class="p-2" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
+      <button class="icon-btn" aria-label="Wróć" @click="router.back()"><Icon name="back" class="size-6" /></button>
       <h1 class="text-lg font-bold">{{ isEdit ? 'Edytuj ćwiczenie' : 'Nowe ćwiczenie' }}</h1>
     </header>
 
@@ -152,7 +152,7 @@ async function submit() {
             <input type="file" accept="video/*" class="sr-only" @change="onFile" />
           </label>
         </div>
-        <p class="mt-1 text-xs text-stone-500">Krótki filmik 5–15 s wystarczy. Duże pliki są zmniejszane do 720p przed wysłaniem.</p>
+        <p class="mt-1 text-xs text-muted">Krótki filmik 5–15 s wystarczy. Duże pliki są zmniejszane do 720p przed wysłaniem.</p>
       </section>
 
       <section>
@@ -180,11 +180,11 @@ async function submit() {
         <textarea id="cues" v-model="form.cues" rows="5" class="input py-2" placeholder="np. Kolana w linii palców, klatka wysoko, pełna stopa na ziemi" />
       </section>
 
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-      <div v-if="busy && status" class="text-sm text-stone-600 dark:text-stone-400">
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+      <div v-if="busy && status" class="text-sm text-muted">
         {{ status }}
-        <div v-if="status.startsWith('Kompresja')" class="mt-1 h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
-          <div class="h-full bg-brand-600" :style="{ width: progress * 100 + '%' }" />
+        <div v-if="status.startsWith('Kompresja')" class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2">
+          <div class="h-full bg-primary" :style="{ width: progress * 100 + '%' }" />
         </div>
       </div>
 

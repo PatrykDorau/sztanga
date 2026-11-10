@@ -31,9 +31,9 @@ const initials = (n: string) => n.split(/\s+/).map((s) => s[0]).slice(0, 2).join
 
 <template>
   <main>
-    <header class="sticky top-0 z-10 space-y-3 bg-stone-50/95 px-4 pt-6 pb-3 backdrop-blur dark:bg-stone-950/95">
+    <header class="page-header space-y-3 px-4 pb-3">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold">Klienci</h1>
+        <h1 class="page-title">Klienci</h1>
         <RouterLink to="/klienci/nowy" class="btn-primary"><Icon name="plus" class="size-5" />Dodaj</RouterLink>
       </div>
       <input v-model="q" type="search" class="input" placeholder="Szukaj klienta…" />
@@ -47,23 +47,23 @@ const initials = (n: string) => n.split(/\s+/).map((s) => s[0]).slice(0, 2).join
     <section class="px-4">
       <div v-if="clients.loaded && !clients.all.length" class="card p-6 text-center">
         <p class="mb-1 font-semibold">Nie masz jeszcze klientów</p>
-        <p class="mb-4 text-sm text-stone-500">Dodaj klienta, żeby przypisać mu plan.</p>
+        <p class="mb-4 text-sm text-muted">Dodaj klienta, żeby przypisać mu plan.</p>
         <RouterLink to="/klienci/nowy" class="btn-primary">Dodaj pierwszego klienta</RouterLink>
       </div>
-      <p v-else-if="clients.loaded && !results.length" class="py-10 text-center text-stone-500">Brak klientów do pokazania.</p>
+      <p v-else-if="clients.loaded && !results.length" class="py-10 text-center text-muted">Brak klientów do pokazania.</p>
       <ul class="space-y-2">
         <li v-for="c in results" :key="c.id">
           <RouterLink :to="`/klienci/${c.id}`" class="card flex items-center gap-3 p-3">
-            <span class="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-900 dark:bg-brand-900/50 dark:text-brand-100">
+            <span class="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary-soft font-semibold text-primary-fg">
               {{ initials(c.full_name) }}
             </span>
             <div class="min-w-0 flex-1">
               <p class="truncate font-medium">{{ c.full_name }}</p>
-              <p class="truncate text-xs text-stone-500">
+              <p class="truncate text-xs text-muted">
                 {{ label(GROUPS, c.client_group) }} · {{ activeProgram(c.id)?.name ?? 'brak planu' }}
               </p>
             </div>
-            <Icon v-if="c.limitations.length" name="alert" class="size-4 text-amber-500" />
+            <Icon v-if="c.limitations.length" name="alert" class="size-4 text-warn-fg" />
           </RouterLink>
         </li>
       </ul>

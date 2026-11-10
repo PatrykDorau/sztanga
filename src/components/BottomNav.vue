@@ -20,17 +20,21 @@ const path = computed(() => route.path)
 
 <template>
   <nav
-    class="fixed inset-x-0 bottom-0 z-20 border-t border-stone-200 bg-white/95 backdrop-blur dark:border-stone-800 dark:bg-stone-950/95"
+    class="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur"
     style="padding-bottom: env(safe-area-inset-bottom)"
   >
-    <ul class="mx-auto flex max-w-2xl">
+    <ul class="mx-auto flex max-w-2xl" aria-label="Nawigacja główna">
       <li v-for="it in items" :key="it.to" class="flex-1">
+        <!-- Aktywna zakładka: kolor + podświetlenie ikony + pogrubienie (nie tylko kolor). -->
         <RouterLink
           :to="it.to"
-          class="flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium"
-          :class="it.match(path) ? 'text-brand-700 dark:text-brand-500' : 'text-stone-500'"
+          class="pressable flex h-16 flex-col items-center justify-center gap-1 text-xs"
+          :class="it.match(path) ? 'font-bold text-fg' : 'font-medium text-muted'"
+          :aria-current="it.match(path) ? 'page' : undefined"
         >
-          <Icon :name="it.icon" class="size-6" />
+          <span class="flex h-7 w-12 items-center justify-center rounded-full transition-colors" :class="it.match(path) ? 'bg-primary text-on-primary' : ''">
+            <Icon :name="it.icon" class="size-5" />
+          </span>
           {{ it.label }}
         </RouterLink>
       </li>
