@@ -11,6 +11,7 @@ import { useProgressStore } from '@/stores/progress'
 import { clientStatus } from '@/lib/analytics'
 import Icon from '@/components/Icon.vue'
 import ProgressRing from '@/components/ProgressRing.vue'
+import InstallApp from '@/components/InstallApp.vue'
 import SessionCard from '@/components/SessionCard.vue'
 import SessionSheet from '@/components/SessionSheet.vue'
 import TempoMetronome from '@/components/TempoMetronome.vue'
@@ -45,8 +46,9 @@ const nextSession = computed(() =>
 // Dla klienta RLS zwraca tylko jego plany, które nie są szkicem.
 const myPlans = computed(() => (auth.isTrainer ? [] : programs.list.filter((p) => !p.is_template && p.status !== 'draft')))
 
+// Kafel bazy: cała biblioteka (import + własne), ile ma film, ile nagrała trenerka.
 const own = computed(() => ex.all.filter((e) => e.source === 'own'))
-const withVideo = computed(() => own.value.filter((e) => e.video_path).length)
+const withVideo = computed(() => ex.all.filter((e) => e.video_path).length)
 const firstName = computed(() => (auth.profile?.full_name ?? '').split(/[\s@]/)[0])
 const initials = computed(() => (auth.profile?.full_name ?? '?').split(/[\s@]/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase())
 const today = new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -56,7 +58,6 @@ const withoutPlan = computed(
   () => activeClients.value.filter((c) => !programs.list.some((p) => p.client_id === c.id && p.status === 'active')).length,
 )
 const templates = computed(() => programs.list.filter((p) => p.is_template).length)
-const GOAL = 30
 
 // ===== Sesje na żywo: niedokończone i niewysłane (offline) =====
 const live = useLiveStore()
@@ -153,6 +154,8 @@ onMounted(async () => {
       </RouterLink>
     </header>
 
+    <InstallApp banner />
+
     <template v-if="auth.isTrainer">
       <RouterLink v-for="d in live.active" :key="d.client_uuid" :to="`/sesja/${d.client_uuid}`" class="card pressable flex items-center gap-3 border-primary p-4 hover:bg-surface-2">
         <Icon name="dumbbell" class="size-6 text-primary-fg" />
@@ -212,11 +215,14 @@ onMounted(async () => {
       </section>
 
       <section class="card flex items-center gap-4 p-4">
-        <ProgressRing :value="own.length" :max="GOAL" :label="`${own.length} z ${GOAL} ćwiczeń w bazie`" />
+        <ProgressRing :value="withVideo" :max="Math.max(1, ex.all.length)" :label="`${withVideo} z ${ex.all.length} ćwiczeń ma filmik`" />
         <div class="min-w-0 flex-1">
           <h2 class="text-xl font-bold">Baza ćwiczeń</h2>
-          <p class="text-sm text-muted">{{ withVideo }} z filmikiem · cel {{ GOAL }}–50</p>
-          <RouterLink to="/cwiczenia/nowe" class="btn-primary mt-3 w-full"><Icon name="plus" class="size-5" />Dodaj ćwiczenie</RouterLink>
+          <p class="text-sm text-muted">{{ ex.all.length }} ćwiczeń · {{ withVideo }} z filmikiem · {{ own.length }} własnych</p>
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <RouterLink to="/cwiczenia" class="btn-ghost">Przeglądaj</RouterLink>
+            <RouterLink to="/cwiczenia/nowe" class="btn-primary"><Icon name="plus" class="size-5" />Dodaj</RouterLink>
+          </div>
         </div>
       </section>
 
