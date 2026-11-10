@@ -80,6 +80,7 @@ Nowe migracje stosuje `npm run db:migrate` (skrypt `scripts/migrate.mjs`, Manage
 każda migracja w jednej transakcji, historia w `supabase_migrations.schema_migrations`).
 Wymaga `SUPABASE_ACCESS_TOKEN` w `.env.local` (token z https://supabase.com/dashboard/account/tokens).
 `-- --dry` pokazuje, co poszłoby; `-- --mark <wersja>` oznacza migrację wklejoną ręcznie.
+Edge Functions wdraża `npm run fn:deploy -- gcal-sync` (ten sam token, bez Dockera i `supabase login`).
 
 | Tabela | Zawartość |
 | --- | --- |

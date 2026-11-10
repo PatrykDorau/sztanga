@@ -105,7 +105,13 @@ async function pull(db: SupabaseClient, token: string, calendarId: string, gyms:
       throw e
     }
     for (const ev of page.items ?? []) {
-      await applyEvent(db, ev, gyms, clientList, aliases)
+      const recolor = await applyEvent(db, ev, gyms, clientList, aliases)
+      // Trening wpisany ręcznie w Google dostaje kolor swojej siłowni (sam tytuł zostaje bez zmian).
+      if (recolor) {
+        await gapi(token, `${calPath(calendarId)}/events/${encodeURIComponent(ev.id)}`, { method: 'PATCH', body: JSON.stringify({ colorId: String(recolor) }) }).catch((e) =>
+          console.error('recolor', e),
+        )
+      }
       processed++
     }
     if (page.nextPageToken) pageToken = page.nextPageToken
@@ -118,7 +124,8 @@ async function pull(db: SupabaseClient, token: string, calendarId: string, gyms:
   return processed
 }
 
-async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: ClientRef[], aliases: Map<string, string | null>) {
+/** Zwraca colorId, jeśli wydarzenie-trening trzeba przekolorować na kolor siłowni. */
+async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: ClientRef[], aliases: Map<string, string | null>): Promise<number | null> {
   const now = new Date().toISOString()
   const { data: linked } = await db.from('sessions').select('id, status, gcal_dirty, starts_at').eq('gcal_event_id', e.id).maybeSingle()
   const cancelLinked = async (reason: string) => {
@@ -136,10 +143,10 @@ async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: C
   if (e.status === 'cancelled') {
     await cancelLinked('Usunięte w Google Calendar')
     await db.from('calendar_events').delete().eq('gcal_event_id', e.id)
-    return
+    return null
   }
   const t = eventTimes(e)
-  if (!t) return
+  if (!t) return null
   const title = (e.summary ?? '').trim()
   const colorId = e.colorId ? Number(e.colorId) : null
   const gym = gymFor(title, colorId, gyms)
@@ -148,7 +155,7 @@ async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: C
   if (e.transparency === 'transparent' && !isFree(title)) {
     await cancelLinked('Zmienione w Google Calendar')
     await db.from('calendar_events').delete().eq('gcal_event_id', e.id)
-    return
+    return null
   }
 
   const mirror = (kind: 'free' | 'busy' | 'unmatched') =>
@@ -169,7 +176,7 @@ async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: C
     // Trenerka zwolniła termin w Google (sesja → Free) – odwołaj sesję w aplikacji.
     await cancelLinked('Zwolnione w Google Calendar (Free)')
     await mirror('free')
-    return
+    return null
   }
 
   const match = t.allDay ? null : matchClient(title, clients, aliases)
@@ -201,7 +208,7 @@ async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: C
       await db.from('sessions').insert({ ...fields, status: e.status === 'tentative' ? 'pending' : 'confirmed' })
     }
     await db.from('calendar_events').delete().eq('gcal_event_id', e.id)
-    return
+    return gym && colorId !== gym.color_id ? gym.color_id : null
   }
 
   // Nie klient: kandydat do przypisania albo prywatne "Zajęte".
@@ -210,6 +217,7 @@ async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: C
   const candidate =
     match !== 'ignored' && !t.allDay && looksLikePerson(splitTitle(title).base) && (splitTitle(title).code !== null || colorId === null || gymColors.has(colorId))
   await mirror(candidate ? 'unmatched' : 'busy')
+  return null
 }
 
 // ===================== Eksport: aplikacja → Google =====================
@@ -231,11 +239,12 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
     n++
   }
 
-  // 2) Sesje zmienione w aplikacji
+  // 2) Sesje zmienione w aplikacji + przyszłe sesje sprzed podłączenia Google (nigdy niesynchronizowane).
   const { data: dirty } = await db
     .from('sessions')
     .select('id, client_id, starts_at, ends_at, status, gym_id, gcal_event_id, from_free_event, clients(full_name)')
-    .eq('gcal_dirty', true)
+    .or(`gcal_dirty.eq.true,and(gcal_synced_at.is.null,gcal_event_id.is.null,status.in.(pending,confirmed),starts_at.gt.${now()})`)
+    .order('starts_at')
     .limit(100)
   for (const s of (dirty ?? []) as any[]) {
     const gym = gyms.find((g) => g.id === s.gym_id) ?? gyms.find((g) => g.is_default) ?? null
