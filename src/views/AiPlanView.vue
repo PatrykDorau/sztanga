@@ -13,6 +13,8 @@ import { allowedSet } from '@/lib/gymEquipment'
 import { buildRulePlan, loadRuleData, savePlanDraft } from '@/lib/planRules'
 import { CONTRAINDICATIONS, EQUIPMENT } from '@/lib/vocab'
 import ChipSelect from '@/components/ChipSelect.vue'
+import { loadCredits, lowCredits, remaining, usd } from '@/lib/credits'
+loadCredits().catch(() => null)
 import Icon from '@/components/Icon.vue'
 
 const route = useRoute()
@@ -204,6 +206,7 @@ async function submit(mode: 'rules' | 'ai') {
       </div>
 
       <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
+      <RouterLink v-if="aiOn && lowCredits" to="/profil" class="warn-box block text-sm">Kończą się kredyty Anthropic – zostało ok. {{ usd(remaining) }}. Generator „Z AI” może przestać działać; „Z reguł” jest darmowy.</RouterLink>
       <div v-if="busy" class="card space-y-2 p-4" role="status">
         <p class="font-semibold">{{ busy === 'ai' ? 'Claude układa plan…' : 'Układanie planu…' }} <span class="text-muted tabular-nums">{{ elapsed }} s</span></p>
         <p class="text-sm text-muted">{{ busy === 'ai' ? 'Zwykle do minuty.' : 'Kilka sekund.' }} Potem plan otworzy się w kreatorze jako szkic.</p>

@@ -8,6 +8,9 @@ import { askAssistant, pieces, type ChatContext, type ChatMessage } from '@/lib/
 import { useClientsStore } from '@/stores/clients'
 import Icon from '@/components/Icon.vue'
 import ProposalCard from '@/components/ProposalCard.vue'
+import { loadCredits, lowCredits, remaining, usd } from '@/lib/credits'
+// Ostrzeżenie o kończących się kredytach (szacunek z Profilu) – odświeżane po każdej odpowiedzi.
+loadCredits().catch(() => null)
 
 const router = useRouter()
 const route = useRoute()
@@ -79,6 +82,7 @@ async function send(text = input.value) {
   busy.value = true
   try {
     const { answer, proposals } = await askAssistant(messages.value, context)
+    loadCredits().catch(() => null)
     messages.value.push({ role: 'assistant', content: answer, proposals: proposals?.length ? proposals.map((p) => ({ ...p, state: 'pending' as const })) : undefined })
   } catch (e) {
     error.value = (e as Error).message
@@ -110,6 +114,9 @@ function reset() {
     </header>
 
     <div class="flex-1 space-y-3 px-4">
+      <RouterLink v-if="lowCredits" to="/profil" class="warn-box block">
+        Kończą się kredyty Anthropic – zostało ok. {{ usd(remaining) }} (mniej niż 10% doładowania). Doładuj konto, inaczej asystent przestanie odpowiadać. Szczegóły w Profilu →
+      </RouterLink>
       <div v-if="!messages.length" class="space-y-2">
         <p class="text-sm text-muted">Na przykład:</p>
         <button v-for="e in EXAMPLES" :key="e" class="card pressable block w-full p-3 text-left text-sm hover:bg-surface-2" @click="send(e)">{{ e }}</button>
