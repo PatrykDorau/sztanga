@@ -93,19 +93,19 @@ const fmtDay = (d: string) => new Date(d + 'T12:00').toLocaleDateString('pl-PL',
         <h2 class="mb-1 text-xl font-bold">Tydzień pracy</h2>
         <p class="mb-3 text-sm text-muted">W tych godzinach klienci widzą wolne terminy do rezerwacji.</p>
         <ul class="card divide-y divide-line">
-          <li v-for="(name, i) in WEEKDAYS" :key="i" class="p-3">
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-semibold">{{ name }}</span>
-              <button class="icon-btn -mr-2" :aria-label="`Dodaj godziny – ${name}`" @click="adding = adding === i + 1 ? null : i + 1"><Icon name="plus" class="size-5" /></button>
-            </div>
-            <div class="flex flex-wrap gap-2">
+          <li v-for="(name, i) in WEEKDAYS" :key="i" class="px-3 py-2">
+            <div class="flex items-center gap-2">
+              <span class="w-24 shrink-0 font-semibold">{{ name }}</span>
+            <div class="flex min-w-0 flex-1 flex-wrap gap-2">
               <span v-for="r in rulesFor(i + 1)" :key="r.id" class="inline-flex min-h-9 items-center gap-1 rounded-full bg-primary-soft pl-3 text-sm font-semibold text-primary-fg tabular-nums">
                 {{ time5(r.start_time) }}–{{ time5(r.end_time) }}
                 <button class="flex size-9 items-center justify-center rounded-full" :aria-label="`Usuń ${time5(r.start_time)}–${time5(r.end_time)}`" :disabled="busy" @click="run(() => schedule.removeRule(r.id))">
                   <Icon name="x" class="size-4" />
                 </button>
               </span>
-              <span v-if="!rulesFor(i + 1).length && adding !== i + 1" class="text-sm text-muted">wolne</span>
+              <span v-if="!rulesFor(i + 1).length" class="py-2 text-sm text-muted">wolne</span>
+            </div>
+              <button class="icon-btn -mr-2 shrink-0" :aria-label="`Dodaj godziny – ${name}`" @click="adding = adding === i + 1 ? null : i + 1"><Icon name="plus" class="size-5" /></button>
             </div>
             <form v-if="adding === i + 1" class="mt-2 flex items-end gap-2" @submit.prevent="addRule(i + 1)">
               <label class="flex-1"><span class="label">Od</span><input v-model="range.start" type="time" step="900" class="input" /></label>

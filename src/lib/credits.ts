@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 export interface UsageRow {
   created_at: string
-  action: 'ask' | 'plan' | 'translate'
+  action: 'ask' | 'plan' | 'translate' | 'import'
   model: string
   cost_usd: number
 }
@@ -44,4 +44,4 @@ export async function setBalance(balance: number, topup: number) {
 }
 
 export const usd = (n: number | null | undefined, d = 2) => (n == null ? '—' : `${n.toFixed(d).replace('.', ',')} USD`)
-export const ACTION_LABEL: Record<UsageRow['action'], string> = { ask: 'Asystent', plan: 'Generator planu', translate: 'Tłumaczenie' }
+export const ACTION_LABEL: Record<UsageRow['action'], string> = { ask: 'Asystent', plan: 'Generator planu', translate: 'Tłumaczenie', import: 'Import treningu' }

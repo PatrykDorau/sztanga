@@ -16,6 +16,7 @@ const router = createRouter({
     { path: '/klienci/:id', name: 'client', component: () => import('@/views/ClientDetailView.vue'), props: true, meta: { trainer: true } },
     { path: '/klienci/:id/edycja', name: 'client-edit', component: () => import('@/views/ClientFormView.vue'), props: true, meta: { trainer: true } },
     { path: '/plany', name: 'programs', component: () => import('@/views/ProgramsView.vue'), meta: { trainer: true } },
+    { path: '/plany/import', name: 'program-import', component: () => import('@/views/ImportWorkoutView.vue'), meta: { trainer: true } },
     { path: '/plany/ai', name: 'program-ai', component: () => import('@/views/AiPlanView.vue'), meta: { trainer: true } },
     { path: '/asystent', name: 'assistant', component: () => import('@/views/AssistantView.vue'), meta: { trainer: true } },
     { path: '/plany/:id', name: 'program', component: () => import('@/views/ProgramEditorView.vue'), props: true, meta: { trainer: true } },
@@ -37,6 +38,8 @@ const router = createRouter({
     { path: '/silownie/:id', name: 'gym-equipment', component: () => import('@/views/GymEquipmentView.vue'), props: true, meta: { trainer: true } },
     { path: '/wyzwania', name: 'challenges', component: () => import('@/views/ChallengesView.vue'), meta: { trainer: true } },
     { path: '/p/:token', name: 'shared-plan', component: () => import('@/views/SharedPlanView.vue'), props: true, meta: { public: true } },
+    { path: '/badania', name: 'studies', component: () => import('@/views/StudiesView.vue'), meta: { trainer: true } },
+    { path: '/badania/:id', name: 'study', component: () => import('@/views/StudyView.vue'), props: true, meta: { trainer: true } },
     { path: '/postepy', name: 'my-progress', component: () => import('@/views/MyProgressView.vue') },
     { path: '/terminy', name: 'my-sessions', component: () => import('@/views/MySessionsView.vue') },
     // Publiczny formularz dla nowych klientów – bez logowania.

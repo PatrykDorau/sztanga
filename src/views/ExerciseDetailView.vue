@@ -9,7 +9,7 @@ import ExerciseThumb from '@/components/ExerciseThumb.vue'
 import Icon from '@/components/Icon.vue'
 import ExerciseMedia from '@/components/ExerciseMedia.vue'
 import ExerciseAnimation from '@/components/ExerciseAnimation.vue'
-import { autoFamily, FAMILIES, FAMILY_KEYS, familyOf } from '@/lib/pose/families'
+import { autoFamily, FAMILIES, FAMILY_KEYS, familyOf, isOneLeg } from '@/lib/pose/families'
 
 const props = defineProps<{ id: string }>()
 const auth = useAuthStore()
@@ -126,7 +126,7 @@ async function remove() {
       <div v-if="family" class="flex rounded-xl bg-surface-2 p-1" role="tablist" aria-label="Podgląd ruchu">
         <button v-for="[k, l] in mediaTabs" :key="k" role="tab" :aria-selected="media === k" class="min-h-9 flex-1 rounded-lg text-sm font-semibold" :class="media === k ? 'bg-surface shadow' : 'text-muted'" @click="media = k">{{ l }}</button>
       </div>
-      <ExerciseAnimation v-if="family && media === 'anim'" :family="family" :equipment="e.equipment" />
+      <ExerciseAnimation v-if="family && media === 'anim'" :family="family" :equipment="e.equipment" :one-leg="isOneLeg(e)" />
       <ExerciseMedia v-else :video-src="videoSrc" :images="e.image_urls?.length ? e.image_urls : e.image_url ? [e.image_url] : []" :name-en="e.name_en" :name-pl="e.name_pl" />
 
       <div class="flex flex-wrap items-center gap-2 text-sm">

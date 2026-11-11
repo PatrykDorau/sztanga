@@ -68,7 +68,7 @@ const since = computed(() => (credits.value?.at ? new Date(credits.value.at).toL
       </div>
       <p v-if="pct < 10" class="warn-box">Zostało mniej niż 10% kredytów – doładuj konto w konsoli Anthropic, inaczej asystent i generator AI przestaną działać.</p>
       <p class="text-muted">
-        Wydane od {{ since }}: <strong class="text-fg">{{ usd(credits.spent, 3) }}</strong> ({{ credits.rows.length }} wywołań)<template v-if="avgAsk != null"> · pytanie do asystenta średnio {{ usd(avgAsk, 3) }}</template>
+        Wydane od {{ since }}: <strong class="text-fg">{{ usd(credits.spent, 3) }}</strong> ({{ credits.rows.length }} {{ credits.rows.length === 1 ? 'wywołanie' : [2, 3, 4].includes(credits.rows.length % 10) && ![12, 13, 14].includes(credits.rows.length % 100) ? 'wywołania' : 'wywołań' }})<template v-if="avgAsk != null"> · pytanie do asystenta średnio {{ usd(avgAsk, 3) }}</template>
       </p>
       <ul v-if="byAction.length" class="space-y-1">
         <li v-for="[a, x] in byAction" :key="a" class="flex justify-between gap-2">

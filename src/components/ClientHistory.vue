@@ -43,7 +43,7 @@ const approve = (log: SessionLog) => progress.updateLog(props.clientId, log.id, 
     <article v-for="log in logs" :key="log.id" class="card p-4">
       <header class="mb-2 flex items-baseline justify-between gap-2">
         <h3 class="text-lg font-bold first-letter:uppercase">{{ new Date(log.started_at).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }) }}</h3>
-        <span class="text-xs text-muted">{{ log.finished_at ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 60000) + ' min' : '' }}</span>
+        <span class="text-xs text-muted">{{ log.finished_at && new Date(log.finished_at).getTime() - new Date(log.started_at).getTime() >= 60000 ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 60000) + ' min' : '' }}</span>
       </header>
 
       <ul class="space-y-1 text-sm">

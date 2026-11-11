@@ -2,9 +2,15 @@
 // Animowany ludzik – wzorzec ruchu rodziny (przysiad, wiosłowanie…) ze sprzętem dobranym do ćwiczenia.
 // Ten sam wzorzec służy do rozpoznawania i porównywania nagrań w analizie ruchu.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { animTempo, FAMILIES, variantOf, type FamilyKey, type Fig, type P } from '@/lib/pose/families'
+import { animTempo, FAMILIES, poseFor, variantOf, type FamilyKey, type Fig, type P } from '@/lib/pose/families'
 
-const props = withDefaults(defineProps<{ family: FamilyKey; equipment?: string[]; small?: boolean; phase?: number | null }>(), { equipment: () => [], small: false, phase: null })
+const props = withDefaults(defineProps<{ family: FamilyKey; equipment?: string[]; small?: boolean; phase?: number | null; oneLeg?: boolean }>(), {
+  equipment: () => [],
+  small: false,
+  phase: null,
+  oneLeg: false,
+})
+const poseAt = (f: number) => poseFor(props.family, f, v.value, props.oneLeg)
 
 const v = computed(() => variantOf(props.equipment))
 const fam = computed(() => FAMILIES[props.family])
@@ -59,7 +65,7 @@ const marks = computed(() => {
   return [a, a + b, a + b + c].map((x) => (x / total.value) * 100)
 })
 
-const fig = computed<Fig>(() => fam.value.pose(props.phase ?? ph.value, v.value))
+const fig = computed<Fig>(() => poseAt(props.phase ?? ph.value))
 const fmtS = (x: number) => x.toFixed(1).replace('.', ',')
 const extra = computed(() => fam.value.props?.(v.value) ?? {})
 
@@ -67,7 +73,7 @@ const extra = computed(() => fam.value.props?.(v.value) ?? {})
 const box = computed(() => {
   const pts: P[] = []
   for (const f of [0, 0.5, 1]) {
-    const g = fam.value.pose(f, v.value)
+    const g = poseAt(f)
     for (const val of Object.values(g)) if (Array.isArray(val)) pts.push(val as P)
   }
   const e = extra.value

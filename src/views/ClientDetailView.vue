@@ -7,6 +7,7 @@ import ClientKid from '@/components/ClientKid.vue'
 import RescheduleSheet from '@/components/RescheduleSheet.vue'
 import ClientAttendance from '@/components/ClientAttendance.vue'
 import ClientViewSettings from '@/components/ClientViewSettings.vue'
+import ClientStudies from '@/components/ClientStudies.vue'
 import { offers as rescheduleOffers } from '@/lib/reschedule'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
@@ -67,7 +68,8 @@ onMounted(() =>
   ]),
 )
 const upcoming = computed(() =>
-  schedule.sessions.filter((s) => s.client_id === props.id && s.ends_at >= new Date().toISOString() && s.status !== 'cancelled').slice(0, 5),
+  // Tylko to, co jeszcze się odbędzie (bez odwołanych, odbytych i nieobecności).
+  schedule.sessions.filter((s) => s.client_id === props.id && s.ends_at >= new Date().toISOString() && ['pending', 'confirmed'].includes(s.status)).slice(0, 5),
 )
 const c = computed(() => clients.byId(props.id))
 const plans = computed(() => programs.list.filter((p) => p.client_id === props.id))
@@ -118,12 +120,17 @@ async function newPlan() {
       <ClientKid v-else-if="tab === 'kid'" :client-id="c.id" :first-name="c.full_name.split(' ')[0]" />
 
       <template v-else>
-      <button class="btn-primary w-full" @click="startLive"><Icon name="dumbbell" class="size-5" />Sesja teraz (bez terminu)</button>
-      <RouterLink :to="{ path: '/asystent', query: { client: c.id } }" class="btn-ghost w-full border border-line-strong"><Icon name="star" class="size-5" />Zapytaj asystenta AI o tego klienta</RouterLink>
-      <div class="flex flex-wrap gap-1.5">
+      <div class="flex flex-wrap items-center gap-1.5">
         <span class="tag">{{ label(GROUPS, c.client_group) }}</span>
         <span v-if="age !== null" class="tag">{{ age }} lat</span>
         <span v-if="c.archived" class="tag">Archiwum</span>
+        <a v-if="c.phone" :href="`tel:${c.phone.replace(/s+/g, '')}`" class="tag !bg-surface-2 underline-offset-2 hover:underline">{{ c.phone }}</a>
+        <a v-if="c.email" :href="`mailto:${c.email}`" class="tag max-w-full truncate !bg-surface-2 underline-offset-2 hover:underline">{{ c.email }}</a>
+      </div>
+      <!-- Szybkie akcje: rzadziej używane niż informacje o kliencie, więc nie dominują ekranu -->
+      <div class="grid grid-cols-2 gap-2">
+        <button class="btn-ghost border border-line-strong text-sm" @click="startLive"><Icon name="dumbbell" class="size-4" />Sesja teraz</button>
+        <RouterLink :to="{ path: '/asystent', query: { client: c.id } }" class="btn-ghost border border-line-strong text-sm"><Icon name="star" class="size-4" />Zapytaj asystenta</RouterLink>
       </div>
 
       <section class="card space-y-3 p-4 text-sm">
@@ -143,22 +150,19 @@ async function newPlan() {
           <p class="text-xs font-medium tracking-wide text-muted uppercase">Notatki</p>
           <p class="whitespace-pre-line">{{ c.notes }}</p>
         </div>
-        <p v-if="c.email || c.phone" class="text-muted">{{ [c.email, c.phone].filter(Boolean).join(' · ') }}</p>
         <p v-if="!c.goals && !c.limitations.length && !c.notes" class="text-muted">
           Uzupełnij cele i ograniczenia – kreator planu z nich korzysta.
         </p>
       </section>
 
       <section>
-        <div class="mb-2 flex items-center justify-between">
-          <h2 class="text-xl font-bold">Najbliższe sesje</h2>
-          <div class="flex gap-1">
-            <button class="btn-ghost !min-h-10 text-sm" :class="pendingChange ? 'text-primary-fg' : ''" @click="rescheduling = true">
-              <Icon name="swap" class="size-4" />{{ pendingChange ? 'Klient wybrał termin' : 'Zmiana terminu' }}
-            </button>
-            <button class="btn-ghost !min-h-10 text-sm" @click="booking = true"><Icon name="plus" class="size-4" />Umów</button>
-          </div>
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <h2 class="text-xl font-bold whitespace-nowrap">Najbliższe sesje</h2>
+          <button class="btn-ghost !min-h-10 shrink-0 text-sm" @click="booking = true"><Icon name="plus" class="size-4" />Umów</button>
         </div>
+        <button class="mb-2 flex w-full items-center gap-2 rounded-xl px-1 py-1 text-left text-sm" :class="pendingChange ? 'font-semibold text-primary-fg' : 'text-muted'" @click="rescheduling = true">
+          <Icon name="swap" class="size-4 shrink-0" />{{ pendingChange ? 'Klient wybrał nowy stały termin – sprawdź' : 'Zaproponuj zmianę stałego terminu' }}
+        </button>
         <p v-if="!upcoming.length" class="text-sm text-muted">Brak zaplanowanych sesji.</p>
         <ul class="space-y-2">
           <li v-for="s in upcoming" :key="s.id">
@@ -168,6 +172,7 @@ async function newPlan() {
       </section>
 
       <ClientAttendance :key="openSession ?? 'att'" :client-id="c.id" />
+      <ClientStudies :client-id="c.id" />
 
       <section>
         <div class="mb-2 flex items-center justify-between">

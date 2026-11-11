@@ -10,7 +10,6 @@ import { useLiveStore } from '@/stores/live'
 import { useProgressStore } from '@/stores/progress'
 import { clientStatus } from '@/lib/analytics'
 import Icon from '@/components/Icon.vue'
-import { familyOf } from '@/lib/pose/families'
 import InstallApp from '@/components/InstallApp.vue'
 import { myProgressAny, myView } from '@/lib/clientView'
 import SessionCard from '@/components/SessionCard.vue'
@@ -47,10 +46,16 @@ const nextSession = computed(() =>
 // Dla klienta RLS zwraca tylko jego plany, które nie są szkicem.
 const myPlans = computed(() => (auth.isTrainer ? [] : programs.list.filter((p) => !p.is_template && p.status !== 'draft')))
 
-// Kafel bazy: cała biblioteka (import + własne), ile ma film, ile nagrała trenerka.
-const own = computed(() => ex.all.filter((e) => e.source === 'own'))
-// Podgląd ruchu: film, zdjęcia z importu albo animacja wzorca rodziny ruchu.
-const withMedia = computed(() => ex.all.filter((e) => e.video_path || e.image_urls?.length || e.image_url || familyOf(e)).length)
+// Skróty do narzędzi (Start)
+const TOOLS = computed(() => [
+  { to: '/asystent', icon: 'star', label: 'Asystent', sub: 'pytania o klientów' },
+  { to: '/analiza', icon: 'video', label: 'Analiza ruchu', sub: 'nagraj ćwiczenie' },
+  { to: '/cwiczenia', icon: 'dumbbell', label: 'Ćwiczenia', sub: `${ex.all.length} w bazie` },
+  { to: '/badania', icon: 'trend', label: 'Badania', sub: 'testy CMJ, SJ…' },
+  { to: '/plany/import', icon: 'mic', label: 'Import treningu', sub: 'tekst, zdjęcie, głos' },
+  { to: '/wyzwania', icon: 'trophy', label: 'Wyzwania', sub: 'dla grup dzieci' },
+  { to: '/grafik/raport', icon: 'chart', label: 'Raport', sub: 'miesięczny' },
+])
 const firstName = computed(() => (auth.profile?.full_name ?? '').split(/[\s@]/)[0])
 const initials = computed(() => (auth.profile?.full_name ?? '?').split(/[\s@]/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase())
 const today = new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -216,28 +221,6 @@ onMounted(async () => {
         </div>
       </section>
 
-      <section class="card space-y-3 p-4">
-        <div class="flex items-baseline justify-between gap-3">
-          <h2 class="text-xl font-bold">Baza ćwiczeń</h2>
-          <RouterLink to="/cwiczenia" class="text-sm font-semibold text-primary-fg">Przeglądaj</RouterLink>
-        </div>
-        <div class="grid grid-cols-3 gap-2 text-center">
-          <div class="rounded-xl bg-surface-2 p-3">
-            <p class="font-display text-3xl leading-none font-bold tabular-nums">{{ ex.all.length }}</p>
-            <p class="mt-1 text-xs text-muted">ćwiczeń</p>
-          </div>
-          <div class="rounded-xl bg-surface-2 p-3">
-            <p class="font-display text-3xl leading-none font-bold tabular-nums">{{ withMedia }}</p>
-            <p class="mt-1 text-xs text-muted">z animacją, filmem lub zdjęciami</p>
-          </div>
-          <div class="rounded-xl bg-surface-2 p-3">
-            <p class="font-display text-3xl leading-none font-bold tabular-nums">{{ own.length }}</p>
-            <p class="mt-1 text-xs text-muted">Twoich</p>
-          </div>
-        </div>
-        <RouterLink to="/cwiczenia/nowe" class="btn-primary w-full"><Icon name="plus" class="size-5" />Dodaj własne ćwiczenie</RouterLink>
-      </section>
-
       <section v-if="report" class="card space-y-3 p-4">
         <h2 class="text-xl font-bold">Raport tygodnia</h2>
         <div class="grid grid-cols-2 gap-2 text-sm">
@@ -272,42 +255,23 @@ onMounted(async () => {
         </RouterLink>
       </section>
 
-      <RouterLink to="/asystent" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
-        <Icon name="search" class="size-7 shrink-0 text-primary-fg" />
-        <div class="min-w-0 flex-1">
-          <h2 class="text-xl font-bold">Asystent</h2>
-          <p class="text-sm text-muted">Zapytaj np. „kiedy Ania ostatnio robiła martwy ciąg i z jakim ciężarem?”</p>
+      <!-- Narzędzia: zwarte kafelki zamiast pełnych kart (rzadziej używane niż grafik i klienci) -->
+      <section>
+        <h2 class="mb-2 text-lg font-bold">Narzędzia</h2>
+        <div class="grid grid-cols-3 gap-2">
+          <RouterLink v-for="t in TOOLS" :key="t.label" :to="t.to" class="card pressable flex flex-col items-center justify-center gap-1.5 p-3 text-center hover:bg-surface-2">
+            <Icon :name="t.icon" class="size-6 text-primary-fg" />
+            <span class="text-sm leading-tight font-semibold">{{ t.label }}</span>
+            <span v-if="t.sub" class="text-[11px] leading-tight text-muted">{{ t.sub }}</span>
+          </RouterLink>
+          <button type="button" class="card pressable flex flex-col items-center justify-center gap-1.5 p-3 text-center hover:bg-surface-2" @click="metronome = true">
+            <Icon name="clock" class="size-6 text-primary-fg" />
+            <span class="text-sm leading-tight font-semibold">Metronom</span>
+            <span class="text-[11px] leading-tight text-muted">tempo powtórzeń</span>
+          </button>
         </div>
-        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
-      </RouterLink>
-
-      <RouterLink to="/wyzwania" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
-        <Icon name="trophy" class="size-7 shrink-0 text-primary-fg" />
-        <div class="min-w-0 flex-1">
-          <h2 class="text-xl font-bold">Wyzwania drużynowe</h2>
-          <p class="text-sm text-muted">Wspólny cel dla grupy dzieci – bez rankingów.</p>
-        </div>
-        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
-      </RouterLink>
-
-      <button type="button" class="card pressable flex w-full items-center gap-4 p-4 text-left hover:bg-surface-2" @click="metronome = true">
-        <Icon name="clock" class="size-7 shrink-0 text-primary-fg" />
-        <div class="min-w-0 flex-1">
-          <h2 class="text-xl font-bold">Metronom tempa</h2>
-          <p class="text-sm text-muted">Słupki: w dół, pauza, w górę – z dźwiękiem i licznikiem powtórzeń.</p>
-        </div>
-        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
-      </button>
+      </section>
       <TempoMetronome v-if="metronome" @close="metronome = false" />
-
-      <RouterLink to="/analiza" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
-        <Icon name="video" class="size-7 shrink-0 text-primary-fg" />
-        <div class="min-w-0 flex-1">
-          <h2 class="text-xl font-bold">Analiza ruchu</h2>
-          <p class="text-sm text-muted">Nagraj ćwiczenie – licznik powtórzeń, kąty, tempo i porównanie ze wzorcem.</p>
-        </div>
-        <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
-      </RouterLink>
     </template>
 
     <RouterLink v-if="!auth.isTrainer && auth.profile && myView('sessions')" to="/terminy" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">

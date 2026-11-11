@@ -90,7 +90,7 @@ async function remove() {
       <button v-else class="min-h-11 flex-1 text-left font-display text-xl font-bold" @click="renaming = true">{{ workout.name }}</button>
       <button v-if="dayIndex > 0" class="icon-btn text-subtle" aria-label="Przesuń trening wyżej" @click="moveDay(-1)"><Icon name="up" class="size-4" /></button>
       <button v-if="week && dayIndex < week.workouts.length - 1" class="icon-btn text-subtle" aria-label="Przesuń trening niżej" @click="moveDay(1)"><Icon name="down" class="size-4" /></button>
-      <button v-if="workout.workout_exercises.length" class="icon-btn" :class="showMap ? 'text-primary-fg' : 'text-subtle'" :aria-pressed="showMap" aria-label="Obciążenie mięśni w tym treningu" title="Obciążenie mięśni" @click="showMap = !showMap"><Icon name="user" class="size-4" /></button>
+      <button v-if="workout.workout_exercises.length" class="min-h-9 shrink-0 rounded-lg border px-2 text-xs font-semibold" :class="showMap ? 'border-primary bg-primary-soft text-primary-fg' : 'border-line-strong text-muted'" :aria-pressed="showMap" aria-label="Obciążenie mięśni w tym treningu" @click="showMap = !showMap">Mięśnie</button>
       <button class="icon-btn text-subtle hover:text-danger" aria-label="Usuń trening" @click="remove"><Icon name="trash" class="size-4" /></button>
     </header>
 

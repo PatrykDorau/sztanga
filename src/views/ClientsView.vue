@@ -22,6 +22,15 @@ const gym = ref<string | null>(null) // filtr siłowni; '' = bez siłowni
 const calendar = useCalendarStore()
 type Sort = 'name' | 'absent' | 'progress'
 const sort = ref<Sort>('name')
+// Pola wyboru filtrów → istniejące filtry (grupa / archiwum, siłownia)
+const groupSel = computed({
+  get: () => (showArchived.value ? '__archived' : (group.value ?? '')),
+  set: (v: string) => {
+    showArchived.value = v === '__archived'
+    group.value = v && v !== '__archived' ? v : null
+  },
+})
+const gymSel = computed({ get: () => (gym.value == null ? '__all' : gym.value), set: (v: string) => (gym.value = v === '__all' ? null : v) })
 const recentLogs = ref<SessionLog[]>([])
 
 onMounted(async () => {
@@ -77,28 +86,23 @@ const absentLong = (d: number | null) => d !== null && d >= 14
         <RouterLink to="/klienci/nowy" class="btn-primary"><Icon name="plus" class="size-5" />Dodaj</RouterLink>
       </div>
       <input v-model="q" type="search" class="input" placeholder="Szukaj klienta…" aria-label="Szukaj klienta" />
-      <div class="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
-        <button :class="!group ? 'chip-on' : 'chip-off'" @click="group = null">Wszyscy</button>
-        <button v-for="(l, k) in GROUPS" :key="k" :class="group === k ? 'chip-on' : 'chip-off'" @click="group = String(k)">{{ l }}</button>
-        <button :class="showArchived ? 'chip-on' : 'chip-off'" @click="showArchived = !showArchived">Archiwum</button>
-      </div>
-      <div v-if="calendar.gyms.length > 1" class="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]" role="group" aria-label="Siłownia">
-        <button :class="gym == null ? 'chip-on' : 'chip-off'" @click="gym = null">Każda siłownia</button>
-        <button v-for="g in calendar.gyms" :key="g.id" :class="gym === g.id ? 'chip-on' : 'chip-off'" class="shrink-0" @click="gym = gym === g.id ? null : g.id">{{ g.name }}</button>
-        <button v-if="clients.all.some((c) => !c.gym_id)" :class="gym === '' ? 'chip-on' : 'chip-off'" class="shrink-0" @click="gym = gym === '' ? null : ''">Bez siłowni</button>
-      </div>
-      <div class="flex items-center gap-2 text-sm">
-        <span class="text-muted">Sortuj:</span>
-        <button
-          v-for="[k, l] in ([['name', 'A–Z'], ['absent', 'Dawno nie był'], ['progress', 'Postęp']] as [Sort, string][])"
-          :key="k"
-          class="chip !min-h-9 text-sm"
-          :class="sort === k ? 'border-primary bg-primary-soft font-semibold' : 'border-line bg-surface text-muted'"
-          :aria-pressed="sort === k"
-          @click="sort = k"
-        >
-          {{ l }}
-        </button>
+      <!-- Filtry w jednym rzędzie: grupa, siłownia, sortowanie (wcześniej trzy rzędy chipsów) -->
+      <div class="grid grid-cols-3 gap-2">
+        <select v-model="groupSel" class="input !min-h-10 !px-2 text-sm" aria-label="Grupa">
+          <option value="">Wszyscy</option>
+          <option v-for="(l, k) in GROUPS" :key="k" :value="k">{{ l }}</option>
+          <option value="__archived">Archiwum</option>
+        </select>
+        <select v-if="calendar.gyms.length > 1" v-model="gymSel" class="input !min-h-10 !px-2 text-sm" aria-label="Siłownia">
+          <option value="__all">Każda siłownia</option>
+          <option v-for="g in calendar.gyms" :key="g.id" :value="g.id">{{ g.name }}</option>
+          <option v-if="clients.all.some((c) => !c.gym_id)" value="">Bez siłowni</option>
+        </select>
+        <select v-model="sort" class="input !min-h-10 !px-2 text-sm" :class="calendar.gyms.length > 1 ? '' : 'col-span-2'" aria-label="Sortowanie">
+          <option value="name">A–Z</option>
+          <option value="absent">Dawno nie był</option>
+          <option value="progress">Postęp</option>
+        </select>
       </div>
     </header>
 

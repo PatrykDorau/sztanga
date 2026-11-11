@@ -80,17 +80,17 @@ const shift = (n: number) => (selected.value = addDays(selected.value, n))
     <header class="page-header space-y-3 px-4 pb-3">
       <div class="flex items-center justify-between gap-2">
         <h1 class="page-title">Grafik</h1>
-        <div class="flex gap-1">
-          <RouterLink to="/grafik/zgloszenia" class="icon-btn relative" :aria-label="`Zgłoszenia na konsultację${newRequests ? ` (${newRequests} nowe)` : ''}`">
-            <Icon name="bell" class="size-5" />
-            <span v-if="newRequests" class="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">{{ newRequests }}</span>
+        <div class="flex gap-0.5">
+          <RouterLink to="/grafik/zgloszenia" class="icon-btn relative !h-auto flex-col py-1" :aria-label="`Zgłoszenia na konsultację${newRequests ? ` (${newRequests} nowe)` : ''}`">
+            <Icon name="bell" class="size-5" /><span class="mt-0.5 block text-[10px] leading-none font-semibold text-muted">Zgłoszenia</span>
+            <span v-if="newRequests" class="absolute top-0 right-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">{{ newRequests }}</span>
           </RouterLink>
-          <RouterLink to="/grafik/google" class="icon-btn relative" :aria-label="`Google Calendar${unmatchedCount ? ` (${unmatchedCount} do przypisania)` : ''}`">
-            <Icon name="calendar" class="size-5" :class="cal.status?.connected ? 'text-success' : ''" />
-            <span v-if="unmatchedCount" class="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">{{ unmatchedCount }}</span>
+          <RouterLink to="/grafik/google" class="icon-btn relative !h-auto flex-col py-1" :aria-label="`Google Calendar${unmatchedCount ? ` (${unmatchedCount} do przypisania)` : ''}`">
+            <Icon name="calendar" class="size-5" :class="cal.status?.connected ? 'text-success' : ''" /><span class="mt-0.5 block text-[10px] leading-none font-semibold text-muted">Google</span>
+            <span v-if="unmatchedCount" class="absolute top-0 right-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">{{ unmatchedCount }}</span>
           </RouterLink>
-          <RouterLink to="/grafik/raport" class="icon-btn" aria-label="Raport miesięczny"><Icon name="clipboard" class="size-5" /></RouterLink>
-          <RouterLink to="/grafik/dostepnosc" class="icon-btn" aria-label="Dostępność i zasady rezerwacji"><Icon name="clock" class="size-5" /></RouterLink>
+          <RouterLink to="/grafik/raport" class="icon-btn !h-auto flex-col py-1" aria-label="Raport miesięczny"><Icon name="clipboard" class="size-5" /><span class="mt-0.5 block text-[10px] leading-none font-semibold text-muted">Raport</span></RouterLink>
+          <RouterLink to="/grafik/dostepnosc" class="icon-btn !h-auto flex-col py-1" aria-label="Dostępność i zasady rezerwacji"><Icon name="clock" class="size-5" /><span class="mt-0.5 block text-[10px] leading-none font-semibold text-muted">Godziny</span></RouterLink>
         </div>
       </div>
 
