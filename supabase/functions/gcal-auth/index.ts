@@ -82,6 +82,14 @@ Deno.serve(async (req) => {
       /* brak e-maila nie blokuje połączenia */
     }
 
+    // Inne konto Google niż dotąd – dane starego kalendarza (wydarzenia, odwołane, powiązania sesji) już nie dotyczą.
+    const { data: prev } = await db.from('google_connection').select('email').eq('id', 1).single()
+    const switched = !!prev?.email && !!email && prev.email !== email
+    if (switched) {
+      await db.rpc('google_forget_calendar')
+      await db.from('google_connection').update({ calendar_id: 'primary' }).eq('id', 1)
+    }
+
     await db
       .from('google_connection')
       .update({
@@ -90,6 +98,8 @@ Deno.serve(async (req) => {
         access_token_expires: new Date(Date.now() + tok.expires_in * 1000).toISOString(),
         email,
         sync_token: null,
+        import_page_token: null,
+        sync_window_end: null,
         oauth_state: null,
         oauth_state_expires: null,
         connected_at: new Date().toISOString(),
