@@ -106,7 +106,7 @@ watch(coaching, (c) => {
 // ---------- Ciężar, prędkość, 1RM ----------
 const lvHistory = computed(() =>
   store.list
-    .filter((x) => x.id !== props.id && x.exercise_key === a.value?.exercise_key && x.client_id === a.value?.client_id && x.load_kg != null)
+    .filter((x) => x.id !== props.id && x.exercise_key === a.value?.exercise_key && x.client_id === a.value?.client_id && (x.subject_name ?? null) === (a.value?.subject_name ?? null) && x.load_kg != null)
     .map((x) => ({ load: Number(x.load_kg), v: Math.max(0, ...x.reps.map((r) => r.metrics.mcv ?? 0)) }))
     .filter((p) => p.v > 0),
 )

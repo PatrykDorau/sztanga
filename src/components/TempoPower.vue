@@ -3,7 +3,7 @@
 // spadek prędkości w serii, a z podanym ciężarem – moc i (z kilku nagrań) szacowane 1RM z profilu obciążenie–prędkość.
 import { computed } from 'vue'
 import type { ExerciseKey } from '@/lib/pose/profiles'
-import { loadVelocity, MVT, power, velocityLoss, zone } from '@/lib/pose/velocity'
+import { e1rmFromSet, estimateRir, loadVelocity, MVT, pctFromVelocity, power, velocityLoss, zone } from '@/lib/pose/velocity'
 
 const props = defineProps<{
   exercise: ExerciseKey
@@ -28,6 +28,11 @@ const lv = computed(() => {
   if (!props.loadKg || !bestV.value) return loadVelocity(props.history ?? [], props.exercise)
   return loadVelocity([...(props.history ?? []), { load: props.loadKg, v: bestV.value }], props.exercise)
 })
+
+// Z jednej serii: % ciężaru maksymalnego z prędkości, 1RM (z wpisanym ciężarem) i powtórzenia w zapasie.
+const pct = computed(() => pctFromVelocity(props.exercise, bestV.value))
+const setE1rm = computed(() => e1rmFromSet(props.exercise, props.loadKg, bestV.value))
+const rir = computed(() => estimateRir(props.exercise, rows.value))
 
 const f1 = (v: number | null) => (v == null ? '–' : v.toFixed(1).replace('.', ','))
 const f2 = (v: number | null) => (v == null ? '–' : v.toFixed(2).replace('.', ','))
@@ -105,10 +110,30 @@ function onLoad(e: Event) {
       <p class="font-semibold">Szacowane 1RM z prędkości</p>
       <p v-if="lv">
         <span class="font-display text-2xl font-bold tabular-nums">≈ {{ String(lv.e1rm).replace('.', ',') }} kg</span>
-        <span class="text-muted"> · z {{ lv.n }} nagrań{{ lv.reliable ? '' : ' – orientacyjnie, nagraj jeszcze 1–2 ciężary (różnica ≥ 20%)' }}</span>
+        <span class="text-muted"> · z profilu tej osoby, {{ lv.n }} nagrań{{ lv.reliable ? '' : ' – orientacyjnie, nagraj jeszcze 1–2 ciężary (różnica ≥ 20%)' }}</span>
       </p>
-      <p v-else class="text-muted">Potrzeba nagrań tej osoby z co najmniej 2 różnymi ciężarami (najlepiej 3–4, np. 50–85% 1RM), każde z wpisanym ciężarem.</p>
+      <p v-if="setE1rm">
+        <span :class="lv ? 'font-semibold' : 'font-display text-2xl font-bold'" class="tabular-nums">≈ {{ String(setE1rm).replace('.', ',') }} kg</span>
+        <span class="text-muted"> · z tej serii: {{ String(loadKg).replace('.', ',') }} kg to ok. {{ pct }}% maksymalnego (wg prędkości, ogólne tabele – ±10%)</span>
+      </p>
+      <p v-else-if="pct && !loadKg" class="text-muted">Ten ciężar to ok. {{ pct }}% maksymalnego (wg prędkości). Wpisz ciężar, żeby zobaczyć szacowane 1RM.</p>
+      <p v-if="!lv" class="text-xs text-muted">Dokładniej: nagrania tej osoby z 2–4 różnymi ciężarami (np. 50–85% 1RM), każde z wpisanym ciężarem.</p>
       <p class="text-xs text-muted">Profil obciążenie–prędkość: przy jakim ciężarze najszybsze powtórzenie spadłoby do {{ String(MVT[exercise]).replace('.', ',') }} m/s (prędkość przy 1RM).</p>
+    </div>
+
+    <div v-if="rir" class="card space-y-1 p-4 text-sm">
+      <p class="font-semibold">Powtórzenia w zapasie (RIR)</p>
+      <p>
+        <span class="font-display text-2xl font-bold tabular-nums" :class="rir.rir < 0.75 ? 'text-danger' : ''">{{ rir.text }}</span>
+      </p>
+      <p class="text-xs text-muted">
+        {{
+          rir.method === 'slope'
+            ? `Z tempa spadku prędkości w serii: ile powtórzeń jeszcze, zanim prędkość spadłaby do ${String(MVT[exercise]).replace('.', ',')} m/s (prędkość przy maksymalnym ciężarze).`
+            : 'Prędkość w serii prawie nie spadała – szacunek z % ciężaru maksymalnego (ile powtórzeń da się zrobić takim ciężarem) minus wykonane.'
+        }}
+        Orientacyjnie – najlepiej porównać z odczuciem ćwiczącego.
+      </p>
     </div>
 
     <p class="text-xs text-muted">

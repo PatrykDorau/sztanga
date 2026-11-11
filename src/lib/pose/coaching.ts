@@ -1,7 +1,8 @@
 // Uwagi trenerskie: z pomiarów powtórzeń robi wnioski w języku trenera –
 // co widać (z liczbami), co powiedzieć ćwiczącemu i nad czym popracować. Czysty TS, bez przeglądarki.
 // To wskazania do sprawdzenia na nagraniu, nie diagnoza: model widzi 17 punktów, nie widzi kręgosłupa ani sztangi.
-import { lowHalf, mean, ranges, type Rep, type Series } from './analysis'
+import { lowHalf, mean, nearSide, ranges, type Rep, type Series } from './analysis'
+import { estimateRir, MVT, pctFromVelocity } from './velocity'
 import { PROFILES, thresholdFor, type ExerciseKey, type FlagDef, type Thresholds, type View } from './profiles'
 import { J, type Track } from './skeleton'
 
@@ -322,11 +323,15 @@ export function coach(tr: Track, ex: ExerciseKey, res: { reps: Rep[]; series: Se
   const good: string[] = []
   const unmeasured: FlagDef[] = []
   if (!reps.length) return { headline: 'Nie wykryto powtórzeń – nie ma czego oceniać.', findings, good, notes: [] }
+  // Intensywność z prędkości najszybszego powtórzenia (% ciężaru maksymalnego) – do oceny tempa zależnie od ciężaru.
+  const bestV = Math.max(0, ...reps.map((r) => r.metrics.mcv ?? 0)) || null
+  const pct = pctFromVelocity(ex, bestV)
+  const heavy = pct != null && pct >= 80
 
   for (const f of profile.flags) {
     const e = ENTRIES[ex]?.[f.key] ?? (f.key === 'range' ? RANGE_ENTRY : undefined)
     if (!e) continue
-    const limit = thresholdFor(th, ex, f)
+    const limit = f.key === 'ecc' && heavy ? Math.max(thresholdFor(th, ex, f), 1) : thresholdFor(th, ex, f)
     const vals = reps.map((r) => r.metrics[f.metric])
     if (vals.every((v) => v == null)) {
       unmeasured.push(f)
@@ -341,14 +346,14 @@ export function coach(tr: Track, ex: ExerciseKey, res: { reps: Rep[]; series: Se
     const wi = hit.reduce((a, b) => (over(vals[b]!) > over(vals[a]!) ? b : a))
     const c: Ctx = { tr, s, sig, reps, hit, worst: reps[wi], value: vals[wi]!, limit }
     const big = over(c.value) >= e.strong || (hit.length === reps.length && reps.length >= 3)
-    const severity: Severity = e.severity ?? (e.mild ? (big ? 'medium' : 'low') : big ? 'high' : 'medium')
+    const severity: Severity = f.key === 'ecc' && heavy ? 'medium' : (e.severity ?? (e.mild ? (big ? 'medium' : 'low') : big ? 'high' : 'medium'))
     const pick = <T>(x: T | ((c: Ctx) => T)) => (typeof x === 'function' ? (x as (c: Ctx) => T)(c) : x)
     findings.push({
       key: f.key,
       title: pick(e.title),
       short: f.label,
       severity,
-      obs: e.obs(c),
+      obs: f.key === 'ecc' && heavy ? `${e.obs(c)} Ciężar ok. ${pct}% maksymalnego (z prędkości) – przy takim obciążeniu szybkie opuszczanie to ryzyko utraty pozycji w dole.` : e.obs(c),
       cue: pick(e.cue),
       fix: e.fix,
       reps: hit.map((i) => i + 1),
@@ -361,7 +366,258 @@ export function coach(tr: Track, ex: ExerciseKey, res: { reps: Rep[]; series: Se
     })
   }
 
+  // ----- Duży ciężar, szybkie opuszczanie (ćwiczenia bez osobnego progu tempa) -----
+  if (heavy && (ex === 'bench' || ex === 'press') && !findings.some((x) => x.key === 'ecc')) {
+    const hit = reps.flatMap((r, i) => ((r.metrics.ecc ?? 9) < 0.7 ? [i] : []))
+    if (hit.length) {
+      const w = reps[hit[0]]
+      findings.push({
+        key: 'ecc_heavy',
+        title: 'Szybkie opuszczanie przy dużym ciężarze',
+        short: 'za szybko w dół',
+        severity: 'medium',
+        obs: `Opuszczanie trwa ${(w.metrics.ecc ?? 0).toFixed(1).replace('.', ',')} s przy ciężarze ok. ${pct}% maksymalnego (z prędkości).`,
+        cue: 'Przy takim ciężarze opuszczaj spokojnie – ok. 1–2 s, pod kontrolą, bez rzucania sztangi.',
+        fix: 'Tempo 2-1-X w seriach ciężkich; jeśli kontrola ucieka – mniejszy ciężar.',
+        reps: hit.map((i) => i + 1),
+        repsText: repsText(hit.map((i) => i + 1), reps.length),
+        frame: w.bottom,
+        joints: [J.lWr, J.rWr, J.lEl, J.rEl],
+      })
+    }
+  }
+
+  // ----- Odbicie w dole / zbyt długie zatrzymanie -----
+  const BOUNCE: Partial<Record<ExerciseKey, { title: string; obs: string; cue: string; fix: string; sev: Severity }>> = {
+    squat: {
+      title: 'Odbicie w dole przysiadu',
+      obs: 'zejście szybkie i natychmiastowe wybicie z dołu',
+      cue: 'Nie odbijaj się z dołu – zejdź pod kontrolą i wstań z napięciem, bez „sprężyny” w kolanach.',
+      fix: 'Przysiad z pauzą 1–2 s w dole, tempo 3-1-1; odbicie przy dużym ciężarze zwykle kosztuje utratę pozycji pleców i kolan.',
+      sev: 'low',
+    },
+    bench: {
+      title: 'Odbijanie sztangi od klatki',
+      obs: 'sztanga szybko opada i od razu wraca w górę, bez zatrzymania na klatce',
+      cue: 'Dotknij klatki i na moment zatrzymaj – nie odbijaj sztangi.',
+      fix: 'Wyciskanie z pauzą na klatce (1 s), tempo 2-1-1; odbijanie przenosi pracę z mięśni na mostek i zawyża wynik.',
+      sev: 'medium',
+    },
+    deadlift: {
+      title: 'Odbijanie ciężaru od podłogi',
+      obs: 'ciężar uderza o podłogę i od razu idzie w górę',
+      cue: 'Każde powtórzenie od zera – odstaw sztangę, ustaw plecy i dopiero ciągnij.',
+      fix: 'Martwy ciąg z pełnym odstawieniem (dead stop); odbicie ukrywa słabą pozycję startową.',
+      sev: 'medium',
+    },
+  }
+  const bdef = BOUNCE[ex]
+  if (bdef) {
+    const hit = reps.flatMap((r, i) => ((r.metrics.pause ?? 9) <= 0.12 && (r.metrics.ecc ?? 9) < 0.9 ? [i] : []))
+    if (hit.length && hit.length >= Math.ceil(reps.length / 2)) {
+      const w = reps[hit[0]]
+      findings.push({
+        key: 'bounce',
+        title: bdef.title,
+        short: 'odbicie w dole',
+        severity: bdef.sev,
+        obs: `W dole ${bdef.obs}: pauza ${(w.metrics.pause ?? 0).toFixed(2).replace('.', ',')} s, zejście ${(w.metrics.ecc ?? 0).toFixed(1).replace('.', ',')} s.`,
+        cue: bdef.cue,
+        fix: bdef.fix,
+        reps: hit.map((i) => i + 1),
+        repsText: repsText(hit.map((i) => i + 1), reps.length),
+        frame: w.bottom,
+        joints: ex === 'bench' ? [J.lWr, J.rWr] : ex === 'deadlift' ? [J.lWr, J.rWr, ...HIPS] : [...HIPS, ...KNEES],
+      })
+    }
+    if (ex !== 'deadlift') {
+      const long = reps.flatMap((r, i) => ((r.metrics.pause ?? 0) >= 1.5 ? [i] : []))
+      if (long.length && long.length < reps.length) {
+        const w = reps[long[0]]
+        findings.push({
+          key: 'long_pause',
+          title: 'Długie zatrzymanie w dole',
+          short: 'długa pauza',
+          severity: 'low',
+          obs: `W dole ruch zatrzymuje się na ${(w.metrics.pause ?? 0).toFixed(1).replace('.', ',')} s – tylko w niektórych powtórzeniach, więc to raczej szukanie siły niż zamierzona pauza.`,
+          cue: 'Nie odpoczywaj w dole – utrzymaj napięcie i od razu wracaj w górę.',
+          fix: 'Jeśli to zamierzona pauza, zignoruj. Inaczej: znak, że ciężar jest blisko granicy – skróć serię.',
+          reps: long.map((i) => i + 1),
+          repsText: repsText(long.map((i) => i + 1), reps.length),
+          frame: w.bottom,
+          joints: [],
+        })
+      }
+    }
+  }
+
+  // ----- Tor sztangi (śledzona sztanga – po kalibracji) -----
+  const bm = reps.map((r) => r.metrics.bar_mid ?? null)
+  if ((ex === 'squat' || ex === 'press') && bm.some((v) => v != null)) {
+    const hit = bm.flatMap((v, i) => (v != null && v >= 15 ? [i] : []))
+    if (hit.length) {
+      const wi = hit.reduce((a, b) => (bm[b]! > bm[a]! ? b : a))
+      const w = reps[wi]
+      const fr = argIn(s.barX, w.start, w.end, 'max', true)
+      const fwd = (s.barX[fr] ?? 0) > 0
+      const sq = ex === 'squat'
+      findings.push({
+        key: 'bar_path',
+        title: sq ? (fwd ? 'Sztanga ucieka przed środek stopy' : 'Sztanga za środkiem stopy – ciężar na piętach') : 'Sztanga nie idzie pionowo nad środkiem stopy',
+        short: 'tor sztangi',
+        severity: bm[wi]! >= 25 ? 'high' : 'medium',
+        obs: `Sztanga oddala się w poziomie od linii środka stopy o ${r0(bm[wi]!)}% długości tułowia (${fwd ? 'do przodu' : 'do tyłu'}); dobry tor trzyma się w ok. 10%.`,
+        cue: sq
+          ? fwd
+            ? 'Sztanga ucieka do przodu – ciężar przechodzi na palce. Trzymaj ciężar na środku stopy, klatka wyżej, łokcie pod sztangą.'
+            : 'Ciężar ucieka na pięty. Rozłóż nacisk na całą stopę – sztanga ma iść pionowo nad środkiem stopy.'
+          : 'Sztanga omija głowę za szeroko. Prowadź ją blisko twarzy, a po minięciu czoła „wejdź pod nią” – nad środek stopy.',
+        fix: sq
+          ? 'Przysiad z pauzą i lżejszym ciężarem, praca nad pozycją tułowia i mobilnością kostki; nagraj z boku po kalibracji, żeby porównać tor.'
+          : 'Wyciskanie z pauzą na wysokości czoła, mobilność odcinka piersiowego i barków.',
+        reps: hit.map((i) => i + 1),
+        repsText: repsText(hit.map((i) => i + 1), reps.length),
+        frame: fr,
+        joints: [J.lWr, J.rWr],
+      })
+    } else good.push('Sztanga prowadzona pionowo nad środkiem stopy')
+  }
+  if (ex === 'bench') {
+    const bt = reps.map((r) => r.metrics.bar_travel ?? null).filter((v): v is number => v != null)
+    if (bt.length) {
+      const avg = mean(bt)
+      if (avg > 40) {
+        findings.push({
+          key: 'bar_path',
+          title: 'Sztanga wędruje za bardzo w poziomie',
+          short: 'tor sztangi',
+          severity: 'medium',
+          obs: `Sztanga przesuwa się w poziomie średnio o ${r0(avg)}% długości tułowia – dużo więcej niż typowy łuk (ok. 10–30%).`,
+          cue: 'Opuszczaj sztangę na dolną część klatki i wyciskaj lekkim łukiem nad barki – bez „wędrowania” po klatce.',
+          fix: 'Wyciskanie z pauzą, stały punkt dotknięcia (np. linia sutków / mostek), łokcie ok. 45–70° od tułowia.',
+          reps: reps.map((_, i) => i + 1),
+          repsText: repsText(reps.map((_, i) => i + 1), reps.length),
+          frame: reps[0].bottom,
+          joints: [J.lWr, J.rWr, J.lEl, J.rEl],
+        })
+      } else if (avg < 6) {
+        findings.push({
+          key: 'bar_path',
+          title: 'Sztanga idzie pionowo – brak łuku nad barki',
+          short: 'tor sztangi',
+          severity: 'low',
+          obs: `Sztanga przesuwa się w poziomie tylko o ${r0(avg)}% długości tułowia. Zwykle oznacza dotknięcie za wysoko (blisko barków) i szeroko rozstawione łokcie.`,
+          cue: 'Opuszczaj na dolną część klatki, łokcie bliżej tułowia, a w górę lekkim łukiem nad barki.',
+          fix: 'Sprawdź punkt dotknięcia na nagraniu; wyciskanie z pauzą, praca łopatek (ściągnięte i opuszczone).',
+          reps: reps.map((_, i) => i + 1),
+          repsText: repsText(reps.map((_, i) => i + 1), reps.length),
+          frame: reps[0].bottom,
+          joints: [J.lWr, J.rWr, J.lEl, J.rEl],
+        })
+      } else good.push('Prawidłowy łuk sztangi')
+    }
+  }
+
+  // ----- Pięty + kolana daleko przed palcami = ograniczona mobilność kostki -----
+  const heelF = findings.find((x) => x.key === 'heel_lift')
+  if (heelF && ex === 'squat') {
+    const side = nearSide(tr)
+    const p = tr.poses[heelF.frame] ?? tr.poses[reps[heelF.reps[0] - 1]?.bottom ?? 0]
+    if (side && p) {
+      const L = side === 'L'
+      const k = p[L ? J.lKnee : J.rKnee]
+      const a = p[L ? J.lAnk : J.rAnk]
+      const toe = p[L ? J.lFoot : J.rFoot]
+      const heel = p[L ? J.lHeel : J.rHeel]
+      const W = tr.width || 1
+      const H = tr.height || 1
+      const dir = Math.sign(toe.x - heel.x) || 1
+      const foot = Math.hypot((toe.x - heel.x) * W, (toe.y - heel.y) * H)
+      const kneeFwd = foot > 1 ? (((k.x - toe.x) * W * dir) / foot) * 100 : NaN
+      const shin = (Math.atan2(Math.abs(k.x - a.x) * W, Math.max(1, (a.y - k.y) * H)) * 180) / Math.PI
+      if (fin(kneeFwd) && kneeFwd > 20) {
+        heelF.title = 'Pięty w górę, kolana daleko przed palcami – ograniczona mobilność kostki'
+        heelF.severity = 'medium'
+        heelF.obs = `W dole kolano wychodzi ok. ${r0(kneeFwd)}% długości stopy przed palce (piszczel pochylona ok. ${r0(shin)}°), a pięta odrywa się od podłogi. Tak zwykle wygląda za mała ruchomość stawu skokowego – ciało szuka zakresu, unosząc pięty.`
+        heelF.cue = 'Ciężar na całej stopie, pięty w podłogę. Kolana mogą iść do przodu, ale nie kosztem pięt – zejdź tylko tak nisko, jak utrzymasz pięty.'
+        heelF.fix = 'Test kolano–ściana (stopa ok. 10 cm od ściany, kolano dotyka ściany bez odrywania pięty – mniej = ograniczenie). Mobilizacja kostki z gumą, rozciąganie łydek; na czas pracy podkładki pod pięty albo buty ciężarowe, nieco szerzej i stopy bardziej na zewnątrz.'
+        heelF.joints = [L ? J.lKnee : J.rKnee, L ? J.lAnk : J.rAnk, L ? J.lHeel : J.rHeel, L ? J.lFoot : J.rFoot]
+      }
+    }
+  }
+
+  // ----- Równe powtórzenia: głębokość, tempo, miejsce dotknięcia -----
+  if (reps.length >= 3) {
+    const dkey = ex === 'squat' ? 'depth_knee' : ex === 'pushup' || ex === 'press' ? 'elbow_bottom' : ex === 'deadlift' ? 'hip_bottom' : 'turn'
+    const d = reps.map((r) => r.metrics[dkey]).filter((v): v is number => v != null)
+    let uneven = false
+    if (d.length >= 3) {
+      const spread = Math.max(...d) - Math.min(...d)
+      // Nie liczymy, gdy zakres po prostu skraca się z każdym powtórzeniem (to osobna uwaga o zmęczeniu).
+      const monotonic = d.every((v, i) => i === 0 || v >= d[i - 1] - 2)
+      if (spread >= 12 && !monotonic) {
+        uneven = true
+        const hiI = reps.findIndex((r) => r.metrics[dkey] === Math.max(...d))
+        findings.push({
+          key: 'uneven_depth',
+          title: 'Nierówne powtórzenia – różna głębokość',
+          short: 'różna głębokość',
+          severity: spread >= 20 ? 'medium' : 'low',
+          obs: `Kąt w dole waha się między ${r0(Math.min(...d))}° a ${r0(Math.max(...d))}° (różnica ${r0(spread)}°) – powtórzenia nie są powtarzalne.`,
+          cue: 'Każde powtórzenie tak samo – ta sama głębokość, ten sam rytm.',
+          fix: 'Punkt odniesienia głębokości (skrzynia, gumka, dotknięcie), wolniejsze tempo; nierówne powtórzenia to częsty znak braku kontroli albo zmęczenia.',
+          reps: [hiI + 1],
+          repsText: `najpłycej powt. ${hiI + 1}`,
+          frame: reps[hiI].bottom,
+          joints: [],
+        })
+      }
+    }
+    const e = reps.map((r) => r.metrics.ecc).filter((v): v is number => v != null)
+    if (e.length >= 3) {
+      const m = mean(e)
+      const sd = Math.sqrt(mean(e.map((x) => (x - m) ** 2)))
+      if (m > 0 && sd / m >= 0.35 && Math.max(...e) - Math.min(...e) >= 0.6) {
+        uneven = true
+        findings.push({
+          key: 'uneven_tempo',
+          title: 'Nierówne tempo opuszczania',
+          short: 'różne tempo',
+          severity: 'low',
+          obs: `Opuszczanie trwa od ${Math.min(...e).toFixed(1).replace('.', ',')} s do ${Math.max(...e).toFixed(1).replace('.', ',')} s.`,
+          cue: 'Trzymaj ten sam rytm w dół w każdym powtórzeniu – np. licz „raz, dwa”.',
+          fix: 'Tempo z odliczaniem albo metronomem (np. 2-0-1).',
+          reps: reps.map((_, i) => i + 1),
+          repsText: repsText(reps.map((_, i) => i + 1), reps.length),
+          frame: reps[0].bottom,
+          joints: [],
+        })
+      }
+    }
+    if (ex === 'bench') {
+      const touch = reps.map((r) => s.barX[r.bottom]).filter(fin)
+      if (touch.length >= 3 && Math.max(...touch) - Math.min(...touch) >= 10) {
+        uneven = true
+        findings.push({
+          key: 'uneven_touch',
+          title: 'Sztanga dotyka klatki w różnych miejscach',
+          short: 'różny punkt dotknięcia',
+          severity: 'low',
+          obs: `Miejsce dotknięcia przesuwa się między powtórzeniami o ${r0(Math.max(...touch) - Math.min(...touch))}% długości tułowia.`,
+          cue: 'Za każdym razem dotykaj tego samego miejsca na klatce.',
+          fix: 'Wyciskanie z pauzą, stały punkt odniesienia (np. linia mostka).',
+          reps: reps.map((_, i) => i + 1),
+          repsText: repsText(reps.map((_, i) => i + 1), reps.length),
+          frame: reps[0].bottom,
+          joints: [J.lWr, J.rWr],
+        })
+      }
+    }
+    if (!uneven && d.length >= 3) good.push('Równe powtórzenia – ta sama głębokość i rytm')
+  }
+
   // ----- Przebieg serii: zmęczenie widać po prędkości i zakresie -----
+  const rir = MVT[ex] ? estimateRir(ex, reps.map((r) => ({ mcv: r.metrics.mcv ?? null, pv: null, rom: null }))) : null
   if (reps.length >= 4) {
     const k = reps.length >= 6 ? 2 : 1
     const first = (key: string) => mean(reps.slice(0, k).map((r) => r.metrics[key] ?? NaN))
@@ -375,7 +631,7 @@ export function coach(tr: Track, ex: ExerciseKey, res: { reps: Rep[]; series: Se
         short: 'spadek prędkości',
         severity: c1 >= c0 * 1.8 ? 'medium' : 'low',
         obs: `Faza ${profile.phases[1]} wydłuża się z ${c0.toFixed(1).replace('.', ',')} s na początku do ${c1.toFixed(1).replace('.', ',')} s na końcu serii.`,
-        cue: 'Ostatnie powtórzenia są dużo wolniejsze – seria była blisko granicy. Zostaw 1–2 powtórzenia w zapasie.',
+        cue: `Ostatnie powtórzenia są dużo wolniejsze – seria była blisko granicy${rir ? ` (w zapasie: ${rir.text})` : ''}. Zostaw 1–2 powtórzenia w zapasie.`,
         fix: 'Jeśli celem jest technika lub siła, skróć serię albo zmniejsz ciężar; błędy techniczne zwykle pojawiają się właśnie w wolnych powtórzeniach.',
         reps: lastNums,
         repsText: `powt. ${ranges(lastNums)}`,
@@ -428,11 +684,14 @@ export function coach(tr: Track, ex: ExerciseKey, res: { reps: Rep[]; series: Se
 }
 
 /** Skrót do zapisu w bazie (bez klatek i punktów). */
+/** Wnioski, które nie mają osobnego progu w ustawieniach (dla podglądu na żywo – pomijane). */
+export const SET_LEVEL = new Set(['slowdown', 'range_drift', 'uneven_depth', 'uneven_tempo', 'uneven_touch', 'long_pause'])
+
 export const storedFindings = (c: Coaching) => c.findings.map(({ key, title, severity, reps, obs, cue, fix }) => ({ key, title, severity, reps, obs, cue, fix }))
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
 
 /** Najważniejsza uwaga dotycząca danego powtórzenia (numer od 1) – na podgląd na żywo. */
 export function repCue(c: Coaching, rep: number): Finding | null {
-  return c.findings.find((f) => f.reps.includes(rep) && f.key !== 'slowdown' && f.key !== 'range_drift') ?? null
+  return c.findings.find((f) => f.reps.includes(rep) && !SET_LEVEL.has(f.key)) ?? null
 }
