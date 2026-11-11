@@ -609,6 +609,8 @@ Deno.serve(async (req) => {
         await db.from('google_connection').update({ sync_requested: false }).eq('id', 1)
       }
       if (!partial) {
+        // Klienci z kalendarza: siłownia = siłownia większości treningów.
+        await db.rpc('clients_gym_from_sessions').then(() => null, (e: unknown) => console.error('gym', e))
         for (const cal of cals) await ensureWatch(db, token, cal.calendar_id).catch((e) => console.error('watch', e))
         await db.from('google_connection').update({ last_sync_at: new Date().toISOString(), last_error: null }).eq('id', 1)
       }
