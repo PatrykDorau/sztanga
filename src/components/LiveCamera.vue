@@ -9,7 +9,7 @@ import { analyze } from '@/lib/pose/analysis'
 import { coach, repCue } from '@/lib/pose/coaching'
 import { liveSmoother } from '@/lib/pose/filter'
 import { useAnalysisStore } from '@/stores/analysis'
-import { PROFILES, type ExerciseKey } from '@/lib/pose/profiles'
+import { PROFILES, SIGNAL_LABEL, type ExerciseKey } from '@/lib/pose/profiles'
 import type { Pose, Track } from '@/lib/pose/skeleton'
 import Icon from '@/components/Icon.vue'
 
@@ -59,7 +59,7 @@ let frames = 0
 let fpsT0 = 0
 
 const profile = computed(() => PROFILES[props.exercise])
-const signalName = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'łokieć' })[profile.value.signal])
+const signalName = computed(() => SIGNAL_LABEL[profile.value.signal])
 const mirror = computed(() => facing.value === 'user')
 
 async function openCamera() {

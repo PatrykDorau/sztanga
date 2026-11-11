@@ -11,13 +11,16 @@ import { smoothTrack } from '@/lib/pose/filter'
 import CoachingPanel from '@/components/CoachingPanel.vue'
 import TempoPower from '@/components/TempoPower.vue'
 import { unpackTrack, type Track } from '@/lib/pose/skeleton'
-import { fmtMetric, PROFILES, VIEW_LABEL } from '@/lib/pose/profiles'
+import { fmtMetric, PROFILES, SIGNAL_LABEL, VIEW_LABEL } from '@/lib/pose/profiles'
 import { refStatsByExercise, shortDate, type HeatRow } from '@/lib/pose/heat'
 import PosePlayer from '@/components/PosePlayer.vue'
 import SkeletonCompare from '@/components/SkeletonCompare.vue'
 import TimingBars from '@/components/TimingBars.vue'
 import MetricHeatmap from '@/components/MetricHeatmap.vue'
 import Icon from '@/components/Icon.vue'
+import PatternCard from '@/components/PatternCard.vue'
+import { useExercisesStore } from '@/stores/exercises'
+import { FAMILIES, familyForProfile, familyOf } from '@/lib/pose/families'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -85,7 +88,16 @@ async function setLoad(v: number | null) {
   a.value.load_kg = v
   await store.update(a.value.id, { load_kg: v })
 }
-const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'łokieć' })[profile.value.signal])
+const signalLabel = computed(() => SIGNAL_LABEL[profile.value.signal])
+// Wzorzec rodziny ruchu: z przypisanego ćwiczenia z bazy albo z rodzaju analizy.
+const exStore = useExercisesStore()
+onMounted(() => exStore.load().catch(() => null))
+const linkedExercise = computed(() => (a.value?.exercise_id ? exStore.byId(a.value.exercise_id) : null))
+const patternFamily = computed(() => {
+  if (!a.value) return null
+  const f = linkedExercise.value ? familyOf(linkedExercise.value) : null
+  return f && FAMILIES[f].profile === a.value.exercise_key ? f : familyForProfile(a.value.exercise_key)
+})
 
 // ---------- Poprawka liczby powtórzeń (kalibracja licznika) ----------
 const actual = ref<number | null>(null)
@@ -229,6 +241,7 @@ const expires = computed(() => (a.value?.video_expires_at ? new Date(a.value.vid
 
     <div v-else class="space-y-6 px-4">
       <CoachingPanel v-if="coaching && reps.length" :coaching="coaching" :active="shownFinding?.key" @show="showFinding" />
+      <PatternCard v-if="measured && reps.length && patternFamily" :family="patternFamily" :series="measured.series" :reps="reps" :equipment="linkedExercise?.equipment" />
 
       <TempoPower v-if="reps.length" :load-kg="a.load_kg" :exercise="a.exercise_key" :reps="reps" :phases="profile.phases" :history="lvHistory" @update:load-kg="setLoad" />
 

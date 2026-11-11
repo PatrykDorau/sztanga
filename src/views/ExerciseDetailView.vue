@@ -8,6 +8,8 @@ import ExercisePicker from '@/components/ExercisePicker.vue'
 import ExerciseThumb from '@/components/ExerciseThumb.vue'
 import Icon from '@/components/Icon.vue'
 import ExerciseMedia from '@/components/ExerciseMedia.vue'
+import ExerciseAnimation from '@/components/ExerciseAnimation.vue'
+import { autoFamily, FAMILIES, FAMILY_KEYS, familyOf } from '@/lib/pose/families'
 
 const props = defineProps<{ id: string }>()
 const auth = useAuthStore()
@@ -28,6 +30,28 @@ const removeTag = (t: string) => e.value && ex.setTags(e.value.id, (e.value.tags
 
 onMounted(() => ex.load())
 const e = computed(() => ex.byId(props.id))
+
+// ----- Wzorzec ruchu (animacja + analiza) -----
+const family = computed(() => (e.value ? familyOf(e.value) : null))
+const autoName = computed(() => {
+  const a = e.value ? autoFamily(e.value) : null
+  return a ? FAMILIES[a].name.toLowerCase() : 'brak'
+})
+type Media = 'anim' | 'media'
+const media = ref<Media>('anim')
+watch(
+  () => e.value?.id,
+  () => (media.value = e.value?.video_path ? 'media' : 'anim'),
+  { immediate: true },
+)
+const mediaTabs = computed<[Media, string][]>(() => [
+  ['anim', 'Animacja'],
+  ['media', e.value?.video_path ? 'Film' : 'Zdjęcia'],
+])
+async function setFamily(v: string) {
+  if (!e.value) return
+  await ex.setFamily(e.value.id, v || null).catch((err) => (error.value = (err as Error).message))
+}
 
 watch(
   () => e.value?.video_path,
@@ -92,7 +116,21 @@ async function remove() {
     </header>
 
     <div class="space-y-4 px-4">
-      <ExerciseMedia :video-src="videoSrc" :images="e.image_urls?.length ? e.image_urls : e.image_url ? [e.image_url] : []" :name-en="e.name_en" :name-pl="e.name_pl" />
+      <div v-if="family" class="flex rounded-xl bg-surface-2 p-1" role="tablist" aria-label="Podgląd ruchu">
+        <button v-for="[k, l] in mediaTabs" :key="k" role="tab" :aria-selected="media === k" class="min-h-9 flex-1 rounded-lg text-sm font-semibold" :class="media === k ? 'bg-surface shadow' : 'text-muted'" @click="media = k">{{ l }}</button>
+      </div>
+      <ExerciseAnimation v-if="family && media === 'anim'" :family="family" :equipment="e.equipment" />
+      <ExerciseMedia v-else :video-src="videoSrc" :images="e.image_urls?.length ? e.image_urls : e.image_url ? [e.image_url] : []" :name-en="e.name_en" :name-pl="e.name_pl" />
+
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-muted">Wzorzec ruchu:</span>
+        <select v-if="auth.isTrainer" :value="e.movement_family ?? ''" class="input !min-h-9 w-auto py-1 text-sm" aria-label="Wzorzec ruchu ćwiczenia" @change="setFamily(($event.target as HTMLSelectElement).value)">
+          <option value="">automatycznie: {{ autoName }}</option>
+          <option v-for="k in FAMILY_KEYS" :key="k" :value="k">{{ FAMILIES[k].name }}</option>
+          <option value="none">brak wzorca (nietypowe)</option>
+        </select>
+        <span v-else class="font-semibold">{{ family ? FAMILIES[family].name : 'brak' }}</span>
+      </div>
 
       <p v-if="e.name_en && e.name_en !== e.name_pl" class="text-sm text-muted" lang="en">{{ e.name_en }}</p>
       <div class="flex flex-wrap items-center gap-1.5">

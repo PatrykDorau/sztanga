@@ -5,6 +5,7 @@
 //  4. pomiary na powtórzenie, flagi wg progów, uśredniona sylwetka do porównań
 import { J, type Pose, type Track } from './skeleton'
 import { PROFILES, thresholdFor, type ExerciseKey, type Profile, type Thresholds, type View } from './profiles'
+export type { View }
 
 // ===================== Geometria =====================
 const DEG = 180 / Math.PI
@@ -34,6 +35,9 @@ export interface Series {
   hipR: number[]
   elbowL: number[]
   elbowR: number[]
+  shoulderL: number[] // kąt biodro–bark–łokieć (unoszenie ramienia)
+  shoulderR: number[]
+  spread: number[] // odległość dłoni / szerokość barków [%] (3D) – rozpiętki
   trunk: number[] // pochylenie tułowia od pionu
   valgus: number[] // rozstaw kolan / kostek [%] (obraz)
   shift: number[] // środek bioder vs środek kostek [% szer. bioder] (obraz)
@@ -57,7 +61,7 @@ export interface Series {
 export function computeSeries(tr: Track): Series {
   const n = tr.poses.length
   const s: Series = {
-    kneeL: [], kneeR: [], hipL: [], hipR: [], elbowL: [], elbowR: [], trunk: [], valgus: [], shift: [], bodyLine: [], wristDrift: [],
+    kneeL: [], kneeR: [], hipL: [], hipR: [], elbowL: [], elbowR: [], shoulderL: [], shoulderR: [], spread: [], trunk: [], valgus: [], shift: [], bodyLine: [], wristDrift: [],
     kneeInL: [], kneeInR: [], shiftS: [], hipTilt: [], torsoRatio: [], hipSag: [], wristDy: [], heel: [], hHip: [], hWrist: [], hShoulder: [], leftVis: [], rightVis: [],
   }
   const W = tr.width || 1
@@ -72,6 +76,7 @@ export function computeSeries(tr: Track): Series {
       knee: angle(w3(p, hip), w3(p, kn), w3(p, an)),
       hip: angle(w3(p, sh), w3(p, hip), w3(p, kn)),
       elbow: angle(w3(p, sh), w3(p, el), w3(p, wr)),
+      shoulder: angle(w3(p, hip), w3(p, sh), w3(p, el)),
     })
     const L = side(J.lSh, J.lEl, J.lWr, J.lHip, J.lKnee, J.lAnk)
     const R = side(J.rSh, J.rEl, J.rWr, J.rHip, J.rKnee, J.rAnk)
@@ -81,6 +86,10 @@ export function computeSeries(tr: Track): Series {
     s.hipR.push(R.hip)
     s.elbowL.push(L.elbow)
     s.elbowR.push(R.elbow)
+    s.shoulderL.push(L.shoulder)
+    s.shoulderR.push(R.shoulder)
+    const shW3 = len(sub(w3(p, J.lSh), w3(p, J.rSh)))
+    s.spread.push(shW3 > 0.05 ? (len(sub(w3(p, J.lWr), w3(p, J.rWr))) / shW3) * 100 : NaN)
     s.leftVis.push(vis(p, J.lSh, J.lHip, J.lKnee, J.lAnk, J.lEl, J.lWr))
     s.rightVis.push(vis(p, J.rSh, J.rHip, J.rKnee, J.rAnk, J.rEl, J.rWr))
 
@@ -228,7 +237,18 @@ export interface Rep {
 
 /** Kąt sygnałowy: średnia stron widocznych (z boku – bliższa kamerze). */
 export function signalOf(profile: Profile, s: Series, view: View): number[] {
-  const [l, r] = profile.signal === 'knee' ? [s.kneeL, s.kneeR] : profile.signal === 'hip' ? [s.hipL, s.hipR] : [s.elbowL, s.elbowR]
+  const raw = rawSignal(profile, s, view)
+  // Ruchy, w których kąt rośnie przy wysiłku (unoszenie ramion, wspięcia) – odwracamy, żeby powtórzenie było doliną.
+  return profile.invert ? raw.map((v) => 180 - v) : raw
+}
+/** Wartość mierzona (kąt w stopniach albo % dla rozstawu dłoni / pięt) z powrotem z sygnału. */
+export const rawOf = (profile: Profile, v: number) => (profile.invert ? 180 - v : v)
+
+function rawSignal(profile: Profile, s: Series, view: View): number[] {
+  if (profile.signal === 'spread') return s.spread
+  if (profile.signal === 'heel') return s.heel
+  const [l, r] =
+    profile.signal === 'knee' ? [s.kneeL, s.kneeR] : profile.signal === 'hip' ? [s.hipL, s.hipR] : profile.signal === 'shoulder' ? [s.shoulderL, s.shoulderR] : [s.elbowL, s.elbowR]
   return l.map((lv, i) => {
     const lOk = s.leftVis[i] >= VIS_MIN
     const rOk = s.rightVis[i] >= VIS_MIN
@@ -326,7 +346,9 @@ function sidePick(view: View, s: Series, i: number, l: number[], r: number[]) {
 export function repMetrics(profile: Profile, s: Series, sig: number[], t: number[], rep: Omit<Rep, 'metrics'>, view: View): Record<string, number | null> {
   const { start, bottom, end } = rep
   const out: Record<string, number | null> = {}
-  const valid = (key: string) => profile.metrics.find((m) => m.key === key)!.views.includes(view)
+  // Z tyłu mierzymy to samo co z przodu (rozstaw kolan, asymetria, przesunięcie bioder).
+  const mv: View = view === 'back' ? 'front' : view
+  const valid = (key: string) => profile.metrics.find((m) => m.key === key)?.views.includes(mv) ?? false
   const put = (key: string, v: number) => (out[key] = valid(key) && Number.isFinite(v) ? Math.round(v * 100) / 100 : null)
 
   // Tempo
@@ -375,13 +397,18 @@ export function repMetrics(profile: Profile, s: Series, sig: number[], t: number
     put('lockout', maxIn(sig, bottom, end))
     put('wrist_asym', percentile(s.wristDy.slice(bottom, end + 1).map(Math.abs), 0.9))
     put('lean', maxIn(s.trunk, start, end))
-  } else {
+  } else if (profile.key === 'pushup') {
     put('elbow_bottom', sig[bottom])
     put('body_line', maxIn(s.bodyLine.map(Math.abs), start, end))
+  } else {
+    // Ogólny profil rodziny ruchu: wartość w punkcie zwrotnym i zakres ruchu stawu sygnałowego.
+    put('turn', rawOf(profile, sig[bottom]))
+    put('range', Math.max(sig[start], sig[end]) - sig[bottom])
+    put('trunk_move', maxIn(s.trunk, start, end) - minIn(s.trunk, start, end))
   }
   // Prędkość fazy koncentrycznej (w górę) punktu, który podnosi ciężar: biodra (przysiad), dłonie (martwy ciąg,
   // wyciskanie), barki (pompka). Tylko informacyjnie – nie flagujemy i nie porównujemy na heatmapie.
-  const h = profile.key === 'squat' ? s.hHip : profile.key === 'pushup' ? s.hShoulder : s.hWrist
+  const h = profile.key === 'squat' || profile.trace === 'hip' ? s.hHip : profile.key === 'pushup' ? s.hShoulder : s.hWrist
   const dur = t[end] - t[p1]
   const rise = at(h, end) - at(h, p1)
   if (dur > 0.1 && Number.isFinite(rise) && rise > 0.05) {

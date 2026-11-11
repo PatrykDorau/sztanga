@@ -3,6 +3,7 @@
 import type { Exercise } from '@/types'
 import { EQUIPMENT, MUSCLES, PATTERNS } from '@/lib/vocab'
 import { norm } from '@/lib/search'
+import { popularity } from '@/lib/popular'
 
 /** Słowa z zapytania zamieniane na to, czego szukać w danych (potoczne nazwy partii itd.). */
 const QUERY_SYN: Record<string, string[]> = {
@@ -116,7 +117,14 @@ export function exerciseScore(query: string, e: Exercise) {
     total += s
   }
   // dokładny początek nazwy PL – na samą górę
-  if (norm(e.name_pl).startsWith(norm(query).trim())) total += 10
+  const nq = qs.join(' ')
+  const plWords = words(e.name_pl).join(' ')
+  const enWords = words(e.name_en ?? '').join(' ')
+  if (plWords.startsWith(nq)) total += 10
+  // całe zapytanie jako fraza w nazwie („bench press” w „Barbell Bench Press”)
+  else if ((' ' + plWords + ' ').includes(' ' + nq) || (' ' + enWords + ' ').includes(' ' + nq)) total += 3
+  // popularne ćwiczenia przed wariantami
+  total += popularity(e.name_en)
   // przy remisie: podstawowe ćwiczenia przed wariantami i rozciąganiem
   if (e.movement_pattern === 'mobility' && !/rozcia|stretch|mobil|rolow/.test(norm(query))) total -= 4
   if (e.mechanic === 'compound') total += 0.3

@@ -10,23 +10,47 @@ import { coach, storedFindings, type Finding } from '@/lib/pose/coaching'
 import { smoothTrack } from '@/lib/pose/filter'
 import { extractTrack, loadPose, loadVideo, MAX_SECONDS } from '@/lib/pose/extract'
 import { packTrack, type Track } from '@/lib/pose/skeleton'
-import { EXERCISE_KEYS, PROFILES, VIEW_LABEL, type ExerciseKey, type View } from '@/lib/pose/profiles'
+import { EXERCISE_KEYS, PROFILES, SIGNAL_LABEL, VIEW_CHOICES, VIEW_LABEL, type ExerciseKey, type View } from '@/lib/pose/profiles'
+import { detectFamily, FAMILIES, FAMILY_KEYS, familyForProfile, familyOf, isFamily, type FamilyKey, type Guess } from '@/lib/pose/families'
+import { searchExercises } from '@/lib/exerciseSearch'
+import { useExercisesStore } from '@/stores/exercises'
 import { compressVideo } from '@/lib/video'
 import PosePlayer from '@/components/PosePlayer.vue'
 import LiveCamera from '@/components/LiveCamera.vue'
 import CoachingPanel from '@/components/CoachingPanel.vue'
 import TempoPower from '@/components/TempoPower.vue'
+import PatternCard from '@/components/PatternCard.vue'
 import Icon from '@/components/Icon.vue'
 
 const route = useRoute()
 const router = useRouter()
 const clients = useClientsStore()
 const store = useAnalysisStore()
+const exStore = useExercisesStore()
 
 const clientId = ref(String(route.query.client ?? ''))
-const ex = ref<ExerciseKey>((EXERCISE_KEYS as string[]).includes(String(route.query.ex)) ? (route.query.ex as ExerciseKey) : 'squat')
+// Rodzina ruchu: „auto” = rozpoznanie z nagrania. Stare linki (?ex=deadlift) mapujemy na rodzinę.
+const qEx = String(route.query.ex ?? '')
+const famChoice = ref<'auto' | FamilyKey>(isFamily(qEx) ? qEx : (EXERCISE_KEYS as string[]).includes(qEx) ? familyForProfile(qEx as ExerciseKey) : 'auto')
+const guesses = ref<Guess[]>([])
+/** Rodzina użyta w analizie: wybrana albo rozpoznana. */
+const family = computed<FamilyKey>(() => (famChoice.value === 'auto' ? (guesses.value[0]?.family ?? 'squat') : famChoice.value))
+const ex = computed<ExerciseKey>(() => FAMILIES[family.value].profile)
 const viewChoice = ref<'auto' | View>('auto')
 const profile = computed(() => PROFILES[ex.value])
+
+// Konkretne ćwiczenie z bazy (opcjonalnie) – ustawia rodzinę i sprzęt do wzorca, zapisuje się w analizie.
+const exerciseId = ref<string | null>(route.query.exercise ? String(route.query.exercise) : null)
+const exQuery = ref('')
+const exercise = computed(() => (exerciseId.value ? exStore.byId(exerciseId.value) : null))
+const exResults = computed(() => (exQuery.value.trim().length >= 2 ? searchExercises(exQuery.value, exStore.all).slice(0, 6) : []))
+function pickExercise(id: string) {
+  exerciseId.value = id
+  exQuery.value = ''
+  const f = exercise.value ? familyOf(exercise.value) : null
+  if (f) famChoice.value = f
+}
+const recommendedView = computed(() => (famChoice.value === 'auto' ? null : FAMILIES[famChoice.value].view))
 
 type Stage = 'pick' | 'live' | 'loading' | 'processing' | 'result'
 const stage = ref<Stage>('pick')
@@ -54,6 +78,7 @@ const saving = ref(false)
 onMounted(async () => {
   await clients.load()
   if (!store.loaded) store.load().catch(() => null)
+  exStore.load().then(() => exerciseId.value && pickExercise(exerciseId.value)).catch(() => null)
   isRef.value = !clientId.value
   // Model ładuje się w tle, zanim trenerka nagra.
   loadPose().catch(() => null)
@@ -104,8 +129,29 @@ function onLive(tr: Track, video: Blob | null) {
 
 function rerun() {
   if (!track.value) return
-  result.value = analyze(track.value, ex.value, viewChoice.value === 'auto' ? undefined : viewChoice.value)
+  const forced = viewChoice.value === 'auto' ? undefined : viewChoice.value
+  // Rozpoznanie ruchu: cechy z całego nagrania (serie kątów nie zależą od profilu), potem zawężone do powtórzeń.
+  const base = analyze(track.value, 'squat', forced)
+  guesses.value = detectFamily(base.series)
+  let r = analyze(track.value, ex.value, forced)
+  if (r.reps.length) {
+    guesses.value = detectFamily(r.series, r.reps)
+    if (famChoice.value === 'auto') r = analyze(track.value, ex.value, forced)
+  }
+  result.value = r
 }
+/** Ręczna zmiana rodziny po rozpoznaniu. */
+function setFamily(f: FamilyKey) {
+  famChoice.value = f
+  rerun()
+}
+const guessPct = (f: FamilyKey) => Math.round((guesses.value.find((g) => g.family === f)?.score ?? 0) * 100)
+// Wybrana rodzina wyraźnie nie pasuje do nagrania – ostrzeżenie z podpowiedzią.
+const mismatch = computed(() => {
+  if (famChoice.value === 'auto' || !guesses.value.length) return null
+  const top = guesses.value[0]
+  return top.family !== famChoice.value && top.score > 0.45 && guessPct(famChoice.value) < 15 ? top.family : null
+})
 
 const coaching = computed(() => (result.value && track.value ? coach(track.value, ex.value, result.value, store.thresholds) : null))
 const flagged = computed(() => new Set(coaching.value?.findings.flatMap((f) => f.reps) ?? []))
@@ -129,7 +175,7 @@ async function save() {
       {
         client_id: clientId.value || null,
         exercise_key: ex.value,
-        exercise_id: null,
+        exercise_id: exerciseId.value,
         session_id: route.query.session ? String(route.query.session) : null,
         label: label.value.trim() || null,
         recorded_at: new Date(file.value?.lastModified || Date.now()).toISOString(),
@@ -161,7 +207,7 @@ function reset() {
   result.value = null
   shownFinding.value = null
 }
-const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'łokieć' })[profile.value.signal])
+const signalLabel = computed(() => SIGNAL_LABEL[profile.value.signal])
 </script>
 
 <template>
@@ -182,26 +228,53 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
             <option v-for="c in clients.all.filter((x) => !x.archived)" :key="c.id" :value="c.id">{{ c.full_name }}</option>
           </select>
         </div>
+        <div class="space-y-2">
+          <label class="label" for="exq">Ćwiczenie z bazy <span class="font-normal text-muted">(opcjonalnie)</span></label>
+          <div v-if="exercise" class="flex items-center gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm">
+            <span class="min-w-0 flex-1 truncate font-semibold">{{ exercise.name_pl }}</span>
+            <button type="button" class="icon-btn !size-8" aria-label="Usuń wybór ćwiczenia" :disabled="stage !== 'pick'" @click="exerciseId = null"><Icon name="x" class="size-4" /></button>
+          </div>
+          <template v-else>
+            <input id="exq" v-model="exQuery" type="search" class="input" placeholder="np. bench press, przysiad, wiosłowanie…" :disabled="stage !== 'pick'" />
+            <ul v-if="exResults.length" class="divide-y divide-line overflow-hidden rounded-xl border border-line">
+              <li v-for="r in exResults" :key="r.id">
+                <button type="button" class="w-full px-3 py-2 text-left text-sm hover:bg-surface-2" @click="pickExercise(r.id)">{{ r.name_pl }}</button>
+              </li>
+            </ul>
+          </template>
+        </div>
         <div>
-          <p class="label">Ćwiczenie</p>
-          <div class="flex flex-wrap gap-2">
+          <label class="label" for="fam">Wzorzec ruchu</label>
+          <select id="fam" v-model="famChoice" class="input" :disabled="stage !== 'pick'">
+            <option value="auto">Rozpoznaj automatycznie z nagrania</option>
+            <option v-for="k in FAMILY_KEYS" :key="k" :value="k">{{ FAMILIES[k].name }}</option>
+          </select>
+        </div>
+        <div>
+          <p class="label">Skąd nagrywasz</p>
+          <div class="flex flex-wrap gap-2" role="group" aria-label="Ujęcie kamery">
             <button
-              v-for="k in EXERCISE_KEYS"
-              :key="k"
+              v-for="vw in ['auto', ...VIEW_CHOICES] as ('auto' | View)[]"
+              :key="vw"
               type="button"
               class="chip"
-              :class="ex === k ? 'border-primary bg-primary font-semibold text-on-primary' : 'border-line-strong bg-surface'"
+              :class="viewChoice === vw ? 'border-primary bg-primary font-semibold text-on-primary' : 'border-line-strong bg-surface'"
+              :aria-pressed="viewChoice === vw"
               :disabled="stage !== 'pick'"
-              @click="ex = k"
+              @click="viewChoice = vw"
             >
-              {{ PROFILES[k].name }}<span v-if="PROFILES[k].beta" class="ml-1 text-[10px] uppercase opacity-80">beta</span>
+              {{ vw === 'auto' ? 'wykryj sama' : VIEW_LABEL[vw] }}<span v-if="vw === recommendedView" class="ml-1 text-[10px] uppercase opacity-80">zalecane</span>
             </button>
           </div>
+          <p class="mt-1 text-xs text-muted">„Z tyłu” trzeba wskazać – z sylwetki nie da się odróżnić przodu od tyłu. Z tyłu mierzymy to samo co z przodu.</p>
         </div>
-        <p class="card flex gap-3 p-4 text-sm"><Icon name="video" class="size-5 shrink-0 text-primary-fg" />{{ profile.hint }}</p>
+        <p class="card flex gap-3 p-4 text-sm">
+          <Icon name="video" class="size-5 shrink-0 text-primary-fg" />{{ famChoice === 'auto' ? 'Cała sylwetka w kadrze, telefon nieruchomo, 2–3 m od ćwiczącego. Najczęściej najwięcej widać z boku.' : profile.hint }}
+        </p>
 
         <template v-if="stage === 'pick'">
-          <button class="btn-primary w-full" @click="stage = 'live'"><Icon name="video" class="size-5" />Kamera na żywo</button>
+          <button class="btn-primary w-full" :disabled="famChoice === 'auto'" @click="stage = 'live'"><Icon name="video" class="size-5" />Kamera na żywo</button>
+          <p v-if="famChoice === 'auto'" class="-mt-3 text-xs text-muted">Kamera na żywo liczy powtórzenia na bieżąco – wybierz wzorzec ruchu albo ćwiczenie. Nagranie filmu rozpozna ruch samo.</p>
           <div class="grid grid-cols-2 gap-3">
             <label class="btn-ghost cursor-pointer border border-line-strong">
               <Icon name="video" class="size-5" />Nagraj film
@@ -238,9 +311,27 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
             <label class="text-sm text-muted" for="vw">Ujęcie</label>
             <select id="vw" v-model="viewChoice" class="input mt-1 !min-h-10" @change="rerun">
               <option value="auto">auto: {{ VIEW_LABEL[result.view] }}</option>
-              <option value="front">z przodu</option>
-              <option value="side">z boku</option>
-              <option value="oblique">pod kątem</option>
+              <option v-for="vw in VIEW_CHOICES" :key="vw" :value="vw">{{ VIEW_LABEL[vw] }}</option>
+            </select>
+          </div>
+        </section>
+
+        <section v-if="guesses.length" class="card space-y-2 p-4">
+          <p class="text-sm text-muted">{{ famChoice === 'auto' ? 'Rozpoznany ruch' : 'Analizowany ruch' }}</p>
+          <p class="text-lg font-bold">
+            {{ FAMILIES[family].name }}<span class="ml-2 text-sm font-normal text-muted">pewność {{ guessPct(family) }}%</span>
+          </p>
+          <p v-if="mismatch" class="warn-box text-sm">
+            <Icon name="alert" class="size-5 shrink-0" />Ruch na nagraniu wygląda bardziej na: {{ FAMILIES[mismatch].name.toLowerCase() }}. Sprawdź wybrane ćwiczenie.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="text-muted">To jednak:</span>
+            <button v-for="g in guesses.filter((x) => x.family !== family).slice(0, 3)" :key="g.family" type="button" class="chip border-line-strong bg-surface" @click="setFamily(g.family)">
+              {{ FAMILIES[g.family].name }} <span class="ml-1 text-muted tabular-nums">{{ Math.round(g.score * 100) }}%</span>
+            </button>
+            <select class="input !min-h-9 w-auto py-1 text-sm" aria-label="Wybierz inny wzorzec ruchu" :value="''" @change="setFamily(($event.target as HTMLSelectElement).value as FamilyKey)">
+              <option value="" disabled>inny…</option>
+              <option v-for="k in FAMILY_KEYS" :key="k" :value="k">{{ FAMILIES[k].name }}</option>
             </select>
           </div>
         </section>
@@ -252,6 +343,8 @@ const signalLabel = computed(() => ({ knee: 'kolano', hip: 'biodro', elbow: 'ło
         </p>
 
         <CoachingPanel v-if="coaching && result.reps.length" :coaching="coaching" :active="shownFinding?.key" @show="showFinding" />
+
+        <PatternCard v-if="result.reps.length" :family="family" :series="result.series" :reps="result.reps" :equipment="exercise?.equipment" />
 
         <TempoPower v-if="result.reps.length" v-model:load-kg="loadKg" :exercise="ex" :reps="result.reps" :phases="profile.phases" :history="lvHistory" />
 

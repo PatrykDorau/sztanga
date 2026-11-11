@@ -122,12 +122,76 @@ function undo() {
   draw()
 }
 
+// ---------- Nagranie lokalnie ----------
+// Nagrania z MediaRecorder (webm) nie mają indeksu klatek – każde przewinięcie z serwera to ponowne pobieranie.
+// Wczytujemy plik raz do pamięci (blob), wtedy przewijanie jest natychmiastowe.
+const src = ref<string | null>(props.videoUrl ?? null)
+let blobUrl: string | null = null
+watch(
+  () => props.videoUrl,
+  async (u) => {
+    if (blobUrl) URL.revokeObjectURL(blobUrl)
+    blobUrl = null
+    src.value = u ?? null
+    if (!u || u.startsWith('blob:')) return
+    try {
+      const r = await fetch(u)
+      if (!r.ok) return
+      const b = await r.blob()
+      if (props.videoUrl !== u) return
+      blobUrl = URL.createObjectURL(b)
+      src.value = blobUrl
+    } catch {
+      /* zostaje odtwarzanie z serwera */
+    }
+  },
+  { immediate: true },
+)
+
+// ---------- Przewijanie bez kolejki ----------
+// Przy przeciąganiu suwaka przychodzi kilkadziesiąt zdarzeń na sekundę. Ustawianie currentTime przy każdym
+// kolejkuje dekodowanie i obraz zostaje w tyle. Tu: jeden skok naraz, w trakcie zapamiętujemy tylko ostatni cel.
+let seeking = false
+let pendingSeek: number | null = null
+let dragging = false
+function seekVideo(t: number) {
+  const v = video.value
+  if (!v || !props.videoUrl) return
+  if (seeking) {
+    pendingSeek = t
+    return
+  }
+  seeking = true
+  const fast = (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek
+  if (dragging && fast) fast.call(v, t)
+  else v.currentTime = t
+}
+function onSeeked() {
+  seeking = false
+  if (pendingSeek != null) {
+    const t = pendingSeek
+    pendingSeek = null
+    seekVideo(t)
+  }
+}
+function scrub(e: Event) {
+  dragging = true
+  playing.value = false
+  video.value?.pause()
+  setTime(Number((e.target as HTMLInputElement).value))
+}
+function scrubEnd() {
+  dragging = false
+  setTime(time.value) // dokładna klatka po puszczeniu suwaka
+}
+
 // ---------- Odtwarzanie ----------
 let raf = 0
 let last = 0
 function loop(now: number) {
   if (video.value && props.videoUrl) {
-    time.value = video.value.currentTime
+    // Czas z wideo tylko podczas odtwarzania – przy przewijaniu prowadzi suwak (szkielet od razu, obraz dogania).
+    if (playing.value && !seeking) time.value = video.value.currentTime
     if (video.value.ended) playing.value = false
   } else if (playing.value) {
     time.value += ((now - (last || now)) / 1000) * speed.value
@@ -143,7 +207,7 @@ function loop(now: number) {
 
 function setTime(t: number) {
   time.value = Math.max(0, Math.min(duration.value, t))
-  if (video.value && props.videoUrl) video.value.currentTime = time.value
+  seekVideo(time.value)
   draw()
 }
 /** Nagranie z kamery (MediaRecorder, webm) nie ma zapisanej długości – przewinięcie "na koniec" ją wylicza. */
@@ -163,6 +227,8 @@ function toggle() {
   pending.value = []
   tool.value = 'none'
   if (time.value >= duration.value - dt.value) setTime(0)
+  seeking = false
+  pendingSeek = null
   playing.value = true
   if (video.value && props.videoUrl) {
     video.value.playbackRate = speed.value
@@ -204,6 +270,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
+  if (blobUrl) URL.revokeObjectURL(blobUrl)
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('resize', draw)
 })
@@ -219,14 +286,15 @@ defineExpose({ setTime, step, showFrame })
       <video
         v-if="videoUrl"
         ref="video"
-        :src="videoUrl"
+        :src="src ?? undefined"
         class="absolute inset-0 size-full object-fill transition-opacity"
         :class="showVideo ? '' : 'opacity-0'"
         playsinline
         muted
         preload="auto"
-        @loadedmetadata="fixDuration"
+        @loadedmetadata="(seeking = false), (pendingSeek = null), fixDuration()"
         @loadeddata="setTime(time)"
+        @seeked="onSeeked"
       />
       <!-- Tło dla samego szkieletu (brak nagrania albo obraz wyłączony – wideo dalej odmierza czas) -->
       <div v-if="!videoUrl || !showVideo" class="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#2a2f37,#0b0d10)]" />
@@ -270,7 +338,9 @@ defineExpose({ setTime, step, showFrame })
         :step="dt"
         :value="time"
         aria-label="Pozycja w nagraniu"
-        @input="(playing = false), video?.pause(), setTime(Number(($event.target as HTMLInputElement).value))"
+        @input="scrub"
+        @change="scrubEnd"
+        @pointerup="scrubEnd"
       />
       <span class="pointer-events-none absolute top-1 h-7 w-0.5 rounded-full bg-fg" :style="{ left: `${(time / (duration || 1)) * 100}%` }" />
     </div>
