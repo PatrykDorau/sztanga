@@ -78,10 +78,7 @@ function clearFilters() {
         <button :class="filters.favOnly ? 'chip-on' : 'chip-off'" @click="filters.favOnly = !filters.favOnly">
           <Icon name="star" class="mr-1 size-4" />Ulubione
         </button>
-        <template v-if="hasImported">
-          <button :class="filters.scope === 'own' ? 'chip-on' : 'chip-off'" @click="filters.scope = 'own'">Moje</button>
-          <button :class="filters.scope === 'all' ? 'chip-on' : 'chip-off'" @click="filters.scope = 'all'">Wszystkie</button>
-        </template>
+        <button v-if="hasImported" :class="filters.scope === 'own' ? 'chip-on' : 'chip-off'" :aria-pressed="filters.scope === 'own'" @click="filters.scope = filters.scope === 'own' ? 'all' : 'own'">Tylko moje</button>
       </div>
 
       <div v-if="showFilters" class="card space-y-3 p-4">
@@ -129,9 +126,10 @@ function clearFilters() {
             <RouterLink :to="`/cwiczenia/${e.id}`" class="card flex items-center gap-3 p-2 pr-3 active:bg-surface-2">
               <ExerciseThumb :exercise="e" />
               <div class="min-w-0 flex-1">
-                <p class="flex items-center gap-1.5 font-medium">
-                  <span class="truncate">{{ e.name_pl }}</span>
-                  <span v-for="t in e.tags ?? []" :key="t" class="shrink-0 rounded-md bg-primary-soft px-1.5 text-[11px] font-semibold text-primary-fg">{{ t }}</span>
+                <p class="line-clamp-2 leading-snug font-medium">{{ e.name_pl }}</p>
+                <p v-if="e.tags?.length" class="mt-0.5 flex flex-wrap gap-1">
+                  <span v-for="t in e.tags.slice(0, 3)" :key="t" class="rounded-md bg-primary-soft px-1.5 text-[11px] font-semibold text-primary-fg">{{ t }}</span>
+                  <span v-if="e.tags.length > 3" class="text-[11px] text-muted">+{{ e.tags.length - 3 }}</span>
                 </p>
                 <p v-if="e.name_en && e.name_en !== e.name_pl" class="truncate text-xs text-subtle" lang="en">{{ e.name_en }}</p>
                 <p class="truncate text-xs text-muted">

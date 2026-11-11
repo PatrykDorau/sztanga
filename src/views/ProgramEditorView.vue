@@ -222,6 +222,11 @@ const removeProgram = () =>
       <div v-if="p.description && !showSettings" class="text-sm text-muted">{{ p.description }}</div>
 
       <template v-if="week">
+        <div v-if="p.kind !== 'single' && p.program_weeks.length > 1" class="flex items-center gap-2">
+          <span class="text-sm text-muted">Kolejność tygodnia {{ weekIdx + 1 }}:</span>
+          <button class="btn-ghost !min-h-9 border border-line-strong px-3 text-sm" :disabled="busy || weekIdx === 0" @click="act(() => programs.moveWeek(week!.id, -1)).then(() => weekIdx--)">← Wcześniej</button>
+          <button class="btn-ghost !min-h-9 border border-line-strong px-3 text-sm" :disabled="busy || weekIdx === p.program_weeks.length - 1" @click="act(() => programs.moveWeek(week!.id, 1)).then(() => weekIdx++)">Później →</button>
+        </div>
         <div v-if="p.kind !== 'single'">
           <p class="label">Faza tygodnia {{ weekIdx + 1 }}</p>
           <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">

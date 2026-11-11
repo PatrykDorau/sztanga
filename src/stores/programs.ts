@@ -108,6 +108,20 @@ export const useProgramsStore = defineStore('programs', () => {
     Object.assign(week(id)!, patch)
   }
 
+  /** Zamiana tygodnia z sąsiednim (dir −1 = wcześniej, +1 = później). */
+  async function moveWeek(id: string, dir: -1 | 1) {
+    const p = current.value!
+    const ws = [...p.program_weeks].sort(byPos)
+    const i = ws.findIndex((w) => w.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= ws.length) return
+    const [a, b] = [ws[i], ws[j]]
+    ;[a.position, b.position] = [b.position, a.position]
+    ok(await supabase.from('program_weeks').update({ position: a.position }).eq('id', a.id))
+    ok(await supabase.from('program_weeks').update({ position: b.position }).eq('id', b.id))
+    p.program_weeks = [...p.program_weeks].sort(byPos)
+  }
+
   async function removeWeek(id: string) {
     ok(await supabase.from('program_weeks').delete().eq('id', id))
     const p = current.value!
@@ -215,7 +229,7 @@ export const useProgramsStore = defineStore('programs', () => {
   return {
     list, listLoaded, current,
     loadList, open, create, update, remove, copy,
-    addWeek, updateWeek, removeWeek, duplicateWeek,
+    addWeek, updateWeek, removeWeek, duplicateWeek, moveWeek,
     addWorkout, updateWorkout, removeWorkout, reorderWorkouts,
     addExercise, updateExercise, removeExercise, moveExercise,
   }

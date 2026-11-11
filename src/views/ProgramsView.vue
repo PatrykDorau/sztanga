@@ -56,8 +56,8 @@ async function createSingle() {
       </div>
       <div class="grid grid-cols-3 rounded-xl bg-surface-2 p-1">
         <button class="rounded-lg py-2 text-sm font-medium" :class="tab === 'templates' ? 'bg-surface shadow text-fg' : 'text-muted'" @click="(tab = 'templates'), (creating = false)">Szablony</button>
-        <button class="rounded-lg py-2 text-sm font-medium" :class="tab === 'clients' ? 'bg-surface shadow text-fg' : 'text-muted'" @click="(tab = 'clients'), (creating = false)">Plany klientów</button>
-        <button class="rounded-lg py-2 text-sm font-medium" :class="tab === 'single' ? 'bg-surface shadow text-fg' : 'text-muted'" @click="(tab = 'single'), (creating = false)">Pojedyncze treningi</button>
+        <button class="rounded-lg py-2 text-sm font-medium" :class="tab === 'clients' ? 'bg-surface shadow text-fg' : 'text-muted'" @click="(tab = 'clients'), (creating = false)">Klientów</button>
+        <button class="rounded-lg py-2 text-sm font-medium" :class="tab === 'single' ? 'bg-surface shadow text-fg' : 'text-muted'" @click="(tab = 'single'), (creating = false)">Pojedyncze</button>
       </div>
       <input v-model="q" type="search" class="input" placeholder="Szukaj…" />
     </header>
@@ -111,7 +111,10 @@ async function createSingle() {
                 zmieniony {{ new Date(p.updated_at).toLocaleDateString('pl-PL') }}
               </p>
             </div>
-            <span v-if="!p.is_template" class="tag">{{ label(STATUSES, p.status) }}</span>
+            <span class="flex shrink-0 items-center gap-1">
+              <span v-if="!p.is_template" class="tag">{{ label(STATUSES, p.status) }}</span>
+              <Icon name="chevron" class="size-4 text-subtle" />
+            </span>
           </RouterLink>
         </li>
       </ul>
