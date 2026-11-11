@@ -16,6 +16,7 @@ const router = createRouter({
     { path: '/klienci/:id', name: 'client', component: () => import('@/views/ClientDetailView.vue'), props: true, meta: { trainer: true } },
     { path: '/klienci/:id/edycja', name: 'client-edit', component: () => import('@/views/ClientFormView.vue'), props: true, meta: { trainer: true } },
     { path: '/plany', name: 'programs', component: () => import('@/views/ProgramsView.vue'), meta: { trainer: true } },
+    { path: '/plany/import', name: 'program-import', component: () => import('@/views/ImportWorkoutView.vue'), meta: { trainer: true } },
     { path: '/plany/ai', name: 'program-ai', component: () => import('@/views/AiPlanView.vue'), meta: { trainer: true } },
     { path: '/asystent', name: 'assistant', component: () => import('@/views/AssistantView.vue'), meta: { trainer: true } },
     { path: '/plany/:id', name: 'program', component: () => import('@/views/ProgramEditorView.vue'), props: true, meta: { trainer: true } },

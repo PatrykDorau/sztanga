@@ -26,7 +26,7 @@ const PRICES: Record<string, [number, number, number, number]> = {
 }
 type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }
 /** Zapis kosztu do ai_usage (licznik kredytów w Profilu). Błąd zapisu nie psuje odpowiedzi. */
-function logUsage(action: 'ask' | 'plan' | 'translate', model: string, u: Usage | undefined, actualModel?: string) {
+function logUsage(action: 'ask' | 'plan' | 'translate' | 'import', model: string, u: Usage | undefined, actualModel?: string) {
   if (!u) return
   const m = actualModel && PRICES[actualModel] ? actualModel : model
   const [pi, po, pr, pw] = PRICES[m] ?? PRICES['claude-opus-5-5']
@@ -762,6 +762,81 @@ Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, spraw
 
 // ======================================================================
 // Tłumaczenie wskazówek technicznych ćwiczeń (EN → PL) – partiami, structured output, bez danych osobowych.
+// ===================== Import treningu (tekst, zdjęcie, dyktowanie) =====================
+const IMPORT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'workouts', 'warnings'],
+  properties: {
+    name: { type: 'string' },
+    warnings: { type: 'array', items: { type: 'string' } },
+    workouts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'exercises'],
+        properties: {
+          name: { type: 'string' },
+          exercises: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'section', 'group', 'sets', 'reps', 'load', 'tempo', 'rest_sec', 'notes'],
+              properties: {
+                name: { type: 'string' },
+                section: { type: ['string', 'null'] },
+                group: { type: ['string', 'null'] },
+                sets: { type: ['integer', 'null'] },
+                reps: { type: ['string', 'null'] },
+                load: { type: ['string', 'null'] },
+                tempo: { type: ['string', 'null'] },
+                rest_sec: { type: ['integer', 'null'] },
+                notes: { type: ['string', 'null'] },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const
+const IMPORT_SYSTEM = `Przepisujesz trening trenerki personalnej do aplikacji. Dostajesz tekst, zdjęcie/zrzut ekranu tabeli albo dyktowaną notatkę (mowa zamieniona na tekst – mogą być błędy rozpoznawania, np. „trzy na dziesięć” = 3 serie po 10).
+Zasady:
+- Przepisz WSZYSTKIE ćwiczenia w kolejności, po polsku, tak jak nazwała je trenerka (bez tłumaczenia jej skrótów: OHP, RDL, SL RDL, SA row zostają).
+- Kilka dni / jednostek (np. „Trening A”, kolumny T1–T6 to tygodnie, nie dni!) – osobne treningi tylko gdy to faktycznie różne jednostki; kolumny T1…T6 z wynikami potraktuj jako notatkę z ciężarami pierwszego tygodnia.
+- section: część treningu z dokumentu (np. „Przygotowanie ruchowe”, „Aktywacja”, „Część główna”, „Relaks”) albo null.
+- group: litera superserii/obwodu, gdy ćwiczenia są oznaczone 5A/5B/5C, 6a/6b (np. „A”, „B”) albo null.
+- sets: liczba serii (np. „wszędzie 3 serie” → 3; „2/8” → sets 2 reps "8"); reps jako tekst („12/str”, „8-10”, „30 s”, „5 min”); load opisowo („42,5 kg”, „RPE 7”); tempo jak „5-3-0-0”; rest_sec w sekundach („20–30 s” → 30, „minuta” → 60).
+- Nie zgaduj: brak informacji = null. Niepewne rzeczy opisz w warnings (krótko, po polsku).
+- name planu: krótka nazwa z dokumentu albo opisowa.`
+async function importWorkout(db: SupabaseClient, input: { text?: string; image?: { media_type: string; data: string } }) {
+  const content: unknown[] = []
+  if (input.image?.data) {
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(input.image.media_type)) throw new HttpError(400, 'Nieobsługiwany format obrazu.')
+    if (input.image.data.length > 7_000_000) throw new HttpError(400, 'Obraz jest za duży.')
+    content.push({ type: 'image', source: { type: 'base64', media_type: input.image.media_type, data: input.image.data } })
+  }
+  const text = String(input.text ?? '').slice(0, 20000).trim()
+  if (text) content.push({ type: 'text', text })
+  if (!content.length) throw new HttpError(400, 'Wklej tekst albo dodaj zdjęcie treningu.')
+  if (!text) content.push({ type: 'text', text: 'Przepisz trening ze zdjęcia.' })
+  const model = await modelFor(db, 'plan')
+  const msg = await anthropic().beta.messages.create({
+    model,
+    max_tokens: 16000,
+    ...fallbackFor(model),
+    system: IMPORT_SYSTEM,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: IMPORT_SCHEMA } },
+    messages: [{ role: 'user', content }],
+  } as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming)
+  logUsage('import', model, msg.usage as Usage, (msg as { model?: string }).model)
+  if (msg.stop_reason === 'refusal') throw new HttpError(422, 'Model odmówił odczytania tego materiału.')
+  if (msg.stop_reason === 'max_tokens') throw new HttpError(502, 'Trening za długi – podziel go na części.')
+  return JSON.parse(textOf(msg))
+}
+
 const TRANSLATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -805,6 +880,7 @@ Deno.serve(async (req) => {
     // Czy AI jest włączone (klucz w sekretach) – aplikacja pokazuje wtedy opcję "z AI" obok generatora z reguł.
     if (body.action === 'status') return json({ ai: !!Deno.env.get('ANTHROPIC_API_KEY') })
     if (body.action === 'plan') return json(await generatePlan(db, body as PlanInput))
+    if (body.action === 'import') return json(await importWorkout(db, { text: body.text, image: body.image }))
     if (body.action === 'translate') return json(await translate(Array.isArray(body.items) ? body.items : [], body.model === 'claude-haiku-5-5' ? 'claude-haiku-5-5' : MODEL))
     if (body.action === 'ask') {
       const history = Array.isArray(body.messages) ? body.messages.filter((m: any) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : []

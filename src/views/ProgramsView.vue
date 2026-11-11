@@ -49,6 +49,7 @@ async function createSingle() {
       <div class="flex items-center justify-between">
         <h1 class="page-title">Plany</h1>
         <div class="flex gap-2">
+          <RouterLink to="/plany/import" class="icon-btn border border-line-strong" aria-label="Import treningu (tekst, zdjęcie, dyktowanie)" title="Import treningu"><Icon name="download" class="size-5" /></RouterLink>
           <RouterLink to="/plany/ai" class="btn-ghost border border-line-strong"><Icon name="star" class="size-5" />Generator</RouterLink>
           <button v-if="tab === 'templates'" class="btn-primary" @click="creating = !creating"><Icon name="plus" class="size-5" />Szablon</button>
           <button v-if="tab === 'single'" class="btn-primary" @click="creating = !creating"><Icon name="plus" class="size-5" />Trening</button>
