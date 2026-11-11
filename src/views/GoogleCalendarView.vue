@@ -89,11 +89,13 @@ const groups = computed(() => {
   return [...m.entries()]
 })
 const pick = reactive<Record<string, string>>({})
-const assign = (title: string, clientId: string | null) =>
+const assign = (title: string, clientId: string | null, groupKind: string | null = null) =>
   run(async () => {
-    await cal.assign(title, clientId)
+    await cal.assign(title, clientId, groupKind)
     todo.value = await cal.unmatched()
+    if (groupKind) info.value = `„${groupKind}” – zajęcia grupowe w grafiku (także kolejne wystąpienia).`
   })
+const groupName = (title: string) => title.replace(/\s*\([A-Za-z0-9]{1,4}\)\s*$/, '').trim()
 // Imię z kalendarza przekazujemy przez stan aplikacji, nie w adresie URL (dane osobowe).
 function createClient(title: string) {
   cal.pendingAlias = title
@@ -233,6 +235,7 @@ const lastSync = computed(() =>
             </div>
             <div class="grid grid-cols-2 gap-2">
               <button class="btn-ghost !min-h-10 text-sm" @click="createClient(title)"><Icon name="plus" class="size-4" />Nowy klient</button>
+              <button class="btn-ghost !min-h-10 text-sm" :disabled="busy" @click="assign(title, null, groupName(title))"><Icon name="users" class="size-4" />Zajęcia grupowe</button>
               <button class="btn-ghost !min-h-10 text-sm" :disabled="busy" @click="assign(title, null)">To nie klient</button>
             </div>
           </li>

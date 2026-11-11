@@ -42,6 +42,7 @@ interface CalRow {
 interface Ctx {
   clients: ClientRef[]
   aliases: Map<string, string | null>
+  groups: Map<string, string> // tytuł (znormalizowany) → nazwa zajęć grupowych
 }
 // Odwołane w aplikacji: wydarzenie zostaje w Google z tym dopiskiem, grafitowe, „dostępny” – usuwa je trenerka z panelu.
 const CANCELLED_PREFIX = 'ODWOŁANE · '
@@ -100,7 +101,7 @@ async function pull(db: SupabaseClient, token: string, cal: CalRow, gyms: Gym[],
     .select('sync_token, sync_window_end, import_page_token, import_time_min, import_time_max')
     .eq('calendar_id', calendarId)
     .single()
-  const { aliases, clients: clientList } = ctx
+  const { aliases, clients: clientList, groups: groupTitles } = ctx
 
   let syncToken: string | null = g?.sync_token ?? null
   // Okno pełnego importu się kończy – zaczynamy pełny import od nowa (z nowym oknem).
@@ -149,7 +150,7 @@ async function pull(db: SupabaseClient, token: string, cal: CalRow, gyms: Gym[],
     }
     const ops: Ops = { del: [], up: [] }
     for (const ev of items) {
-      const recolor = await applyEvent(db, ev, gyms, clientList, aliases, linkedMap.get(ev.id) ?? null, ops, cal, win.max)
+      const recolor = await applyEvent(db, ev, gyms, clientList, aliases, linkedMap.get(ev.id) ?? null, ops, cal, win.max, groupTitles)
       // Trening wpisany ręcznie w Google dostaje kolor swojej siłowni (sam tytuł zostaje bez zmian).
       if (recolor) {
         await gapi(token, `${calPath(calendarId)}/events/${encodeURIComponent(ev.id)}`, { method: 'PATCH', body: JSON.stringify({ colorId: String(recolor) }) }).catch((e) =>
@@ -215,6 +216,7 @@ async function applyEvent(
   ops: Ops,
   cal: CalRow,
   windowEnd: string | null,
+  groupTitles: Map<string, string> = new Map(),
 ): Promise<number | null> {
   const now = new Date().toISOString()
   const calGym = gyms.find((g) => g.id === cal.gym_id) ?? null
@@ -232,6 +234,8 @@ async function applyEvent(
 
   // Usunięte w Google
   if (e.status === 'cancelled') {
+    // Zajęcia grupowe z tego wydarzenia – odwołane (bez odsyłania do Google: wydarzenia już nie ma).
+    await db.from('group_classes').update({ cancelled: true, gcal_event_id: null, gcal_synced_at: now }).eq('gcal_event_id', e.id)
     await cancelLinked('Usunięte w Google Calendar')
     unmirror()
     return null
@@ -280,6 +284,18 @@ async function applyEvent(
       session_id: null,
       updated_at: now,
     })
+
+  // Tytuł oznaczony jako zajęcia grupowe („Do przypisania” → „Zajęcia grupowe”) – zajęcia w grafiku, powiązane z wydarzeniem.
+  const groupKind = t.allDay ? null : groupTitles.get(norm(splitTitle(title).base))
+  if (groupKind) {
+    await cancelLinked('Zajęcia grupowe')
+    const row = { kind: groupKind, starts_at: t.starts, ends_at: t.ends, gym_id: gym?.id ?? null, gcal_event_id: e.id, gcal_calendar_id: cal.calendar_id, gcal_dirty: false, gcal_synced_at: now, cancelled: false }
+    const { data: ex } = await db.from('group_classes').select('id').eq('gcal_event_id', e.id).maybeSingle()
+    if (ex) await db.from('group_classes').update(row).eq('id', ex.id)
+    else await db.from('group_classes').insert(row)
+    unmirror()
+    return null
+  }
 
   if (isFree(title)) {
     // Trenerka zwolniła termin w Google (sesja → Free) – odwołaj sesję w aplikacji.
@@ -586,9 +602,13 @@ Deno.serve(async (req) => {
     const cals = ((calRows ?? []) as CalRow[]).sort((a, b) => (a.calendar_id === calendarId ? -1 : b.calendar_id === calendarId ? 1 : 0))
     const [{ data: clientRows }, { data: aliasRows }] = await Promise.all([
       db.from('clients').select('id, full_name').eq('archived', false),
-      db.from('client_aliases').select('alias_norm, client_id'),
+      db.from('client_aliases').select('alias_norm, client_id, group_kind'),
     ])
-    const ctx: Ctx = { clients: (clientRows ?? []) as ClientRef[], aliases: new Map((aliasRows ?? []).map((a) => [a.alias_norm as string, a.client_id as string | null])) }
+    const ctx: Ctx = {
+      clients: (clientRows ?? []) as ClientRef[],
+      aliases: new Map((aliasRows ?? []).filter((a) => !a.group_kind).map((a) => [a.alias_norm as string, a.client_id as string | null])),
+      groups: new Map((aliasRows ?? []).filter((a) => a.group_kind).map((a) => [a.alias_norm as string, a.group_kind as string])),
+    }
     let pulled = 0
     let pushed = 0
     let partial = false

@@ -134,10 +134,14 @@ export const useCalendarStore = defineStore('calendar', () => {
     await loadStatus()
   }
 
-  /** Przypisanie tytułu z kalendarza do klienta (albo "to nie klient") i ponowna synchronizacja. */
-  async function assign(title: string, clientId: string | null) {
-    ok(await supabase.from('client_aliases').upsert({ alias_norm: aliasKey(title), client_id: clientId }))
-    // wymuś ponowny import tych wydarzeń: pełny import z mapowaniem
+  /**
+   * Przypisanie tytułu z kalendarza: klient, „to nie klient” albo zajęcia grupowe (groupKind). Wydarzenia, które się
+   * nie zmieniły w Google, przeliczamy pełnym importem okna (miesiąc); „to nie klient” od razu znika z listy.
+   */
+  async function assign(title: string, clientId: string | null, groupKind: string | null = null) {
+    ok(await supabase.from('client_aliases').upsert({ alias_norm: aliasKey(title), client_id: groupKind ? null : clientId, group_kind: groupKind }))
+    if (!clientId && !groupKind) ok(await supabase.from('calendar_events').update({ kind: 'busy' }).eq('kind', 'unmatched').eq('title', title))
+    ok(await supabase.rpc('google_resync'))
     await syncNow()
   }
 
