@@ -31,6 +31,7 @@ const form = reactive({
   notes: '',
   split: 'auto' as SplitType,
   gym_id: '' as string,
+  structure: true, // schemat trenerki: przygotowanie ruchowe, aktywacja, pary, finisher
 })
 const cal = useCalendarStore()
 const exStore = useExercisesStore()
@@ -77,6 +78,7 @@ function request(): PlanRequest {
     notes: form.notes.trim() || null,
     split: form.split,
     gym_id: form.gym_id || null,
+    structure: form.structure,
   }
 }
 
@@ -98,9 +100,12 @@ async function submit(mode: 'rules' | 'ai') {
       id = r.program_id
       if (r.warnings.length) note = r.warnings.join(' ')
     } else {
-      const { exercises, usage } = await loadRuleData()
+      const { exercises, usage, favorites } = await loadRuleData()
       await exStore.load()
-      const plan = buildRulePlan(request(), exercises, usage, `${form.client_id}${new Date().toISOString().slice(0, 10)}`, client.value?.client_group ?? null, allowedSet(exStore.all, gym.value))
+      const plan = buildRulePlan(request(), exercises, usage, `${form.client_id}${new Date().toISOString().slice(0, 10)}`, client.value?.client_group ?? null, allowedSet(exStore.all, gym.value), {
+        favorites,
+        structure: form.structure,
+      })
       id = await savePlanDraft(plan, form.client_id || null)
       note = 'rules'
     }
@@ -176,6 +181,10 @@ async function submit(mode: 'rules' | 'ai') {
         <ChipSelect v-model="form.equipment" :options="EQUIPMENT" custom placeholder="wybierz sprzęt" />
         <p class="mt-1 text-xs text-muted">Ćwiczenia z masą ciała są zawsze dostępne.</p>
       </div>
+      <label class="flex items-start gap-3 text-sm">
+        <input v-model="form.structure" type="checkbox" class="mt-0.5 size-5 accent-primary" :disabled="!!busy" />
+        <span><strong>Mój schemat treningu</strong> – przygotowanie ruchowe (ergometr + ćwiczenia z etykietą „przygotowanie ruchowe”), aktywacja (A), część główna w parach po 3 serie, na końcu finisher (sanki). Ulubione ćwiczenia (gwiazdka) mają pierwszeństwo.</span>
+      </label>
       <div>
         <p class="label">Ograniczenia / kontuzje</p>
         <ChipSelect v-model="form.limitations" :options="CONTRAINDICATIONS" custom placeholder="brak – dodaj" />

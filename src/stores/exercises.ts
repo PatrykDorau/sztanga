@@ -62,7 +62,7 @@ export const useExercisesStore = defineStore('exercises', () => {
 
   /** Własne etykiety trenerki (np. „bułgar”, „ulubione Ani”) – widoczne obok nazwy i przeszukiwane. */
   async function setTags(id: string, tags: string[]) {
-    const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))].slice(0, 8)
+    const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))].slice(0, 20)
     const { error } = await supabase.from('exercises').update({ tags: clean }).eq('id', id)
     if (error) throw error
     const e = all.value.find((x) => x.id === id)

@@ -8,7 +8,7 @@ const filters = reactive({
   pattern: [] as string[],
   level: [] as string[],
   favOnly: false,
-  scope: 'own' as 'own' | 'all',
+  scope: 'all' as 'own' | 'all', // domyślnie cała baza (ulubione na górze)
 })
 </script>
 
@@ -44,9 +44,11 @@ const results = computed(() =>
     if (filters.pattern.length && !filters.pattern.includes(e.movement_pattern ?? '')) return false
     if (filters.level.length && !filters.level.includes(e.level)) return false
     return true
-  })),
+  }), ex.favorites),
 )
-const visible = computed(() => results.value.slice(0, limit.value))
+// Bez wyszukiwania: ulubione (gwiazdka) na górze listy.
+const ordered = computed(() => (filters.q.trim() ? results.value : [...results.value].sort((a, b) => Number(ex.favorites.has(b.id)) - Number(ex.favorites.has(a.id)))))
+const visible = computed(() => ordered.value.slice(0, limit.value))
 
 function clearFilters() {
   filters.muscles = []

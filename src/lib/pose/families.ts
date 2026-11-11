@@ -17,6 +17,7 @@ export type FamilyKey =
   | 'hip_thrust'
   | 'bench'
   | 'ohp'
+  | 'landmine_press'
   | 'pushup'
   | 'pullup'
   | 'pulldown'
@@ -181,6 +182,7 @@ export interface Props2 {
   bar?: [number, number, number] // drążek: x0, x1, y
   pulley?: P // punkt zaczepienia linki
   pulley2?: P
+  lever?: P // landmine: punkt oparcia sztangi na podłodze (sztanga od punktu do dłoni)
 }
 
 export interface Family {
@@ -295,6 +297,20 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     profile: 'press',
     view: 'front',
     pose: (f) => side({ ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.04, 0.56], elbowHint: [0.5, -1] }, { ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.1, 0.04], elbowHint: [0.5, -1] })(f),
+  },
+  landmine_press: {
+    key: 'landmine_press',
+    name: 'Wyciskanie landmine (z półklęku do wstania)',
+    profile: 'press',
+    view: 'side',
+    effortTo1: true,
+    // Start: półklęk (tylne kolano przy podłodze), koniec sztangi przy barku. Ruch: wstanie i wyciśnięcie wzdłuż sztangi.
+    pose: (f) =>
+      side(
+        { hip: [-0.05, 0.55], trunk: 4, ankle: [0.38, 0.08], ankle2: [-0.62, 0.1], kneeHint: [0.3, -1], wristRel: [0.14, -0.06], elbowHint: [0.2, -1] },
+        { hip: [-0.02, 0.95], trunk: 6, ankle: [0.38, 0.08], ankle2: [-0.32, 0.1], kneeHint: [1, 0], wristRel: [0.42, 0.36], elbowHint: [0.2, -1] },
+      )(f),
+    props: () => ({ lever: [1.55, 0.04] }),
   },
   pushup: {
     key: 'pushup',
@@ -480,6 +496,7 @@ const RULES: Rule[] = [
   [/crunch|sit.?up|situp|v-up|jackknife|brzuszk|spiec|scyzoryk/, 'crunch'],
   [/leg raise|knee raise|knee tuck|toes to bar|unoszenie nog|unoszenie kolan|podciaganie kolan/, 'leg_raise'],
   [/push.?up|press.?up|pompk(?!i na porecz)/, 'pushup'],
+  [/landmine.*press|wyciskanie landmine|landmine/, 'landmine_press'],
   [/military|shoulder press|overhead|arnold|push press|behind the neck|seated dumbbell press|nad glowe|zolniersk|za glowe|landmine press/, 'ohp'],
   [/lateral raise|side lateral|laterals|raise.*side|bokiem|odwodzenie ramion/, 'lateral_raise'],
   [/front raise|front.*raise|przodem/, 'front_raise'],
@@ -499,14 +516,17 @@ const RULES: Rule[] = [
 export function autoFamily(e: Pick<Exercise, 'name_pl' | 'name_en' | 'primary_muscles' | 'muscle_groups' | 'force' | 'mechanic'>): FamilyKey | null {
   const n = `${norm(e.name_en)} | ${norm(e.name_pl)}`
   for (const [re, fam] of RULES) if (re.test(n)) return fam
-  const m = e.primary_muscles?.[0] ?? e.muscle_groups?.[0]
+  // Mobilność, kondycja, skoki, „inne” – bez wzorca z samego mięśnia (rozciąganie barków to nie wyciskanie).
+  if (['mobility', 'cardio', 'plyo', 'other', 'carry', 'rotation'].includes((e as { movement_pattern?: string | null }).movement_pattern ?? '')) return null
+  const m =e.primary_muscles?.[0] ?? e.muscle_groups?.[0]
   const push = e.force === 'push'
   const pull = e.force === 'pull'
   if (m === 'quadriceps') return 'squat'
   if (m === 'hamstrings' || (m === 'glutes' && pull)) return 'hinge'
   if (m === 'glutes') return 'hip_thrust'
   if (m === 'chest') return push ? 'bench' : 'fly'
-  if (m === 'shoulders') return push ? 'ohp' : 'lateral_raise'
+  // Barki: wielostawowe = wyciskanie, izolowane = unoszenie
+  if (m === 'shoulders') return e.mechanic === 'isolation' && !push ? 'lateral_raise' : 'ohp'
   if (m === 'lats') return 'pulldown'
   if (m === 'middle back') return 'row'
   if (m === 'biceps') return 'curl'

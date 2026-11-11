@@ -18,8 +18,11 @@ onMounted(() => searchEl.value?.focus())
 
 const list = computed(() => {
   const pool = ex.all.filter((e) => !props.exclude?.includes(e.id) && (!props.allowed || showAll.value || props.allowed.has(e.id)))
-  // bez zapytania: własne ćwiczenia trenerki na górze; z zapytaniem – trafność
-  return (q.value.trim() ? searchExercises(q.value, pool) : [...pool].sort((a, b) => Number(b.source === 'own') - Number(a.source === 'own'))).slice(0, 40)
+  // bez zapytania: ulubione (gwiazdka), potem własne ćwiczenia trenerki; z zapytaniem – etykiety, trafność, ulubione
+  const fav = (id: string) => Number(ex.favorites.has(id))
+  return (
+    q.value.trim() ? searchExercises(q.value, pool, ex.favorites) : [...pool].sort((a, b) => fav(b.id) - fav(a.id) || Number(b.source === 'own') - Number(a.source === 'own'))
+  ).slice(0, 40)
 })
 </script>
 

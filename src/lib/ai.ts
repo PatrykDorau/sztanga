@@ -20,6 +20,7 @@ export interface PlanRequest {
   notes: string | null
   split?: SplitType // typ treningu (auto = wg liczby dni)
   gym_id?: string | null // siłownia – tylko dostępny tam sprzęt
+  structure?: boolean // schemat trenerki: przygotowanie ruchowe, aktywacja, pary, finisher
 }
 export type SplitType = 'auto' | 'fbw' | 'upper_lower' | 'push_pull' | 'ppl' | 'bro'
 export const SPLIT_LABEL: Record<SplitType, string> = {

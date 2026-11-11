@@ -37,6 +37,7 @@ function textOf(msg: Anthropic.Beta.BetaMessage) {
 // Generator planu
 // ======================================================================
 interface PlanInput {
+  structure?: boolean
   client_id?: string | null
   goal: string
   level: 'beginner' | 'intermediate' | 'advanced'
@@ -137,8 +138,11 @@ async function generatePlan(db: SupabaseClient, input: PlanInput) {
   const equipment = [...new Set([...(input.equipment ?? []), 'body only'])]
 
   // Tylko ćwiczenia z jej bazy, które da się zrobić tym sprzętem i bez przeciwwskazań klienta.
-  const { data: all, error } = await db.from('exercises').select('id, name_pl, movement_pattern, muscle_groups, equipment, level, contraindications')
+  const { data: all, error } = await db.from('exercises').select('id, name_pl, movement_pattern, muscle_groups, equipment, level, contraindications, tags')
   if (error) throw error
+  // Ulubione trenerki (gwiazdka) – model ma po nie sięgać częściej.
+  const { data: favRows } = await db.from('exercise_favorites').select('exercise_id')
+  const favs = new Set((favRows ?? []).map((f) => f.exercise_id as string))
   // Siłownia: kategorie sprzętu i konkretne maszyny ustawione przez trenerkę
   let gymRow: { name: string; equipment: string[] | null; machines: string[] | null } | null = null
   if (input.gym_id) {
@@ -154,7 +158,7 @@ async function generatePlan(db: SupabaseClient, input: PlanInput) {
   if (allowed.length < 8) throw new HttpError(400, 'Za mało ćwiczeń pasujących do sprzętu i ograniczeń – dodaj sprzęt albo ćwiczenia do bazy.')
   const codeToId = new Map(allowed.map((e, i) => [`e${i + 1}`, e.id as string]))
   const catalog = allowed
-    .map((e, i) => `e${i + 1} | ${e.name_pl} | ${e.movement_pattern ?? '-'} | ${(e.muscle_groups as string[]).join(',')} | ${e.level}`)
+    .map((e, i) => `e${i + 1} | ${favs.has(e.id as string) ? '★ ' : ''}${e.name_pl}${(e.tags as string[] | null)?.length ? ` [${(e.tags as string[]).join(', ')}]` : ''} | ${e.movement_pattern ?? '-'} | ${(e.muscle_groups as string[]).join(',')} | ${e.level}`)
     .join('\n')
 
   const system = `Jesteś doświadczonym trenerem personalnym i układasz SZKIC planu treningowego, który trenerka potem poprawi.
@@ -165,6 +169,12 @@ Zasady:
 - "reps" jako tekst, np. "8", "8-10", "30 s". "load" opisowo, np. "RPE 7", "60% 1RM", "masa ciała". "rest_sec" w sekundach.
 - Nazwy treningów i opisy po polsku, krótko. "description" planu: 1–2 zdania o celu i logice.
 - Fazy tygodni tylko z listy: ${PHASES.join(', ')}.
+- Ćwiczenia oznaczone ★ to ulubione trenerki – wybieraj je w pierwszej kolejności, gdy pasują do celu. W nawiasach [ ] są jej etykiety (jej nazwy i rola ćwiczenia).${
+    input.structure
+      ? `
+- Schemat trenerki dla każdego treningu: 1) przygotowanie ruchowe – ergometr 5 min, potem 3–4 ćwiczenia z etykietą „przygotowanie ruchowe” po 12/str (1 seria, notes "Przygotowanie ruchowe"); 2) aktywacja – 2–3 ćwiczenia z etykietą „aktywacja”, group "A", 2 serie (notes "Aktywacja"); 3) część główna w parach (group B, C, D…), wszędzie 3 serie; 4) na końcu finisher z etykietą „finisher” (np. sanki), jeśli jest w katalogu.`
+      : ''
+  }
 
 Katalog ćwiczeń (kod | nazwa | wzorzec ruchu | mięśnie | poziom):
 ${catalog}`
