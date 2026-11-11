@@ -58,7 +58,13 @@ export interface Series {
   rightVis: number[]
 }
 
-export function computeSeries(tr: Track): Series {
+/**
+ * Serie na klatkę. view = 'side': kąty kolana i biodra oraz pochylenie tułowia liczymy z obrazu (2D) –
+ * ruch nóg i tułowia odbywa się w płaszczyźnie równoległej do obrazu, a głębia 3D z MediaPipe jest z boku
+ * najmniej pewna (na nagraniach różnica do 25° i rozrzut między powtórzeniami ±8°). Łokieć i bark zostają w 3D
+ * (łokcie bywają odwiedzione w bok – rzut 2D zaniżałby kąt).
+ */
+export function computeSeries(tr: Track, view: View = 'unknown'): Series {
   const n = tr.poses.length
   const s: Series = {
     kneeL: [], kneeR: [], hipL: [], hipR: [], elbowL: [], elbowR: [], shoulderL: [], shoulderR: [], spread: [], trunk: [], valgus: [], shift: [], bodyLine: [], wristDrift: [],
@@ -66,15 +72,32 @@ export function computeSeries(tr: Track): Series {
   }
   const W = tr.width || 1
   const H = tr.height || 1
+  const flat = view === 'side'
   for (let i = 0; i < n; i++) {
     const p = tr.poses[i]
     if (!p) {
       for (const k of Object.keys(s) as (keyof Series)[]) s[k].push(NaN)
       continue
     }
+    const px = (j: number) => p[j].x * W
+    const py = (j: number) => p[j].y * H
+    const ang2 = (a: number, b: number, c: number) => {
+      const ux = px(a) - px(b)
+      const uy = py(a) - py(b)
+      const vx = px(c) - px(b)
+      const vy = py(c) - py(b)
+      const d = Math.hypot(ux, uy) * Math.hypot(vx, vy)
+      return d ? Math.acos(Math.max(-1, Math.min(1, (ux * vx + uy * vy) / d))) * DEG : NaN
+    }
+    // Średnia dwóch punktów ważona widocznością: z boku liczy się prawie tylko bliższa strona.
+    const wv = (a: number, b: number, f: (j: number) => number) => {
+      const wa = p[a].v ** 2 + 1e-3
+      const wb = p[b].v ** 2 + 1e-3
+      return (f(a) * wa + f(b) * wb) / (wa + wb)
+    }
     const side = (sh: number, el: number, wr: number, hip: number, kn: number, an: number) => ({
-      knee: angle(w3(p, hip), w3(p, kn), w3(p, an)),
-      hip: angle(w3(p, sh), w3(p, hip), w3(p, kn)),
+      knee: flat ? ang2(hip, kn, an) : angle(w3(p, hip), w3(p, kn), w3(p, an)),
+      hip: flat ? ang2(sh, hip, kn) : angle(w3(p, sh), w3(p, hip), w3(p, kn)),
       elbow: angle(w3(p, sh), w3(p, el), w3(p, wr)),
       shoulder: angle(w3(p, hip), w3(p, sh), w3(p, el)),
     })
@@ -93,24 +116,30 @@ export function computeSeries(tr: Track): Series {
     s.leftVis.push(vis(p, J.lSh, J.lHip, J.lKnee, J.lAnk, J.lEl, J.lWr))
     s.rightVis.push(vis(p, J.rSh, J.rHip, J.rKnee, J.rAnk, J.rEl, J.rWr))
 
-    // Pochylenie: wektor biodra→barki względem pionu (w świecie MediaPipe oś y skierowana w dół).
-    const torso = sub(mid3(w3(p, J.lSh), w3(p, J.rSh)), mid3(w3(p, J.lHip), w3(p, J.rHip)))
-    s.trunk.push(len(torso) ? Math.acos(Math.max(-1, Math.min(1, -torso[1] / len(torso)))) * DEG : NaN)
+    // Pochylenie: wektor biodra→barki względem pionu (świat MediaPipe: oś y w dół; z boku – obraz, oś y też w dół).
+    if (flat) {
+      const tx = (px(J.lSh) + px(J.rSh)) / 2 - (px(J.lHip) + px(J.rHip)) / 2
+      const ty = (py(J.lSh) + py(J.rSh)) / 2 - (py(J.lHip) + py(J.rHip)) / 2
+      const tl = Math.hypot(tx, ty)
+      s.trunk.push(tl ? Math.acos(Math.max(-1, Math.min(1, -ty / tl))) * DEG : NaN)
+    } else {
+      const torso = sub(mid3(w3(p, J.lSh), w3(p, J.rSh)), mid3(w3(p, J.lHip), w3(p, J.rHip)))
+      s.trunk.push(len(torso) ? Math.acos(Math.max(-1, Math.min(1, -torso[1] / len(torso)))) * DEG : NaN)
+    }
 
     // Z obrazu (w pikselach, żeby proporcje kadru nie zniekształcały).
-    const px = (j: number) => p[j].x * W
-    const py = (j: number) => p[j].y * H
     const ankleDist = Math.abs(px(J.lAnk) - px(J.rAnk))
     s.valgus.push(ankleDist > 1 ? (Math.abs(px(J.lKnee) - px(J.rKnee)) / ankleDist) * 100 : NaN)
     const hipW = Math.abs(px(J.lHip) - px(J.rHip))
     s.shift.push(hipW > 1 ? (Math.abs((px(J.lHip) + px(J.rHip)) / 2 - (px(J.lAnk) + px(J.rAnk)) / 2) / hipW) * 100 : NaN)
 
-    const near = p[J.lHip].v + p[J.lSh].v >= p[J.rHip].v + p[J.rSh].v ? [J.lSh, J.lHip, J.lAnk] : [J.rSh, J.rHip, J.rAnk]
+    // Bliższa strona: widoczność całej strony (barki i biodra z boku bywają „widoczne” po obu stronach jednakowo).
+    const near = s.leftVis[i] >= s.rightVis[i] ? [J.lSh, J.lHip, J.lAnk] : [J.rSh, J.rHip, J.rAnk]
     s.bodyLine.push(180 - angle(w3(p, near[0]), w3(p, near[1]), w3(p, near[2])))
 
     const torsoPx = Math.hypot((px(J.lSh) + px(J.rSh)) / 2 - (px(J.lHip) + px(J.rHip)) / 2, (py(J.lSh) + py(J.rSh)) / 2 - (py(J.lHip) + py(J.rHip)) / 2)
-    const footX = (px(J.lAnk) + px(J.rAnk) + px(J.lFoot) + px(J.rFoot)) / 4
-    s.wristDrift.push(torsoPx > 1 ? (Math.abs((px(J.lWr) + px(J.rWr)) / 2 - footX) / torsoPx) * 100 : NaN)
+    const footX = (wv(J.lAnk, J.rAnk, px) + wv(J.lFoot, J.rFoot, px)) / 2
+    s.wristDrift.push(torsoPx > 1 ? (Math.abs(wv(J.lWr, J.rWr, px) - footX) / torsoPx) * 100 : NaN)
 
     // Kolano względem linii biodro–kostka (na wysokości kolana); do środka ciała = plus.
     const kneeIn = (hip: number, kn: number, an: number, otherHip: number) => {
@@ -140,11 +169,12 @@ export function computeSeries(tr: Track): Series {
     const shW = d2(J.lSh, J.rSh)
     s.wristDy.push(shW > 1 ? ((py(J.lWr) - py(J.rWr)) / shW) * 100 : NaN)
     // Wysokości w metrach (oś y świata w dół, biodra w 0) – do prędkości ruchu (VBT).
-    const ankY = (p[J.lAnk].wy + p[J.rAnk].wy) / 2
-    const wrY = (p[J.lWr].wy + p[J.rWr].wy) / 2
+    const wy = (j: number) => p[j].wy
+    const ankY = wv(J.lAnk, J.rAnk, wy)
+    const wrY = wv(J.lWr, J.rWr, wy)
     s.hHip.push(ankY)
     s.hWrist.push(ankY - wrY)
-    s.hShoulder.push(wrY - (p[J.lSh].wy + p[J.rSh].wy) / 2)
+    s.hShoulder.push(wrY - wv(J.lSh, J.rSh, wy))
     const footLen = d2(nHeel, nFoot)
     s.heel.push(footLen > 1 ? ((py(nFoot) - py(nHeel)) / footLen) * 100 : NaN)
   }
@@ -446,17 +476,97 @@ export interface AnalysisResult {
   reps: Rep[]
   series: Series
   signal: number[]
+  track: Track // nagranie po ustabilizowaniu stóp (do odtwarzacza i sylwetki)
 }
 
-export function analyze(tr: Track, ex: ExerciseKey, forceView?: View): AnalysisResult {
+/** Kąt stawu z obu stron: z bliższej (wyraźnie lepiej widocznej) strony, inaczej średnia. */
+export function nearPair(s: Pick<Series, 'leftVis' | 'rightVis'>, l: number[], r: number[]): number[] {
+  return l.map((lv, i) => {
+    const rv = r[i]
+    const dl = s.leftVis[i]
+    const dr = s.rightVis[i]
+    if (dl > dr + 0.1 && Number.isFinite(lv)) return lv
+    if (dr > dl + 0.1 && Number.isFinite(rv)) return rv
+    if (Number.isFinite(lv) && Number.isFinite(rv)) return (lv + rv) / 2
+    return Number.isFinite(lv) ? lv : rv
+  })
+}
+
+// ===================== Stopy w miejscu =====================
+// Model „przesuwa” kostkę, piętę i palce razem z kolanem (przy przysiadzie stopa jedzie do przodu o 3–4 cm i wraca).
+// W ćwiczeniach ze stopami na podłodze stopa się nie przesuwa: w każdym powtórzeniu palce i piętę trzymamy w miejscu
+// (płynne przejście między pozycją przed i po powtórzeniu; pięta o tę samą poprawkę co palce) –
+// kształt stopy zostaje, więc odrywanie pięty (obrót wokół palców) dalej widać.
+const FEET_MOVE = new Set<ExerciseKey>(['knee_ext', 'knee_flex', 'leg_raise'])
+const PT_CH = ['x', 'y'] as const // tylko obraz: współrzędne świata MediaPipe są liczone względem bioder (stopa „w miejscu” ma w nich zmienną wysokość)
+
+export function pinFeet(tr: Track, reps: Pick<Rep, 'start' | 'end'>[], ex: ExerciseKey): Track {
+  if (FEET_MOVE.has(ex) || !reps.length) return tr
+  const W = tr.width || 1
+  const H = tr.height || 1
+  const torso = median(
+    tr.poses.map((p) => (p ? Math.hypot(((p[J.lSh].x + p[J.rSh].x - p[J.lHip].x - p[J.rHip].x) / 2) * W, ((p[J.lSh].y + p[J.rSh].y - p[J.lHip].y - p[J.rHip].y) / 2) * H) : NaN)),
+  )
+  if (!(torso > 0)) return tr
+  const n = tr.poses.length
+  const out = tr.poses.map((p) => (p ? p.map((q) => ({ ...q })) : null))
+  /** Mediana położenia punktu z kilku klatek (pozycja przed / po powtórzeniu). */
+  const at = (j: number, i0: number, i1: number) => {
+    const fr = tr.poses.slice(Math.max(0, i0), Math.min(n, i1 + 1)).filter((p): p is Pose => !!p)
+    if (!fr.length) return null
+    return Object.fromEntries(PT_CH.map((c) => [c, median(fr.map((p) => p[j][c]))])) as Record<(typeof PT_CH)[number], number>
+  }
+  for (const [toe, heel] of [
+    [J.lFoot, J.lHeel],
+    [J.rFoot, J.rHeel],
+  ]) {
+    for (const r of reps) {
+      const a = at(toe, r.start - 3, r.start + 1)
+      const b = at(toe, r.end - 1, r.end + 3)
+      if (!a || !b) continue
+      if (Math.hypot((a.x - b.x) * W, (a.y - b.y) * H) > 0.25 * torso) continue // stopa przestawiona (krok)
+      const span = Math.max(1, r.end - r.start)
+      const deltas: (Record<(typeof PT_CH)[number], number> | null)[] = []
+      let maxDev = 0
+      for (let i = r.start; i <= r.end; i++) {
+        const p = tr.poses[i]
+        if (!p) {
+          deltas.push(null)
+          continue
+        }
+        const f = (i - r.start) / span
+        const d = Object.fromEntries(PT_CH.map((c) => [c, a[c] + (b[c] - a[c]) * f - p[toe][c]])) as Record<(typeof PT_CH)[number], number>
+        maxDev = Math.max(maxDev, Math.hypot(d.x * W, d.y * H))
+        deltas.push(d)
+      }
+      if (maxDev > 0.35 * torso) continue // stopa naprawdę się rusza – nie poprawiamy
+      deltas.forEach((d, k) => {
+        const p = out[r.start + k]
+        if (!d || !p) return
+        for (const j of [toe, heel]) for (const c of PT_CH) p[j][c] += d[c]
+      })
+    }
+  }
+  return { ...tr, poses: out }
+}
+
+function analyzeCore(tr: Track, ex: ExerciseKey, forceView?: View, segsIn?: Omit<Rep, 'metrics' | 'view'>[]) {
   const profile = PROFILES[ex]
   const view = forceView ?? detectView(tr)
-  const raw = computeSeries(tr)
+  const raw = computeSeries(tr, view)
   const maxGap = Math.round(tr.fps * 0.5)
   const win = Math.max(3, Math.round(tr.fps * 0.12) | 1)
   const series = Object.fromEntries(Object.entries(raw).map(([k, a]) => [k, smooth(fillGaps(a, maxGap), win)])) as unknown as Series
   const signal = signalOf(profile, series, view)
-  const segs = segmentReps(signal, tr.t, profile.minRange)
+  const segs = segsIn ?? segmentReps(signal, tr.t, profile.minRange)
+  return { profile, view, series, signal, segs }
+}
+
+export function analyze(tr0: Track, ex: ExerciseKey, forceView?: View): AnalysisResult {
+  // 1) wstępne powtórzenia → 2) stopy w miejscu → 3) analiza właściwa na ustabilizowanym nagraniu
+  const first = analyzeCore(tr0, ex, forceView)
+  const tr = pinFeet(tr0, first.segs, ex)
+  const { profile, view, series, signal, segs } = tr === tr0 ? first : analyzeCore(tr, ex, forceView)
   const reps = segs.map((r) => {
     const rv = forceView ?? detectView(tr, r.start, r.end)
     const v = rv === 'unknown' ? view : rv
@@ -464,19 +574,21 @@ export function analyze(tr: Track, ex: ExerciseKey, forceView?: View): AnalysisR
   })
   // Wszystkie powtórzenia z jednego ujęcia → to jest ujęcie nagrania.
   const repViews = new Set(reps.map((r) => r.view))
-  return { view: repViews.size === 1 && reps.length ? reps[0].view! : view, reps, series, signal }
+  return { view: repViews.size === 1 && reps.length ? reps[0].view! : view, reps, series, signal, track: tr }
 }
 
 /**
  * Pomiary od nowa dla zapisanych granic powtórzeń (starsze analizy nie mają nowszych pomiarów;
  * granice i ujęcia zostają takie, jak zapisano).
  */
-export function remeasure(tr: Track, ex: ExerciseKey, reps: Omit<Rep, 'metrics'>[], fallbackView: View): AnalysisResult {
-  const profile = PROFILES[ex]
-  const base = analyze(tr, ex, fallbackView === 'unknown' ? undefined : fallbackView)
-  const n = tr.poses.length
+export function remeasure(tr0: Track, ex: ExerciseKey, reps: Omit<Rep, 'metrics'>[], fallbackView: View): AnalysisResult {
+  const n = tr0.poses.length
   const ok = reps.every((r) => r.start >= 0 && r.end < n && r.start <= r.bottom && r.bottom <= r.end)
-  if (!ok) return base
+  const forced = fallbackView === 'unknown' ? undefined : fallbackView
+  if (!ok) return analyze(tr0, ex, forced)
+  const tr = pinFeet(tr0, reps, ex)
+  const { profile, view, series, signal, segs } = analyzeCore(tr, ex, forced)
+  const base: AnalysisResult = { view, series, signal, track: tr, reps: segs.map((r) => ({ ...r, view, metrics: {} })) }
   return {
     ...base,
     reps: reps.map((r) => {
@@ -596,7 +708,11 @@ export function normalizedRep(tr: Track, rep: Omit<Rep, 'metrics'>, profile: Pro
     out.map((f) => Math.hypot((f[J.lSh][0] + f[J.rSh][0]) / 2 - (f[J.lHip][0] + f[J.rHip][0]) / 2, (f[J.lSh][1] + f[J.rSh][1]) / 2 - (f[J.lHip][1] + f[J.rHip][1]) / 2)),
   )
   if (!(torso > 0)) return null
-  return out.map((f) => f.map(([x, y]) => [((x - ax) / torso) * flip, (y - ay) / torso] as P2))
+  const res = out.map((f) => f.map(([x, y]) => [((x - ax) / torso) * flip, (y - ay) / torso] as P2))
+  // Z boku: druga (zasłonięta) strona to zgadywanie modelu – w sylwetce zastępujemy ją bliższą stroną.
+  const near = nearSide(tr, rep.start, rep.end)
+  if (near) for (const f of res) for (const [l, r] of SIDE_PAIRS) near === 'L' ? (f[r] = f[l]) : (f[l] = f[r])
+  return res
 }
 
 /**
@@ -618,6 +734,47 @@ export function facingFlip(tr: Track, profile: Profile): number {
   const t = median(torsos)
   if (!Number.isFinite(d) || !(t > 0) || Math.abs(d) / t < 0.12) return 1
   return d < 0 ? -1 : 1
+}
+
+const SIDE_PAIRS: [number, number][] = [
+  [J.lSh, J.rSh],
+  [J.lEl, J.rEl],
+  [J.lWr, J.rWr],
+  [J.lHip, J.rHip],
+  [J.lKnee, J.rKnee],
+  [J.lAnk, J.rAnk],
+  [J.lHeel, J.rHeel],
+  [J.lFoot, J.rFoot],
+]
+const LIMB_L = [J.lEl, J.lWr, J.lKnee, J.lAnk, J.lHeel, J.lFoot]
+const LIMB_R = [J.rEl, J.rWr, J.rKnee, J.rAnk, J.rHeel, J.rFoot]
+
+/** Strona bliżej kamery, gdy druga jest wyraźnie gorzej widoczna (ujęcie z boku); null = obie widać podobnie. */
+export function nearSide(tr: Track, from = 0, to = tr.poses.length - 1): 'L' | 'R' | null {
+  let l = 0
+  let r = 0
+  let c = 0
+  for (let i = Math.max(0, from); i <= Math.min(tr.poses.length - 1, to); i++) {
+    const p = tr.poses[i]
+    if (!p) continue
+    l += LIMB_L.reduce((s, j) => s + p[j].v, 0) / LIMB_L.length
+    r += LIMB_R.reduce((s, j) => s + p[j].v, 0) / LIMB_R.length
+    c++
+  }
+  if (!c) return null
+  l /= c
+  r /= c
+  if (Math.abs(l - r) < 0.15 || Math.min(l, r) > 0.7) return null
+  return l > r ? 'L' : 'R'
+}
+
+/** Punkty, których nie rysujemy: druga strona z boku (gdy model jej nie widzi) i ręce, gdy ćwiczenie ich nie mierzy. */
+export function hiddenJoints(tr: Track, profile: Profile): number[] {
+  const out = new Set<number>()
+  if (profile.arms === false) [J.lEl, J.rEl, J.lWr, J.rWr].forEach((j) => out.add(j))
+  const near = nearSide(tr)
+  if (near) (near === 'L' ? LIMB_R : LIMB_L).forEach((j) => out.add(j))
+  return [...out]
 }
 
 export function averageRep(tr: Track, reps: Rep[], profile: Profile): AvgRep | null {

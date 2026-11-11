@@ -5,7 +5,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAnalysisStore, type AnalysisFull, type AnalysisRow } from '@/stores/analysis'
 import { useClientsStore } from '@/stores/clients'
-import { averageRep, PHASES, refStats, remeasure, summarize, zScore, type AvgRep, type P2, type RefStats } from '@/lib/pose/analysis'
+import { averageRep, hiddenJoints, PHASES, pinFeet, refStats, remeasure, summarize, zScore, type AvgRep, type P2, type RefStats } from '@/lib/pose/analysis'
+import { metricMark, type MetricMark } from '@/lib/pose/marks'
 import { coach, storedFindings, type Finding } from '@/lib/pose/coaching'
 import { smoothTrack } from '@/lib/pose/filter'
 import CoachingPanel from '@/components/CoachingPanel.vue'
@@ -20,7 +21,7 @@ import MetricHeatmap from '@/components/MetricHeatmap.vue'
 import Icon from '@/components/Icon.vue'
 import PatternCard from '@/components/PatternCard.vue'
 import { useExercisesStore } from '@/stores/exercises'
-import { FAMILIES, familyForProfile, familyOf } from '@/lib/pose/families'
+import { DEFAULT_VARIANT, FAMILIES, familyForProfile, familyOf, patternAvg, patternStats, patternView, variantOf } from '@/lib/pose/families'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -53,16 +54,42 @@ const who = computed(() => (a.value?.client_id ? (clients.byId(a.value.client_id
 // Pomiary liczone od nowa na zapisanych granicach powtórzeń – starsze analizy dostają też nowsze pomiary i uwagi.
 const measured = computed(() => (track.value && a.value ? remeasure(track.value, a.value.exercise_key, a.value.reps, a.value.view) : null))
 const reps = computed(() => measured.value?.reps ?? a.value?.reps ?? [])
+/** Nagranie po ustabilizowaniu stóp (odtwarzacz, sylwetka, uwagi). */
+const shown = computed(() => measured.value?.track ?? track.value)
+const hidden = computed(() => (shown.value ? hiddenJoints(shown.value, profile.value) : []))
 const signal = computed(() => measured.value?.signal ?? [])
-const coaching = computed(() => (track.value && a.value && measured.value ? coach(track.value, a.value.exercise_key, measured.value, store.thresholds) : null))
+const coaching = computed(() => (track.value && a.value && measured.value ? coach(measured.value.track, a.value.exercise_key, measured.value, store.thresholds) : null))
 const flagged = computed(() => new Set(coaching.value?.findings.flatMap((f) => f.reps) ?? []))
 const player = ref<InstanceType<typeof PosePlayer>>()
 const shownFinding = ref<Finding | null>(null)
 function showFinding(f: Finding) {
+  shownMark.value = null
   shownFinding.value = f
   player.value?.showFrame(f.frame)
 }
 const details = ref(false)
+// ---------- Kąt z tabeli pomiarów na szkielecie ----------
+const shownMark = ref<(MetricMark & { title: string }) | null>(null)
+function showMetric(sel: { row: string; metric: string }) {
+  const def = profile.value.metrics.find((m) => m.key === sel.metric)
+  if (!shown.value || !def || !reps.value.length) return
+  // „Średnio” – powtórzenie najbliższe średniej
+  let i = sel.row.startsWith('r') ? Number(sel.row.slice(1)) : -1
+  if (i < 0) {
+    const avg = summary.value[sel.metric]
+    if (avg == null) return
+    const dist = (k: number) => Math.abs((reps.value[k].metrics[sel.metric] ?? Infinity) - avg)
+    i = reps.value.reduce((best, _, k) => (dist(k) < dist(best) ? k : best), 0)
+  }
+  const r = reps.value[i]
+  const v = r?.metrics[sel.metric]
+  if (!r || v == null) return
+  const m = metricMark(shown.value, profile.value, sel.metric, r, fmtMetric(def, v))
+  if (!m) return
+  shownFinding.value = null
+  shownMark.value = { ...m, title: `${def.label}: ${fmtMetric(def, v)} · powt. ${i + 1}` }
+  player.value?.showFrame(m.frame)
+}
 // Wnioski i pomiary trzymamy też w bazie (asystent AI, profil obciążenie–prędkość); odświeżamy, gdy różnią się od zapisanych
 // (starsza analiza bez nowszych pomiarów, zmienione progi).
 watch(coaching, (c) => {
@@ -122,15 +149,32 @@ watch(refs, (r) => {
 
 const targetRows = computed<AnalysisRow[]>(() => (target.value === 'ref' ? refs.value : store.list.filter((x) => x.id === target.value)))
 const targetLabel = computed(() => {
-  if (target.value === 'ref') return refs.value.length === 1 ? (refs.value[0].label ?? 'Wzorzec') : 'Wzorzec'
+  if (target.value === 'ref') return !refs.value.length ? 'Wzorzec z aplikacji' : refs.value.length === 1 ? (refs.value[0].label ?? 'Wzorzec') : 'Wzorzec'
   const t = targetRows.value[0]
   return t ? `Nagranie z ${shortDate(t.recorded_at)}` : ''
 })
 const stats = computed<Record<string, RefStats>>(() =>
-  target.value === 'ref' ? (refStatsByExercise(store.list, props.id)[a.value?.exercise_key ?? 'squat'] ?? {}) : refStats(targetRows.value.flatMap((x) => x.reps)),
+  target.value === 'ref'
+    ? refs.value.length
+      ? (refStatsByExercise(store.list, props.id)[a.value?.exercise_key ?? 'squat'] ?? {})
+      : patternFamily.value && a.value?.view === 'side'
+        ? patternStats(patternFamily.value, patternVariant.value)
+        : {}
+    : refStats(targetRows.value.flatMap((x) => x.reps)),
 )
 
-const myAvg = computed(() => (track.value && reps.value.length ? averageRep(track.value, reps.value, profile.value) : null))
+const myAvg = computed(() => (shown.value && reps.value.length ? averageRep(shown.value, reps.value, profile.value) : null))
+// Wzorzec z aplikacji (rysowany): sylwetka i wartości, gdy nie ma nagranego wzorca.
+const patternVariant = computed(() =>
+  patternFamily.value ? (linkedExercise.value ? variantOf(linkedExercise.value.equipment) : (DEFAULT_VARIANT[patternFamily.value] ?? 'body')) : 'body',
+)
+const builtin = computed(() => {
+  const f = patternFamily.value
+  if (!f || !a.value || target.value !== 'ref' || refs.value.length) return null
+  const pv = patternView(f, patternVariant.value)
+  const ok = pv === 'side' ? a.value.view === 'side' || a.value.view === 'oblique' : a.value.view === 'front' || a.value.view === 'back'
+  return ok ? patternAvg(f, patternVariant.value) : null
+})
 // Sylwetkę i tempo porównujemy z nagraniami z tego samego ujęcia (przód z przodem, bok z bokiem).
 const shapeRows = computed(() => {
   const same = targetRows.value.filter((r) => r.view === a.value?.view)
@@ -150,7 +194,9 @@ watch(
       await Promise.all(
         rows.map(async (r) => {
           const full = await store.get(r.id)
-          return full.reps.length ? averageRep(await unpackTrack(full.frames), full.reps, PROFILES[full.exercise_key]) : null
+          if (!full.reps.length) return null
+          const t = pinFeet(smoothTrack(await unpackTrack(full.frames)), full.reps, full.exercise_key)
+          return averageRep(t, full.reps, PROFILES[full.exercise_key])
         }),
       )
     ).filter((x): x is AvgRep => !!x)
@@ -241,13 +287,29 @@ const expires = computed(() => (a.value?.video_expires_at ? new Date(a.value.vid
 
     <div v-else class="space-y-6 px-4">
       <CoachingPanel v-if="coaching && reps.length" :coaching="coaching" :active="shownFinding?.key" @show="showFinding" />
-      <PatternCard v-if="measured && reps.length && patternFamily" :family="patternFamily" :series="measured.series" :reps="reps" :equipment="linkedExercise?.equipment" />
+      <PatternCard v-if="measured && reps.length && patternFamily" :family="patternFamily" :series="measured.series" :reps="reps" :equipment="linkedExercise?.equipment ?? (patternVariant === 'barbell' ? ['barbell'] : undefined)" />
 
       <TempoPower v-if="reps.length" :load-kg="a.load_kg" :exercise="a.exercise_key" :reps="reps" :phases="profile.phases" :history="lvHistory" @update:load-kg="setLoad" />
 
       <section class="space-y-2">
         <h2 class="text-xl font-bold">Nagranie</h2>
-        <PosePlayer ref="player" :track="track" :video-url="videoUrl" :reps="reps" :flagged="flagged" :signal="signal" :signal-label="signalLabel" :highlight="shownFinding?.joints" />
+        <p v-if="shownMark" class="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-sm">
+          <span class="inline-block size-3 shrink-0 rounded-full bg-[#facc15]" aria-hidden="true" /><span class="min-w-0 flex-1">{{ shownMark.title }}</span>
+          <button class="icon-btn -my-2 -mr-2" aria-label="Ukryj zaznaczenie" @click="shownMark = null"><Icon name="x" class="size-4" /></button>
+        </p>
+        <PosePlayer
+          ref="player"
+          :track="shown!"
+          :video-url="videoUrl"
+          :reps="reps"
+          :flagged="flagged"
+          :signal="signal"
+          :signal-label="signalLabel"
+          :highlight="shownMark?.joints.length ? shownMark.joints : shownFinding?.joints"
+          :hidden="hidden"
+          :mark="shownMark?.mark"
+          :bar="profile.bar"
+        />
       </section>
 
       <RouterLink v-if="reps.length" :to="{ path: '/asystent', query: { analysis: a.id } }" class="btn-ghost w-full border border-line-strong">
@@ -287,22 +349,23 @@ const expires = computed(() => (a.value?.video_expires_at ? new Date(a.value.vid
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-xl font-bold">Porównanie</h2>
           <select v-model="target" class="input !min-h-10 w-auto max-w-full text-sm" aria-label="Porównaj z">
-            <option value="ref" :disabled="!refs.length">{{ refs.length ? `Wzorzec (${refs.length})` : 'Wzorzec – brak nagrań' }}</option>
+            <option value="ref">{{ refs.length ? `Wzorzec (${refs.length})` : 'Wzorzec z aplikacji' }}</option>
             <option v-for="o in others" :key="o.id" :value="o.id">Przed/po: {{ shortDate(o.recorded_at) }}{{ o.label ? ` · ${o.label}` : '' }}</option>
           </select>
         </div>
         <p v-if="target === 'ref' && !refs.length" class="card p-4 text-sm text-muted">
-          Nagraj siebie lub dobrze wykonującą osobę i zaznacz „Wzorzec” – wtedy pojawi się porównanie sylwetki, tempa i pomiarów.
+          Porównanie z rysowanym wzorcem z aplikacji{{ patternFamily === 'squat' ? ' (przysiad ze sztangą do równoległej)' : '' }}. Dokładniej będzie z prawdziwym ruchem: nagraj siebie lub dobrze wykonującą osobę i zaznacz „Wzorzec”.
           <RouterLink :to="`/analiza/nowa?ex=${profile.key}`" class="font-semibold text-primary-fg underline">Nagraj wzorzec</RouterLink>
         </p>
         <p v-if="viewMismatch" class="warn-box text-sm">
           <Icon name="alert" class="size-5 shrink-0" />Porównanie sylwetki z nagraniem z innego ujęcia ({{ VIEW_LABEL[shapeRows[0].view] }}) – nagraj wzorzec {{ VIEW_LABEL[a.view] }}, żeby było miarodajne.
         </p>
         <div class="grid gap-3 md:grid-cols-2">
-          <SkeletonCompare v-if="myAvg" :a="myAvg" :b="targetAvg" :profile="profile" :a-label="`${who} – średnie powtórzenie`" :b-label="targetLabel" />
+          <SkeletonCompare v-if="myAvg" :a="myAvg" :b="targetAvg ?? builtin" :profile="profile" :a-label="`${who} – średnie powtórzenie`" :b-label="targetLabel" />
           <TimingBars v-if="myAvg" :a="myAvg.phases" :b="targetAvg?.phases" :a-label="who" :b-label="targetLabel" :phase-names="profile.phases" />
         </div>
-        <MetricHeatmap :groups="group" :sections="heatSections" />
+        <p class="text-xs text-muted">Dotknij liczby – kąt pokaże się na Twoim szkielecie w nagraniu.</p>
+        <MetricHeatmap :groups="group" :sections="heatSections" @select="showMetric" />
         <!-- Widok tabeli (dostępność + liczby wprost) -->
         <details class="card p-4 text-sm">
           <summary class="cursor-pointer font-semibold">Tabela pomiarów</summary>

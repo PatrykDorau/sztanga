@@ -7,6 +7,8 @@ import { fmtMetric, type MetricDef } from '@/lib/pose/profiles'
 import type { HeatCell, HeatGroup, HeatRow } from '@/lib/pose/heat'
 
 const props = defineProps<{ groups: HeatGroup[]; sections: { title: string; rows: HeatRow[] }[]; emptyText?: string }>()
+/** Kliknięta komórka (id wiersza, klucz pomiaru) – np. pokazanie kąta na szkielecie. */
+const emit = defineEmits<{ select: [{ row: string; metric: string }] }>()
 
 const hover = ref<{ row: HeatRow; group: HeatGroup; metric: MetricDef } | null>(null)
 const hoverCol = computed(() => (hover.value ? `${hover.value.group.key}.${hover.value.metric.key}` : null))
@@ -95,7 +97,7 @@ const hasRows = computed(() => props.sections.some((s) => s.rows.length))
                   :aria-label="`${r.label}, ${c.g.name}, ${c.m.label}: ${describe(r.cells[`${c.g.key}.${c.m.key}`], c.m)}`"
                   @mouseenter="hover = { row: r, group: c.g, metric: c.m }"
                   @focus="hover = { row: r, group: c.g, metric: c.m }"
-                  @click="hover = { row: r, group: c.g, metric: c.m }"
+                  @click="(hover = { row: r, group: c.g, metric: c.m }), emit('select', { row: r.id, metric: c.m.key })"
                 >
                   {{ num(r.cells[`${c.g.key}.${c.m.key}`], c.m) }}
                 </button>

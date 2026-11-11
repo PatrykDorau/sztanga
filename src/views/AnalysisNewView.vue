@@ -5,7 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClientsStore } from '@/stores/clients'
 import { useAnalysisStore, VIDEO_KEEP_DAYS } from '@/stores/analysis'
-import { analyze, type AnalysisResult } from '@/lib/pose/analysis'
+import { analyze, hiddenJoints, type AnalysisResult } from '@/lib/pose/analysis'
 import { coach, storedFindings, type Finding } from '@/lib/pose/coaching'
 import { smoothTrack } from '@/lib/pose/filter'
 import { extractTrack, loadPose, loadVideo, MAX_SECONDS } from '@/lib/pose/extract'
@@ -153,7 +153,7 @@ const mismatch = computed(() => {
   return top.family !== famChoice.value && top.score > 0.45 && guessPct(famChoice.value) < 15 ? top.family : null
 })
 
-const coaching = computed(() => (result.value && track.value ? coach(track.value, ex.value, result.value, store.thresholds) : null))
+const coaching = computed(() => (result.value && track.value ? coach(result.value.track, ex.value, result.value, store.thresholds) : null))
 const flagged = computed(() => new Set(coaching.value?.findings.flatMap((f) => f.reps) ?? []))
 // "Pokaż na nagraniu": klatka, na której błąd jest najwyraźniejszy, z podświetlonymi punktami.
 const player = ref<InstanceType<typeof PosePlayer>>()
@@ -350,7 +350,7 @@ const signalLabel = computed(() => SIGNAL_LABEL[profile.value.signal])
 
         <section class="space-y-2">
           <h2 class="text-xl font-bold">Nagranie</h2>
-          <PosePlayer ref="player" :track="track" :video-url="url" :reps="result.reps" :flagged="flagged" :signal="result.signal" :signal-label="signalLabel" :highlight="shownFinding?.joints" />
+          <PosePlayer ref="player" :track="result.track" :video-url="url" :reps="result.reps" :flagged="flagged" :signal="result.signal" :signal-label="signalLabel" :highlight="shownFinding?.joints" :hidden="hiddenJoints(result.track, PROFILES[ex])" :bar="PROFILES[ex].bar" />
         </section>
 
         <section class="card space-y-4 p-4">

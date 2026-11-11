@@ -28,6 +28,6 @@ const lines = computed(() => [...(match.value?.joints ?? [])].sort((a, b) => ord
       </ul>
       <p v-else class="text-sm text-muted">Za mało danych do porównania – potrzebne co najmniej jedno wykryte powtórzenie.</p>
     </div>
-    <p class="text-xs text-muted">Porównujemy zakresy ruchu stawów (kąty w 3D, niezależne od ujęcia) z rysowanym wzorcem – orientacyjnie. Dokładniejsze porównanie sylwetki daje Twoje nagranie zapisane jako „Wzorzec”.</p>
+    <p class="text-xs text-muted">Porównujemy zakresy ruchu stawów z rysowanym wzorcem (z boku – kąty z obrazu, bliższa strona ciała; inaczej w 3D) – orientacyjnie. Dokładniejsze porównanie sylwetki daje Twoje nagranie zapisane jako „Wzorzec”.</p>
   </section>
 </template>

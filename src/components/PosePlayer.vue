@@ -2,12 +2,37 @@
 // Odtwarzacz analizy: wideo (jeśli jest) z nałożonym szkieletem albo sam szkielet,
 // klatka po klatce, zwolnienie, oś z powtórzeniami, przełącznik obrazu, rysowanie (pisak, linia, kąt).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { Track } from '@/lib/pose/skeleton'
-import { drawSkeleton, fitCanvas } from '@/lib/pose/draw'
+import { J, type Track } from '@/lib/pose/skeleton'
+import { drawAngle, drawBarPath, drawSkeleton, fitCanvas } from '@/lib/pose/draw'
+import { nearSide } from '@/lib/pose/analysis'
+import type { AngleMark } from '@/lib/pose/marks'
 import type { StoredRep } from '@/stores/analysis'
 import Icon from '@/components/Icon.vue'
 
-const props = defineProps<{ track: Track; videoUrl?: string | null; reps: StoredRep[]; flagged?: Set<number>; signal?: number[]; signalLabel?: string; highlight?: number[] }>()
+const props = defineProps<{
+  track: Track
+  videoUrl?: string | null
+  reps: StoredRep[]
+  flagged?: Set<number>
+  signal?: number[]
+  signalLabel?: string
+  highlight?: number[]
+  hidden?: number[] // punkty niewidoczne (druga strona z boku, ręce na sztandze)
+  mark?: AngleMark | null // kąt wybrany w tabeli pomiarów
+  bar?: 'shoulder' | 'wrist' | 'hip' // punkt niosący sztangę – rysujemy jej tor w bieżącym powtórzeniu
+}>()
+
+// Tor sztangi: punkt z bliższej strony (z boku), inaczej środek obu stron.
+const near = computed(() => nearSide(props.track))
+function barAt(i: number): [number, number] | null {
+  const p = props.track.poses[i]
+  if (!p || !props.bar) return null
+  const [l, r] = props.bar === 'shoulder' ? [J.lSh, J.rSh] : props.bar === 'wrist' ? [J.lWr, J.rWr] : [J.lHip, J.rHip]
+  if (near.value === 'L') return [p[l].x, p[l].y]
+  if (near.value === 'R') return [p[r].x, p[r].y]
+  return [(p[l].x + p[r].x) / 2, (p[l].y + p[r].y) / 2]
+}
+const showBar = ref(true)
 
 const wrap = ref<HTMLDivElement>()
 const video = ref<HTMLVideoElement>()
@@ -53,7 +78,15 @@ function draw() {
   const H = w.clientHeight
   const g = fitCanvas(c, W, H)
   const p = props.track.poses[frame.value]
-  if (p) drawSkeleton(g, p, W, H, false, props.highlight)
+  if (p) drawSkeleton(g, p, W, H, false, props.highlight, props.hidden)
+  // Tor sztangi w bieżącym powtórzeniu (od startu do bieżącej klatki – rysuje się w trakcie odtwarzania).
+  if (props.bar && showBar.value && curRep.value >= 0) {
+    const r = props.reps[curRep.value]
+    const pts: ([number, number] | null)[] = []
+    for (let i = r.start; i <= Math.min(frame.value, r.end); i++) pts.push(barAt(i))
+    drawBarPath(g, pts, barAt(frame.value), W, H)
+  }
+  if (p && props.mark) drawAngle(g, p, W, H, props.mark)
   // Rysunki trenerki
   g.strokeStyle = '#facc15'
   g.fillStyle = '#facc15'
@@ -352,7 +385,10 @@ defineExpose({ setTime, step, showFrame })
       <label v-if="videoUrl" class="ml-auto flex min-h-11 cursor-pointer items-center gap-2 text-sm">
         <input v-model="showVideo" type="checkbox" class="size-5 accent-primary" />Obraz
       </label>
-      <div class="flex rounded-xl bg-surface-2 p-1" :class="videoUrl ? '' : 'ml-auto'" role="group" aria-label="Prędkość">
+      <label v-if="bar" class="flex min-h-11 cursor-pointer items-center gap-2 text-sm" :class="videoUrl ? '' : 'ml-auto'" title="Szacowany z punktu, który niesie sztangę – model nie widzi samej sztangi">
+        <input v-model="showBar" type="checkbox" class="size-5 accent-primary" /><span class="inline-block h-1 w-4 rounded-full bg-[#22d3ee]" aria-hidden="true" />Tor sztangi
+      </label>
+      <div class="flex rounded-xl bg-surface-2 p-1" :class="videoUrl || bar ? '' : 'ml-auto'" role="group" aria-label="Prędkość">
         <button v-for="s in [0.25, 0.5, 1]" :key="s" class="min-h-9 rounded-lg px-2.5 text-sm font-semibold" :class="speed === s ? 'bg-surface shadow' : 'text-muted'" @click="speed = s">
           {{ String(s).replace('.', ',') }}×
         </button>

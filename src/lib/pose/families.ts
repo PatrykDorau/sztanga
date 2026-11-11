@@ -7,8 +7,9 @@
 // Czysty TS, bez przeglądarki.
 import { norm } from '@/lib/search'
 import type { Exercise } from '@/types'
-import type { ExerciseKey } from './profiles'
-import { mean, percentile, type Rep, type Series } from './analysis'
+import { PROFILES, type ExerciseKey } from './profiles'
+import { mean, median, nearPair, percentile, PHASES, type AvgRep, type P2, type RefStats, type Rep, type Series } from './analysis'
+import { J } from './skeleton'
 
 export type FamilyKey =
   | 'squat'
@@ -171,6 +172,8 @@ function lerpKey<T extends object>(a: T, b: T, f: number): T {
 
 // ===================== Rekwizyty i warianty =====================
 export type Variant = 'barbell' | 'dumbbell' | 'kettlebell' | 'cable' | 'machine' | 'band' | 'body'
+/** Wariant, gdy analiza nie ma przypisanego ćwiczenia: boje siłowe zwykle ze sztangą. */
+export const DEFAULT_VARIANT: Partial<Record<FamilyKey, Variant>> = { squat: 'barbell', hinge: 'barbell', bench: 'barbell', ohp: 'barbell', row: 'barbell', hip_thrust: 'barbell' }
 export function variantOf(equipment: string[] | null | undefined): Variant {
   const q = equipment ?? []
   if (q.includes('barbell') || q.includes('e-z curl bar')) return 'barbell'
@@ -235,7 +238,7 @@ const STAND = { ankle: A0, kneeHint: [1, 0] as P }
 // Ręce zależnie od sprzętu przy ruchach nóg
 const legArms = (v: Variant): Pick<SideKey, 'wristRel' | 'elbowHint' | 'armSide'> =>
   v === 'barbell'
-    ? { wristRel: [-0.2, 0.0], elbowHint: [-0.3, -1], armSide: 1 } // sztanga na plecach (łokcie w dół i w bok)
+    ? { wristRel: [-0.18, 0.06], elbowHint: [-0.3, -1], armSide: 1 } // sztanga na plecach (łokcie w dół i w bok)
     : v === 'kettlebell' || v === 'dumbbell'
       ? { wristRel: [0.2, -0.14], elbowHint: [0, -1] } // goblet / hantel przy klatce
       : v === 'body'
@@ -249,7 +252,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     name: 'Przysiad',
     profile: 'squat',
     view: 'side',
-    pose: (f, v) => side({ ...STAND, hip: [-0.02, 0.985], trunk: 2, ...legArms(v) }, { ...STAND, hip: [-0.25, 0.66], trunk: 40, ...legArms(v) })(f),
+    pose: (f, v) => side({ ...STAND, hip: [-0.02, 0.985], trunk: 2, ...legArms(v) }, { ...STAND, hip: [-0.22, 0.47], trunk: 36, ...legArms(v) })(f),
   },
   lunge: {
     key: 'lunge',
@@ -291,7 +294,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     pose: (f) =>
       side(
         { hip: [0.12, 0.53], shoulder: [-0.42, 0.55], ankle: [0.5, 0.08], kneeHint: [1, 1], wrist: [-0.4, 1.12], elbowHint: [0.3, -1] },
-        { hip: [0.12, 0.53], shoulder: [-0.42, 0.55], ankle: [0.5, 0.08], kneeHint: [1, 1], wrist: [-0.32, 0.68], elbowHint: [0.3, -1] },
+        { hip: [0.12, 0.53], shoulder: [-0.42, 0.55], ankle: [0.5, 0.08], kneeHint: [1, 1], wrist: [-0.3, 0.79], elbowHint: [0.3, -1] },
       )(f),
     props: () => ({ bench: [-0.8, 0.25, 0.45] }),
     // Łokcie odwiedzione w bok: w 3D kąt biodro–bark–łokieć zmienia się mniej niż na rysunku z boku.
@@ -655,12 +658,12 @@ export function signatureOf(fam: FamilyKey, v: Variant = 'body'): Signature {
 }
 
 // ===================== Pomiar z nagrania =====================
-const pair = (a: number[], b: number[]) => a.map((v, i) => (Number.isFinite(v) && Number.isFinite(b[i]) ? (v + b[i]) / 2 : Number.isFinite(v) ? v : b[i]))
 const romOf = (a: number[]) => percentile(a, 0.95) - percentile(a, 0.05)
 
 export type Measured = Omit<Signature, 'at0' | 'at1'>
 export function jointSeries(s: Series): Record<JointKey, number[]> {
-  return { knee: pair(s.kneeL, s.kneeR), hip: pair(s.hipL, s.hipR), elbow: pair(s.elbowL, s.elbowR), shoulder: pair(s.shoulderL, s.shoulderR), trunk: s.trunk }
+  // Z boku liczy się bliższa strona – druga jest zasłonięta i model ją zgaduje.
+  return { knee: nearPair(s, s.kneeL, s.kneeR), hip: nearPair(s, s.hipL, s.hipR), elbow: nearPair(s, s.elbowL, s.elbowR), shoulder: nearPair(s, s.shoulderL, s.shoulderR), trunk: s.trunk }
 }
 /** Cechy ruchu z całego nagrania (albo z fragmentu powtórzeń). */
 export function measure(s: Series, from = 0, to = s.trunk.length - 1): Measured {
@@ -741,7 +744,9 @@ export function comparePattern(s: Series, reps: Pick<Rep, 'start' | 'end'>[], fa
   const joints: JointCompare[] = []
   let penalty = 0
   let n = 0
+  const noArms = PROFILES[FAMILIES[fam].profile].arms === false
   for (const j of JOINTS) {
+    if (noArms && (j === 'elbow' || j === 'shoulder')) continue // ręce na sztandze / zasłonięte – nie oceniamy
     const c = per(j)
     const pr = p.rom[j] * (CAMERA_SCALE[j] ?? 1)
     if (!Number.isFinite(c)) continue
@@ -784,4 +789,70 @@ const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 /** Czasy faz animacji [s]: do punktu zwrotnego, pauza, powrót, pauza na górze. */
 export function animTempo(fam: FamilyKey): [number, number, number, number] {
   return FAMILIES[fam].effortTo1 ? [1.0, 0.5, 1.8, 0.4] : [1.8, 0.4, 1.0, 0.5]
+}
+
+// ===================== Wzorzec z aplikacji jako sylwetka do porównania =====================
+/** Ludzik rodziny jako 17 punktów szkieletu (x w prawo = przodem, y w górę, metry). Z boku obie strony = jedna (lub druga noga w wykroku). */
+function figPoints(f: Fig): P[] {
+  const pts: P[] = new Array(17)
+  pts[J.nose] = f.head
+  pts[J.rSh] = f.shoulder
+  pts[J.rEl] = f.elbow
+  pts[J.rWr] = f.wrist
+  pts[J.rHip] = f.hip
+  pts[J.rKnee] = f.knee
+  pts[J.rAnk] = f.ankle
+  pts[J.rHeel] = f.heel
+  pts[J.rFoot] = f.toe
+  pts[J.lSh] = f.shoulder2 ?? f.shoulder
+  pts[J.lEl] = f.elbow2 ?? f.elbow
+  pts[J.lWr] = f.wrist2 ?? f.wrist
+  pts[J.lHip] = f.hip2 ?? f.hip
+  pts[J.lKnee] = f.knee2 ?? f.knee
+  pts[J.lAnk] = f.ankle2 ?? f.ankle
+  pts[J.lHeel] = f.heel2 ?? f.heel
+  pts[J.lFoot] = f.toe2 ?? f.toe
+  return pts
+}
+
+/**
+ * Uśrednione „powtórzenie” rysowanego wzorca w tym samym układzie co averageRep (punkt stały w 0,0, tułów = 1, y w dół,
+ * przodem w prawo) – szara sylwetka, gdy trenerka nie nagrała własnego wzorca. Tempo umowne, więc bez porównania czasów.
+ */
+export function patternAvg(fam: FamilyKey, v: Variant): AvgRep {
+  const F = FAMILIES[fam]
+  const prof = PROFILES[F.profile]
+  const ease = (x: number) => (x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2)
+  const half = (PHASES - 1) / 2
+  const raw = Array.from({ length: PHASES }, (_, ph) => figPoints(poseFor(fam, ease(ph <= half ? ph / half : (PHASES - 1 - ph) / half), v)))
+  const anchor = prof.anchor === 'ankles' ? [J.lAnk, J.rAnk] : [J.lWr, J.rWr]
+  const ax = mean(raw.flatMap((f) => anchor.map((i) => f[i][0])))
+  const ay = mean(raw.flatMap((f) => anchor.map((i) => f[i][1])))
+  const torso = median(raw.map((f) => Math.hypot(f[J.rSh][0] - f[J.rHip][0], f[J.rSh][1] - f[J.rHip][1]))) || L.trunk
+  const [down, pause, up] = animTempo(fam)
+  return {
+    frames: raw.map((f) => f.map(([x, y]) => [(x - ax) / torso, -(y - ay) / torso] as P2)),
+    bottomPhase: 0.5,
+    duration: down + pause + up,
+    phases: { ecc: down, pause, con: up },
+  }
+}
+/** Ujęcie, z którego narysowany jest wzorzec (do porównania sylwetki tylko z tym samym ujęciem). */
+export const patternView = (fam: FamilyKey, v: Variant) => FAMILIES[fam].pose(0, v).view
+
+/**
+ * Wartości wzorca dla tabeli pomiarów (tylko tam, gdzie rysunek odpowiada temu, co mierzymy z boku):
+ * przysiad do równoległej – kąt kolana i biodra w dole oraz pochylenie tułowia.
+ */
+export function patternStats(fam: FamilyKey, v: Variant): Record<string, RefStats> {
+  if (fam !== 'squat') return {}
+  const f = poseFor(fam, 1, v)
+  const ang = (a: P, b: P, c: P) => {
+    const u = sub(a, b)
+    const w = sub(c, b)
+    return (Math.acos(Math.max(-1, Math.min(1, (u[0] * w[0] + u[1] * w[1]) / (lenP(u) * lenP(w))))) * 180) / Math.PI
+  }
+  const trunk = (Math.atan2(Math.abs(f.shoulder[0] - f.hip[0]), f.shoulder[1] - f.hip[1]) * 180) / Math.PI
+  const st = (m: number): RefStats => ({ mean: Math.round(m), sd: 0, n: 1 })
+  return { depth_knee: st(ang(f.hip, f.knee, f.ankle)), depth_hip: st(ang(f.shoulder, f.hip, f.knee)), trunk: st(trunk) }
 }

@@ -34,6 +34,9 @@ const box = computed(() => {
   return { x0, y0, w, h }
 })
 const sw = computed(() => box.value.h / 110) // grubość linii w jednostkach tułowia
+// Ręce na sztandze (przysiad itp.) nie są mierzone – nie rysujemy ich.
+const ARM = new Set<number>([J.lEl, J.rEl, J.lWr, J.rWr])
+const bones = computed(() => (props.profile.arms === false ? BONES.filter(([i, k]) => !ARM.has(i) && !ARM.has(k)) : BONES))
 
 const fa = computed(() => frameAt(props.a, phase.value))
 const fb = computed(() => (props.b ? frameAt(props.b, phase.value) : null))
@@ -49,12 +52,12 @@ const phaseLabel = computed(() => (Math.abs(phase.value - 0.5) < 0.02 ? 'najniż
       <line :x1="box.x0" :x2="box.x0 + box.w" y1="0.06" y2="0.06" stroke="var(--chart-grid)" :stroke-width="sw" />
       <g v-if="b && fb" stroke="var(--ref-ink)" fill="var(--ref-ink)">
         <path :d="path(b)" fill="none" :stroke-width="sw" stroke-dasharray="0.04 0.04" opacity="0.8" />
-        <line v-for="([i, k], n) in BONES" :key="`b${n}`" :x1="fb[i][0]" :y1="fb[i][1]" :x2="fb[k][0]" :y2="fb[k][1]" :stroke-width="sw * 2.2" stroke-linecap="round" />
+        <line v-for="([i, k], n) in bones" :key="`b${n}`" :x1="fb[i][0]" :y1="fb[i][1]" :x2="fb[k][0]" :y2="fb[k][1]" :stroke-width="sw * 2.2" stroke-linecap="round" />
         <circle :cx="head(fb)[0]" :cy="head(fb)[1]" :r="0.12" stroke="none" />
       </g>
       <g stroke="var(--chart-1)" fill="var(--chart-1)">
         <path :d="path(a)" fill="none" :stroke-width="sw * 1.2" />
-        <line v-for="([i, k], n) in BONES" :key="`a${n}`" :x1="fa[i][0]" :y1="fa[i][1]" :x2="fa[k][0]" :y2="fa[k][1]" :stroke-width="sw * 2.2" stroke-linecap="round" />
+        <line v-for="([i, k], n) in bones" :key="`a${n}`" :x1="fa[i][0]" :y1="fa[i][1]" :x2="fa[k][0]" :y2="fa[k][1]" :stroke-width="sw * 2.2" stroke-linecap="round" />
         <circle :cx="head(fa)[0]" :cy="head(fa)[1]" :r="0.12" stroke="none" />
         <circle :cx="tracePoint(fa, profile.trace)[0]" :cy="tracePoint(fa, profile.trace)[1]" :r="0.07" fill="var(--surface)" :stroke-width="sw * 1.5" />
       </g>
