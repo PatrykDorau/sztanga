@@ -214,9 +214,9 @@ const byWorkout = computed(() => {
           <option v-for="(l, k) in SORTS" :key="k" :value="k">{{ l }}</option>
         </select>
       </div>
-      <ul class="card divide-y divide-line">
+      <ul class="card divide-y divide-line overflow-hidden">
         <li v-for="r in showAll ? shown : shown.slice(0, 8)" :key="r.id">
-          <button class="flex w-full items-center gap-3 p-3 text-left" :class="r.id === selId ? 'bg-primary-soft' : 'hover:bg-surface-2'" :aria-pressed="r.id === selId" @click="selId = r.id">
+          <button class="flex w-full items-center gap-3 p-3 text-left" :class="r.id === selId ? 'bg-surface-2 shadow-[inset_3px_0_0_var(--primary)]' : 'hover:bg-surface-2'" :aria-pressed="r.id === selId" @click="selId = r.id">
             <span class="min-w-0 flex-1">
               <span class="block truncate font-semibold">{{ r.name }}</span>
               <span class="text-xs text-muted">{{ r.sessions.length }}× · {{ r.sets }} serii · {{ r.reps }} powt. · {{ fmt(r.volume / 1000) }} t</span>
