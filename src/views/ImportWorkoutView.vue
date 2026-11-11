@@ -10,6 +10,7 @@ import { parseWorkout, shrinkImage, speechSupported, startDictation, suggestExer
 import { savePlanDraft, type PlanDraft } from '@/lib/planRules'
 import { loadCredits, lowCredits, remaining, usd } from '@/lib/credits'
 import ExercisePicker from '@/components/ExercisePicker.vue'
+import ExercisePreview from '@/components/ExercisePreview.vue'
 import ExerciseThumb from '@/components/ExerciseThumb.vue'
 import Icon from '@/components/Icon.vue'
 
@@ -98,7 +99,11 @@ interface Row {
   createNew: boolean
   suggestions: Suggestion[]
   confirmed: boolean // trenerka zatwierdziła wybór (propozycję, ćwiczenie z bazy albo nowe)
+  newName: string // nazwa i opis, gdy dodajemy jako nowe ćwiczenie
+  newDesc: string
 }
+// Podgląd ćwiczenia w okienku (row = wiersz, dla którego można je wybrać)
+const previewOf = ref<{ row: Row | null; id: string } | null>(null)
 const STRONG = 75 // od tylu % propozycję można zatwierdzić hurtem
 const rows = ref<Row[]>([])
 const workoutNames = ref<string[]>([])
@@ -116,7 +121,7 @@ async function recognize() {
         // „Biceps + triceps” to dwa ćwiczenia – bez propozycji, trenerka wybiera sama.
         const suggestions = /\s\+\s|\soraz\s/.test(e.name) ? [] : suggestExercises(e, ex.all, ex.favorites)
         const best = suggestions[0]
-        return { key: `${wi}-${i}`, w: wi, ...e, reps: e.reps ?? '', load: e.load ?? '', exerciseId: best && best.pct >= 50 ? best.e.id : null, createNew: false, suggestions, confirmed: false }
+        return { key: `${wi}-${i}`, w: wi, ...e, reps: e.reps ?? '', load: e.load ?? '', exerciseId: best && best.pct >= 50 ? best.e.id : null, createNew: false, suggestions, confirmed: false, newName: e.name, newDesc: '' }
       }),
     )
     loadCredits().catch(() => null)
@@ -156,7 +161,7 @@ async function save() {
   try {
     // Nowe ćwiczenia – jako własne, z nazwą z treningu
     for (const r of rows.value.filter((x) => x.createNew && !x.exerciseId)) {
-      const e = await ex.save({ name_pl: r.name, name_en: null, muscle_groups: [], equipment: [], movement_pattern: null, level: 'beginner', contraindications: [], cues: null, video_path: null, image_url: null, primary_muscles: [], secondary_muscles: [], description: null, tags: [] })
+      const e = await ex.save({ name_pl: r.newName.trim() || r.name, name_en: r.en?.trim() || null, muscle_groups: [], equipment: [], movement_pattern: null, level: 'beginner', contraindications: [], cues: null, video_path: null, image_url: null, primary_muscles: [], secondary_muscles: [], description: r.newDesc.trim() || null, tags: [] })
       r.exerciseId = e.id
     }
     const draft: PlanDraft = {
@@ -261,20 +266,29 @@ async function save() {
               </p>
               <!-- zatwierdzone: jedna linia -->
               <div v-if="r.confirmed && r.exerciseId && ex.byId(r.exerciseId)" class="flex items-center gap-2">
-                <ExerciseThumb :exercise="ex.byId(r.exerciseId)!" class="!size-10" />
-                <span class="min-w-0 flex-1 truncate text-sm font-semibold">{{ ex.byId(r.exerciseId)!.name_pl }}</span>
+                <button type="button" class="flex min-w-0 flex-1 items-center gap-2 text-left" :aria-label="`Podgląd: ${ex.byId(r.exerciseId)!.name_pl}`" @click="previewOf = { row: null, id: r.exerciseId }">
+                  <ExerciseThumb :exercise="ex.byId(r.exerciseId)!" class="!size-10" />
+                  <span class="min-w-0 flex-1 truncate text-sm font-semibold underline decoration-line-strong underline-offset-4">{{ ex.byId(r.exerciseId)!.name_pl }}</span>
+                </button>
                 <span v-if="pctOf(r, r.exerciseId)" class="shrink-0 text-xs text-muted tabular-nums">{{ pctOf(r, r.exerciseId) }}%</span>
                 <button class="btn-ghost !min-h-8 shrink-0 px-2 text-xs" @click="r.confirmed = false">Zmień</button>
               </div>
-              <div v-else-if="r.confirmed && r.createNew" class="flex items-center gap-2 text-sm">
-                <Icon name="plus" class="size-4 text-primary-fg" /><span class="min-w-0 flex-1">Nowe ćwiczenie: <strong>{{ r.name }}</strong></span>
-                <button class="btn-ghost !min-h-8 shrink-0 px-2 text-xs" @click="Object.assign(r, { createNew: false, confirmed: false })">Zmień</button>
+              <div v-else-if="r.confirmed && r.createNew" class="space-y-1.5 text-sm">
+                <div class="flex items-center gap-2">
+                  <Icon name="plus" class="size-4 shrink-0 text-primary-fg" /><span class="min-w-0 flex-1">Nowe ćwiczenie w bazie</span>
+                  <button class="btn-ghost !min-h-8 shrink-0 px-2 text-xs" @click="Object.assign(r, { createNew: false, confirmed: false })">Zmień</button>
+                </div>
+                <label class="block"><span class="text-[11px] text-muted">Nazwa</span><input v-model="r.newName" class="input !min-h-9 text-sm" /></label>
+                <label class="block">
+                  <span class="text-[11px] text-muted">Krótki opis (opcjonalnie) – co to za ćwiczenie, jak wykonać</span>
+                  <textarea v-model="r.newDesc" rows="2" class="input py-1.5 text-sm" placeholder="np. Odbijanie lekkiej piłki o ścianę rękami nad głową, 20–30 s, rozgrzewka barków." />
+                </label>
               </div>
               <!-- do zatwierdzenia: propozycje z procentem zgodności -->
               <template v-else>
-                <p class="text-xs font-semibold text-warn-fg">{{ r.suggestions.length ? 'Propozycje – wybierz albo zatwierdź zaznaczoną:' : 'Brak podobnych ćwiczeń w bazie.' }}</p>
+                <p class="text-xs font-semibold text-warn-fg">{{ r.suggestions.length ? 'Propozycje – dotknij, żeby zobaczyć ćwiczenie, albo zatwierdź zaznaczoną:' : 'Brak podobnych ćwiczeń w bazie.' }}</p>
                 <div v-for="s in r.suggestions" :key="s.e.id" class="flex items-center gap-2 rounded-lg border p-1.5" :class="r.exerciseId === s.e.id ? 'border-primary bg-primary-soft' : 'border-line bg-surface'">
-                  <button type="button" class="flex min-w-0 flex-1 items-center gap-2 text-left" :aria-pressed="r.exerciseId === s.e.id" @click="r.exerciseId = s.e.id">
+                  <button type="button" class="flex min-w-0 flex-1 items-center gap-2 text-left" :aria-label="`Podgląd: ${s.e.name_pl}`" @click="(r.exerciseId = s.e.id), (previewOf = { row: r, id: s.e.id })">
                     <ExerciseThumb :exercise="s.e" class="!size-9" />
                     <span class="min-w-0 flex-1">
                       <span class="block truncate text-sm font-semibold">{{ s.e.name_pl }}</span>
@@ -321,6 +335,13 @@ async function save() {
       </template>
     </div>
 
+    <ExercisePreview
+      v-if="previewOf"
+      :id="previewOf.id"
+      :pick-label="previewOf.row ? 'Wybierz to ćwiczenie' : undefined"
+      @pick="(id) => (choose(previewOf!.row!, id), (previewOf = null))"
+      @close="previewOf = null"
+    />
     <ExercisePicker v-if="picking" :title="`Wybierz ćwiczenie dla „${picking.name}”`" @pick="onPick" @close="picking = null" />
   </main>
 </template>
