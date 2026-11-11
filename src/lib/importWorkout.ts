@@ -87,6 +87,23 @@ const SYN: Record<string, string[]> = {
   gumy: ['band'],
   gumie: ['band'],
   jednonoz: ['single', 'leg', 'jednej', 'nodze'],
+  rdl: ['rumunski', 'romanian', 'martwy'],
+  sl: ['jednonoz', 'single', 'jednej'],
+  chodzenie: ['chod', 'walk', 'marsz'],
+  chod: ['walk', 'marsz'],
+  kbox: ['ekscentryk', 'ekscentryku', 'flywheel'],
+  kboxie: ['ekscentryk', 'ekscentryku', 'flywheel', 'kbox'],
+  ekscentryk: ['ekscentryku', 'flywheel', 'kbox'],
+  ekscentryku: ['flywheel', 'kbox'],
+  flywheel: ['ekscentryk', 'kbox'],
+  izoinercyjny: ['stozkowy', 'conical', 'flywheel'],
+  stozkowy: ['stozkowym', 'conical'],
+  drazku: ['drazek', 'pull'],
+  porecze: ['poreczach', 'dip'],
+  poreczach: ['porecze', 'dip'],
+  sanki: ['sanie', 'san', 'sled'],
+  saniami: ['sanki', 'sled'],
+  trapbar: ['trap', 'bar'],
 }
 const toks = (s: string) => norm(s).split(/[^a-z0-9]+/).filter((w) => w && !STOP.has(w))
 const WEIGHT: Record<number, number> = { 3: 1, 2: 0.85, 1: 0.6, 0: 0 }

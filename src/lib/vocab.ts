@@ -35,6 +35,15 @@ export const EQUIPMENT: Record<string, string> = {
   'foam roll': 'Roller',
   trx: 'TRX',
   box: 'Skrzynia',
+  'trap bar': 'Trap bar',
+  landmine: 'Landmine',
+  flywheel: 'Ekscentryk (flywheel, kBox)',
+  'conical pulley': 'Wyciąg stożkowy (izoinercyjny)',
+  sled: 'Sanki',
+  'pull-up bar': 'Drążek',
+  'dip bars': 'Poręcze (dipy)',
+  'roman chair': 'Ławka rzymska',
+  'mini band': 'Mini band',
   other: 'Inne',
 }
 
