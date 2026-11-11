@@ -18,7 +18,20 @@ export const useClientsStore = defineStore('clients', () => {
     loaded.value = true
   }
 
-  const byId = (id: string | null | undefined) => (id ? all.value.find((c) => c.id === id) : undefined)
+  // Klient spoza wczytanej listy (np. utworzony przed chwilą przez synchronizację z Google Calendar) –
+  // odśwież listę w tle (najwyżej co 10 s), nazwisko pojawi się samo.
+  let lastRefresh = 0
+  function refreshSoon() {
+    if (!loaded.value || Date.now() - lastRefresh < 10_000) return
+    lastRefresh = Date.now()
+    void load(true).catch(() => null)
+  }
+  const byId = (id: string | null | undefined) => {
+    if (!id) return undefined
+    const c = all.value.find((x) => x.id === id)
+    if (!c) refreshSoon()
+    return c
+  }
 
   async function save(input: ClientInput, id?: string) {
     const q = id
