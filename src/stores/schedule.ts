@@ -12,7 +12,7 @@ import type {
 } from '@/types'
 
 const SESSION_COLS =
-  'id, client_id, starts_at, ends_at, status, workout_id, series_id, notes, booked_by_client, cancelled_at, cancel_reason, gym_id, gcal_event_id, moved_from'
+  'id, client_id, starts_at, ends_at, status, workout_id, series_id, notes, booked_by_client, cancelled_at, cancel_reason, gym_id, gcal_event_id, moved_from, weekly_request'
 
 function ok<T>(res: { data: T; error: unknown }): T {
   if (res.error) throw res.error
@@ -157,8 +157,8 @@ export const useScheduleStore = defineStore('schedule', () => {
   }
 
   /** Prośba klienta o termin (zawsze do potwierdzenia); moveFrom = przełożenie istniejącej sesji. */
-  async function book(slotIso: string, moveFrom?: string | null) {
-    const id = ok(await supabase.rpc('request_slot', { slot: slotIso, move_from: moveFrom ?? null })) as string
+  async function book(slotIso: string, moveFrom?: string | null, weekly = false) {
+    const id = ok(await supabase.rpc('request_slot', { slot: slotIso, move_from: moveFrom ?? null, weekly })) as string
     const row = ok(await supabase.from('sessions').select(SESSION_COLS).eq('id', id).single()) as Session
     upsertLocal([row])
     return row

@@ -25,6 +25,7 @@ const day = ref(ymd(new Date()))
 const slots = ref<{ starts_at: string; ends_at: string; gym_id: string | null }[]>([])
 const slotsLoading = ref(false)
 // Nazwa siłowni przy godzinie tylko, gdy w wynikach jest więcej niż jedna (klient z przypisaną siłownią widzi tylko ją).
+const weekdayOf = (iso: string) => new Date(iso).toLocaleDateString('pl-PL', { weekday: 'long' })
 const multiGym = computed(() => new Set(slots.value.map((x) => x.gym_id)).size > 1)
 const picked = ref<string | null>(null)
 const cancelling = ref<string | null>(null)
@@ -94,13 +95,17 @@ function startMove(s: Session) {
 /** Prośba o przełożenie czekająca na trenerkę (nowa sesja wskazuje starą). */
 const moveRequestOf = (s: Session) => schedule.sessions.find((x) => x.moved_from === s.id && x.status === 'pending')
 
+// Jednorazowo albo stały termin co tydzień (po akceptacji trenerki powstaje seria).
+const weekly = ref(false)
 const book = () =>
   run(async () => {
-    const s = await schedule.book(picked.value!, moving.value?.id)
+    const s = await schedule.book(picked.value!, moving.value?.id, !moving.value && weekly.value)
     notifySession('request', s.id)
     info.value = moving.value
       ? `Wysłano prośbę o przełożenie na ${hm(s.starts_at)} – do potwierdzenia przez trenerkę obowiązuje dotychczasowy termin.`
-      : 'Trenerka dostała powiadomienie – potwierdzi termin albo zaproponuje inny.'
+      : weekly.value
+        ? `Wysłano prośbę o stały termin co tydzień (${shortDay(new Date(s.starts_at)).split(',')[0]} ${hm(s.starts_at)}) – trenerka potwierdzi.`
+        : 'Wysłano prośbę – trenerka potwierdzi termin albo zaproponuje inny.'
     moving.value = null
     tab.value = 'mine'
   }).finally(loadSlots)
@@ -123,7 +128,7 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
       <h1 class="page-title">Terminy</h1>
       <div class="grid grid-cols-2 rounded-xl bg-surface-2 p-1">
         <button class="min-h-10 rounded-lg text-sm font-semibold" :class="tab === 'mine' ? 'bg-surface shadow' : 'text-muted'" @click="tab = 'mine'">Moje sesje</button>
-        <button class="min-h-10 rounded-lg text-sm font-semibold" :class="tab === 'book' ? 'bg-surface shadow' : 'text-muted'" @click="tab = 'book'">Chcę trening</button>
+        <button class="min-h-10 rounded-lg text-sm font-semibold" :class="tab === 'book' ? 'bg-surface shadow' : 'text-muted'" @click="tab = 'book'">Poproś o termin</button>
       </div>
     </header>
 
@@ -143,7 +148,7 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
         <p v-if="loading" class="text-muted">Ładowanie…</p>
         <div v-else-if="!upcoming.length" class="card p-6 text-center">
           <p class="font-semibold">Brak zaplanowanych sesji</p>
-          <button class="btn-primary mt-3" @click="tab = 'book'">Daj znać, kiedy chcesz trenować</button>
+          <button class="btn-primary mt-3" @click="tab = 'book'">Poproś o termin</button>
         </div>
         <ul class="space-y-2">
           <li v-for="s in upcoming" :key="s.id" class="card p-4">
@@ -194,7 +199,13 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
           <span class="min-w-0 flex-1">Przekładasz trening z <strong>{{ shortDay(new Date(moving.starts_at)) }} {{ hm(moving.starts_at) }}</strong> – wybierz nowy termin.</span>
           <button class="btn-ghost !min-h-9 text-sm" @click="(moving = null), (tab = 'mine')">Anuluj</button>
         </div>
-        <p v-else class="text-sm text-muted">Wybierz, kiedy chcesz trenować – trenerka dostanie powiadomienie i potwierdzi termin.</p>
+        <template v-else>
+          <p class="text-sm text-muted">Wybierz dzień i godzinę – trenerka dostanie prośbę i potwierdzi termin.</p>
+          <div class="grid grid-cols-2 rounded-xl bg-surface-2 p-1" role="group" aria-label="Jak często">
+            <button class="min-h-10 rounded-lg text-sm font-semibold" :class="!weekly ? 'bg-surface shadow' : 'text-muted'" :aria-pressed="!weekly" @click="weekly = false">Jednorazowo</button>
+            <button class="min-h-10 rounded-lg text-sm font-semibold" :class="weekly ? 'bg-surface shadow' : 'text-muted'" :aria-pressed="weekly" @click="weekly = true">Co tydzień</button>
+          </div>
+        </template>
         <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]" role="tablist" aria-label="Dzień">
           <button
             v-for="d in days"
@@ -229,7 +240,7 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
             </button>
           </div>
           <button class="btn-primary w-full" :disabled="!picked || busy || !myClientId" @click="book">
-            {{ !picked ? 'Wybierz godzinę' : moving ? `Poproś o przełożenie na ${hm(picked)}` : `Powiadom trenerkę: chcę trening o ${hm(picked)}` }}
+            {{ !picked ? 'Wybierz godzinę' : moving ? `Poproś o przełożenie na ${hm(picked)}` : weekly ? `Wyślij prośbę: co tydzień, ${weekdayOf(picked)} ${hm(picked)}` : `Wyślij prośbę: ${shortDay(new Date(picked))} ${hm(picked)}` }}
           </button>
           <p class="text-xs text-muted">To prośba, nie rezerwacja – termin jest Twój dopiero po potwierdzeniu przez trenerkę.</p>
         </template>

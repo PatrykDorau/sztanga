@@ -97,6 +97,9 @@ const remove = () => (armedDelete.value ? run(() => schedule.removeSession(props
         <span v-if="s.series_id" class="tag">sesja cykliczna</span>
         <span v-if="s.booked_by_client" class="tag">prośba klienta</span>
       </div>
+      <p v-if="s.weekly_request && s.status === 'pending'" class="rounded-lg bg-warn-soft p-2 text-sm text-warn-fg">
+        Prośba o stały termin co tydzień. Akceptacja doda serię w tym dniu i o tej godzinie (od tej sesji).
+      </p>
       <p v-if="movedFrom" class="rounded-lg bg-warn-soft p-2 text-sm text-warn-fg">
         Przełożenie z {{ new Date(movedFrom.starts_at).toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}.
         {{ s.status === 'pending' ? 'Akceptacja odwoła tamten termin; odrzucenie go zostawi.' : '' }}

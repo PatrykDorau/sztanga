@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
       const { data: u } = await db.auth.getUser(jwt)
       if (!u?.user) return json({ error: 'Brak logowania' }, 401)
-      const { data: s } = await db.from('sessions').select('id, starts_at, status, cancel_reason, moved_from, client_id, clients(full_name, user_id)').eq('id', String(body.session_id)).maybeSingle()
+      const { data: s } = await db.from('sessions').select('id, starts_at, status, cancel_reason, moved_from, weekly_request, client_id, clients(full_name, user_id)').eq('id', String(body.session_id)).maybeSingle()
       const c = (s as unknown as { clients: { full_name: string; user_id: string | null } } | null)?.clients
       if (!s || c?.user_id !== u.user.id) return json({ error: 'Nie znaleziono sesji' }, 404)
       const name = c.full_name
@@ -62,7 +62,9 @@ Deno.serve(async (req) => {
         const { data: old } = await db.from('sessions').select('starts_at').eq('id', s.moved_from).maybeSingle()
         msg = { title: 'Prośba o przełożenie', body: `${name}: ${old ? when(old.starts_at) : '?'} → ${when(s.starts_at)}`, url: '/grafik', tag: `s-${s.id}` }
       } else {
-        msg = { title: 'Prośba o trening', body: `${name} – ${when(s.starts_at)}`, url: '/grafik', tag: `s-${s.id}` }
+        msg = s.weekly_request
+          ? { title: 'Prośba o stały termin', body: `${name} – co tydzień od ${when(s.starts_at)}`, url: '/grafik', tag: `s-${s.id}` }
+          : { title: 'Prośba o termin', body: `${name} – ${when(s.starts_at)}`, url: '/grafik', tag: `s-${s.id}` }
       }
       return json(await sendToTrainers(msg))
     }
