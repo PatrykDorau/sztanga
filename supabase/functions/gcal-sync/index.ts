@@ -16,7 +16,7 @@ import {
   SYNC_URL,
   TZ,
 } from '../_shared/google.ts'
-import { colorFamily, eventTitle, gymFor, isFree, looksLikePerson, matchClient, norm, personName, splitTitle, type ClientRef, type Gym } from '../_shared/titles.ts'
+import { colorFamily, eventTitle, gymFor, isFree, looksLikePerson, matchClient, norm, personName, splitTitle, withGymWord, type ClientRef, type Gym } from '../_shared/titles.ts'
 
 interface GEvent {
   id: string
@@ -29,10 +29,20 @@ interface GEvent {
   extendedProperties?: { private?: Record<string, string> }
 }
 
-const PAST_DAYS = 60 // pełny import: od 60 dni wstecz (historia sesji do dashboardu)
-const FUTURE_DAYS = 180 // … do pół roku naprzód (cykliczne wydarzenia bez końca dawałyby lata wystąpień)
-const REFRESH_DAYS = 90 // gdy okno importu kończy się bliżej niż za tyle dni – pełny import z nowym oknem
+const PAST_DAYS = 60 // pierwszy import: od 60 dni wstecz (historia sesji do dashboardu)
+const FUTURE_DAYS = 31 // … do miesiąca naprzód
+const REFRESH_PAST_DAYS = 1 // codzienne dociąganie: od wczoraj do miesiąca naprzód
+const REFRESH_DAYS = FUTURE_DAYS - 1 // okno kończy się bliżej niż za tyle dni → dociągnij (czyli raz dziennie)
 const MAX_EVENTS = 400 // na jedno wywołanie (limit CPU funkcji) – reszta w kolejnym, od zapisanej strony
+
+interface CalRow {
+  calendar_id: string
+  gym_id: string | null
+}
+interface Ctx {
+  clients: ClientRef[]
+  aliases: Map<string, string | null>
+}
 // Odwołane w aplikacji: wydarzenie zostaje w Google z tym dopiskiem, grafitowe, „dostępny” – usuwa je trenerka z panelu.
 const CANCELLED_PREFIX = 'ODWOŁANE · '
 const CANCELLED_COLOR = '8' // grafit
@@ -49,6 +59,8 @@ async function authorize(req: Request, db: SupabaseClient): Promise<'internal' |
   }
   const channelToken = req.headers.get('x-goog-channel-token')
   if (channelToken) {
+    const { data: cal } = await db.from('google_calendars').select('calendar_id').eq('channel_token', channelToken).limit(1)
+    if (cal?.length) return 'google'
     const { data } = await db.from('google_connection').select('channel_token').eq('id', 1).single()
     return data?.channel_token && channelToken === data.channel_token ? 'google' : null
   }
@@ -81,14 +93,14 @@ function eventTimes(e: GEvent) {
   return null
 }
 
-async function pull(db: SupabaseClient, token: string, calendarId: string, gyms: Gym[]): Promise<{ processed: number; partial: boolean }> {
-  const [{ data: g }, { data: clients }, { data: aliasRows }] = await Promise.all([
-    db.from('google_connection').select('sync_token, sync_window_end, import_page_token, import_time_min, import_time_max').eq('id', 1).single(),
-    db.from('clients').select('id, full_name').eq('archived', false),
-    db.from('client_aliases').select('alias_norm, client_id'),
-  ])
-  const aliases = new Map<string, string | null>((aliasRows ?? []).map((a) => [a.alias_norm, a.client_id]))
-  const clientList = (clients ?? []) as ClientRef[]
+async function pull(db: SupabaseClient, token: string, cal: CalRow, gyms: Gym[], ctx: Ctx, budget: number): Promise<{ processed: number; partial: boolean }> {
+  const calendarId = cal.calendar_id
+  const { data: g } = await db
+    .from('google_calendars')
+    .select('sync_token, sync_window_end, import_page_token, import_time_min, import_time_max')
+    .eq('calendar_id', calendarId)
+    .single()
+  const { aliases, clients: clientList } = ctx
 
   let syncToken: string | null = g?.sync_token ?? null
   // Okno pełnego importu się kończy – zaczynamy pełny import od nowa (z nowym oknem).
@@ -97,8 +109,9 @@ async function pull(db: SupabaseClient, token: string, calendarId: string, gyms:
   let pageToken: string | undefined = !syncToken ? (g?.import_page_token ?? undefined) : undefined
   let win = { min: g?.import_time_min as string | null, max: g?.import_time_max as string | null }
   if (!syncToken && !pageToken) {
-    win = { min: new Date(Date.now() - PAST_DAYS * 864e5).toISOString(), max: new Date(Date.now() + FUTURE_DAYS * 864e5).toISOString() }
-    await db.from('google_connection').update({ import_time_min: win.min, import_time_max: win.max, import_page_token: null }).eq('id', 1)
+    const back = g?.sync_window_end ? REFRESH_PAST_DAYS : PAST_DAYS // już importowany – tylko dociągnięcie
+    win = { min: new Date(Date.now() - back * 864e5).toISOString(), max: new Date(Date.now() + FUTURE_DAYS * 864e5).toISOString() }
+    await db.from('google_calendars').update({ import_time_min: win.min, import_time_max: win.max, import_page_token: null }).eq('calendar_id', calendarId)
   }
   let nextSyncToken: string | undefined
   let processed = 0
@@ -121,7 +134,7 @@ async function pull(db: SupabaseClient, token: string, calendarId: string, gyms:
         syncToken = null
         pageToken = undefined
         win = { min: new Date(Date.now() - PAST_DAYS * 864e5).toISOString(), max: new Date(Date.now() + FUTURE_DAYS * 864e5).toISOString() }
-        await db.from('google_connection').update({ sync_token: null, import_page_token: null, import_time_min: win.min, import_time_max: win.max }).eq('id', 1)
+        await db.from('google_calendars').update({ sync_token: null, import_page_token: null, import_time_min: win.min, import_time_max: win.max }).eq('calendar_id', calendarId)
         continue
       }
       throw e
@@ -136,7 +149,7 @@ async function pull(db: SupabaseClient, token: string, calendarId: string, gyms:
     }
     const ops: Ops = { del: [], up: [] }
     for (const ev of items) {
-      const recolor = await applyEvent(db, ev, gyms, clientList, aliases, linkedMap.get(ev.id) ?? null, ops)
+      const recolor = await applyEvent(db, ev, gyms, clientList, aliases, linkedMap.get(ev.id) ?? null, ops, cal, win.max)
       // Trening wpisany ręcznie w Google dostaje kolor swojej siłowni (sam tytuł zostaje bez zmian).
       if (recolor) {
         await gapi(token, `${calPath(calendarId)}/events/${encodeURIComponent(ev.id)}`, { method: 'PATCH', body: JSON.stringify({ colorId: String(recolor) }) }).catch((e) =>
@@ -149,8 +162,8 @@ async function pull(db: SupabaseClient, token: string, calendarId: string, gyms:
     if (page.nextPageToken) {
       pageToken = page.nextPageToken
       // Limit na jedno wywołanie: zapisz stronę pełnego importu i dokończ w następnym.
-      if (!syncToken && processed >= MAX_EVENTS) {
-        await db.from('google_connection').update({ import_page_token: pageToken }).eq('id', 1)
+      if (!syncToken && processed >= budget) {
+        await db.from('google_calendars').update({ import_page_token: pageToken }).eq('calendar_id', calendarId)
         return { processed, partial: true }
       }
     } else {
@@ -161,9 +174,9 @@ async function pull(db: SupabaseClient, token: string, calendarId: string, gyms:
   if (nextSyncToken) {
     const done = !syncToken // koniec pełnego importu – zapamiętaj okno
     await db
-      .from('google_connection')
+      .from('google_calendars')
       .update({ sync_token: nextSyncToken, import_page_token: null, ...(done ? { sync_window_end: win.max } : {}) })
-      .eq('id', 1)
+      .eq('calendar_id', calendarId)
   }
   return { processed, partial: false }
 }
@@ -198,8 +211,11 @@ async function applyEvent(
   aliases: Map<string, string | null>,
   linked: Linked | null,
   ops: Ops,
+  cal: CalRow,
+  windowEnd: string | null,
 ): Promise<number | null> {
   const now = new Date().toISOString()
+  const calGym = gyms.find((g) => g.id === cal.gym_id) ?? null
   const unmirror = () => void ops.del.push(e.id)
   const cancelLinked = async (reason: string) => {
     if (linked && ['pending', 'confirmed'].includes(linked.status) && linked.starts_at > now) {
@@ -220,9 +236,13 @@ async function applyEvent(
   }
   const t = eventTimes(e)
   if (!t) return null
-  const title = (e.summary ?? '').trim()
+  // Dalej niż okno (miesiąc naprzód) – pomijamy, także przy bieżących zmianach (edycja serii daje lata wystąpień).
+  if (windowEnd && t.starts > new Date(new Date(windowEnd).getTime() + 864e5).toISOString()) return null
+  const raw = (e.summary ?? '').trim()
+  // „Wiktoria Ciesielska forto” → „Wiktoria Ciesielska (FO)”: nazwa / kod siłowni na końcu tytułu jak dopisek.
+  const title = withGymWord(raw, gyms)
   const colorId = e.colorId ? Number(e.colorId) : null
-  const gym = gymFor(title, colorId, gyms)
+  const gym = gymFor(title, colorId, gyms, calGym)
 
   // Zajęcia grupowe wysłane z aplikacji – są już w grafiku (tabela group_classes), nie dublujemy ich jako „zajęte”.
   if (e.extendedProperties?.private?.trenerGroupId) {
@@ -247,8 +267,9 @@ async function applyEvent(
   const mirror = (kind: 'free' | 'busy' | 'unmatched') =>
     void ops.up.push({
       gcal_event_id: e.id,
+      gcal_calendar_id: cal.calendar_id,
       kind,
-      title: title || null,
+      title: raw || null,
       starts_at: t.starts,
       ends_at: t.ends,
       all_day: t.allDay,
@@ -301,6 +322,7 @@ async function applyEvent(
       ends_at: t.ends,
       gym_id: gym?.id ?? null,
       gcal_event_id: e.id,
+      gcal_calendar_id: cal.calendar_id,
       gcal_synced_at: now,
     }
     const targetId = linked?.id ?? appSessionId
@@ -311,7 +333,7 @@ async function applyEvent(
         const status = e.status === 'tentative' ? 'pending' : cur.status === 'cancelled' || cur.status === 'pending' ? 'confirmed' : cur.status
         await db.from('sessions').update({ ...fields, status }).eq('id', targetId)
       } else if (cur) {
-        await db.from('sessions').update({ gcal_event_id: e.id, gcal_synced_at: now }).eq('id', targetId)
+        await db.from('sessions').update({ gcal_event_id: e.id, gcal_calendar_id: cal.calendar_id, gcal_synced_at: now }).eq('id', targetId)
       } else {
         await db.from('sessions').insert({ ...fields, status: 'confirmed' })
       }
@@ -320,7 +342,8 @@ async function applyEvent(
     }
     unmirror()
     // Przekolorowanie tylko przy innej rodzinie koloru (czerwony odcień zostaje czerwonym) albo domyślnym kolorze przy innej niż domyślna siłowni.
-    const recolor = gym && (colorId == null ? !gym.is_default : colorFamily(colorId) !== colorFamily(gym.color_id))
+    // Bez koloru = kolor kalendarza: przekolorowanie tylko, gdy siłownia inna niż kalendarza (albo domyślna).
+    const recolor = gym && (colorId == null ? gym.id !== (calGym ?? gyms.find((g) => g.is_default))?.id : colorFamily(colorId) !== colorFamily(gym.color_id))
     return recolor ? gym.color_id : null
   }
 
@@ -334,15 +357,20 @@ async function applyEvent(
 }
 
 // ===================== Eksport: aplikacja → Google =====================
-async function push(db: SupabaseClient, token: string, calendarId: string, gyms: Gym[]) {
-  const base = `${calPath(calendarId)}/events`
+async function push(db: SupabaseClient, token: string, main: string, cals: CalRow[], gyms: Gym[]) {
+  const baseOf = (cal: string | null | undefined) => `${calPath(cal ?? main)}/events`
+  // Sesja / zajęcia bez wydarzenia trafiają do kalendarza swojej siłowni, a bez przypisanego – do głównego.
+  const calForGym = (gymId: string | null | undefined) => cals.find((c) => c.gym_id && c.gym_id === gymId)?.calendar_id ?? main
   const now = () => new Date().toISOString()
   let n = 0
 
   const gone = (e: unknown) => e instanceof GoogleApiError && [404, 410].includes(e.status)
   /** Oznacz wydarzenie jako odwołane (bez usuwania) i dopisz je do listy w panelu. */
-  const markCancelled = async (eventId: string, info: { title?: string | null; starts?: string; ends?: string; sessionId?: string | null; restoreFree: boolean; reason: 'cancelled' | 'deleted' }) => {
-    const path = `${base}/${encodeURIComponent(eventId)}`
+  const markCancelled = async (
+    eventId: string,
+    info: { cal?: string | null; title?: string | null; starts?: string; ends?: string; sessionId?: string | null; restoreFree: boolean; reason: 'cancelled' | 'deleted' },
+  ) => {
+    const path = `${baseOf(info.cal)}/${encodeURIComponent(eventId)}`
     let ev: GEvent | null = null
     try {
       ev = await gapi<GEvent>(token, path)
@@ -366,6 +394,7 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
     })
     await db.from('gcal_cancelled').upsert({
       gcal_event_id: eventId,
+      gcal_calendar_id: info.cal ?? main,
       title: isCancelledTitle(old) ? old.replace(/^odwo[łl]ane\s*·?\s*/i, '') : old,
       starts_at: ev.start?.dateTime ?? info.starts ?? null,
       ends_at: ev.end?.dateTime ?? info.ends ?? null,
@@ -378,10 +407,10 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
   }
 
   // 0) Decyzje z panelu „Odwołane w kalendarzu”: usuń z Google (albo przywróć „Free”) / zostaw.
-  const { data: decided } = await db.from('gcal_cancelled').select('gcal_event_id, restore_free, action').not('action', 'is', null)
+  const { data: decided } = await db.from('gcal_cancelled').select('gcal_event_id, gcal_calendar_id, restore_free, action').not('action', 'is', null)
   for (const d of decided ?? []) {
     if (d.action === 'delete') {
-      const path = `${base}/${encodeURIComponent(d.gcal_event_id)}`
+      const path = `${baseOf(d.gcal_calendar_id)}/${encodeURIComponent(d.gcal_event_id)}`
       try {
         if (d.restore_free) await gapi(token, path, { method: 'PATCH', body: JSON.stringify({ summary: 'Free', status: 'confirmed', colorId: null, transparency: 'opaque' }) })
         else await gapi(token, path, { method: 'DELETE' })
@@ -394,9 +423,9 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
   }
 
   // 1) Sesje usunięte w aplikacji – oznaczamy, nie usuwamy.
-  const { data: dels } = await db.from('gcal_deletions').select('gcal_event_id, restore_free')
+  const { data: dels } = await db.from('gcal_deletions').select('gcal_event_id, gcal_calendar_id, restore_free')
   for (const d of dels ?? []) {
-    await markCancelled(d.gcal_event_id, { restoreFree: d.restore_free, reason: 'deleted' })
+    await markCancelled(d.gcal_event_id, { cal: d.gcal_calendar_id, restoreFree: d.restore_free, reason: 'deleted' })
     await db.from('gcal_deletions').delete().eq('gcal_event_id', d.gcal_event_id)
     n++
   }
@@ -404,7 +433,7 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
   // 2) Sesje zmienione w aplikacji + przyszłe sesje sprzed podłączenia Google (nigdy niesynchronizowane).
   const { data: dirty } = await db
     .from('sessions')
-    .select('id, client_id, starts_at, ends_at, status, gym_id, gcal_event_id, from_free_event, clients(full_name)')
+    .select('id, client_id, starts_at, ends_at, status, gym_id, gcal_event_id, gcal_calendar_id, from_free_event, clients(full_name)')
     .or(`gcal_dirty.eq.true,and(gcal_synced_at.is.null,gcal_event_id.is.null,status.in.(pending,confirmed),starts_at.gt.${now()})`)
     .order('starts_at')
     .limit(100)
@@ -422,14 +451,16 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
     }
     const done = (patch: Record<string, unknown> = {}) =>
       db.from('sessions').update({ gcal_dirty: false, gcal_synced_at: now(), ...patch }).eq('id', s.id)
+    const target = s.gcal_event_id ? (s.gcal_calendar_id ?? main) : calForGym(s.gym_id)
+    const base = baseOf(target)
 
     try {
       if (s.status === 'cancelled') {
         // Odwołana w aplikacji – w Google zostaje jako „ODWOŁANE · …” do decyzji trenerki (panel).
         if (s.gcal_event_id) {
-          await markCancelled(s.gcal_event_id, { title: body.summary, starts: s.starts_at, ends: s.ends_at, sessionId: s.id, restoreFree: !!s.from_free_event, reason: 'cancelled' })
+          await markCancelled(s.gcal_event_id, { cal: target, title: body.summary, starts: s.starts_at, ends: s.ends_at, sessionId: s.id, restoreFree: !!s.from_free_event, reason: 'cancelled' })
         }
-        await done({ gcal_event_id: null })
+        await done({ gcal_event_id: null, gcal_calendar_id: null })
       } else if (s.gcal_event_id) {
         await gapi(token, `${base}/${encodeURIComponent(s.gcal_event_id)}`, { method: 'PATCH', body: JSON.stringify(body) })
         await done()
@@ -439,6 +470,7 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
           .from('calendar_events')
           .select('gcal_event_id')
           .eq('kind', 'free')
+          .eq('gcal_calendar_id', target)
           .lte('starts_at', s.starts_at)
           .gte('ends_at', s.ends_at)
           .limit(1)
@@ -446,10 +478,10 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
         if (free) {
           await gapi(token, `${base}/${encodeURIComponent(free.gcal_event_id)}`, { method: 'PATCH', body: JSON.stringify(body) })
           await db.from('calendar_events').delete().eq('gcal_event_id', free.gcal_event_id)
-          await done({ gcal_event_id: free.gcal_event_id, from_free_event: true })
+          await done({ gcal_event_id: free.gcal_event_id, gcal_calendar_id: target, from_free_event: true })
         } else {
           const created = await gapi<{ id: string }>(token, base, { method: 'POST', body: JSON.stringify(body) })
-          await done({ gcal_event_id: created.id, from_free_event: false })
+          await done({ gcal_event_id: created.id, gcal_calendar_id: target, from_free_event: false })
         }
       }
       n++
@@ -464,13 +496,15 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
   // 3) Zajęcia grupowe z aplikacji (siłowy, obwód, core…): tytuł „Obwód (BW)”, kolor siłowni, dopisek „Aplikacja”.
   const { data: groups } = await db
     .from('group_classes')
-    .select('id, starts_at, ends_at, gym_id, kind, cancelled, gcal_event_id')
+    .select('id, starts_at, ends_at, gym_id, kind, cancelled, gcal_event_id, gcal_calendar_id')
     .eq('gcal_dirty', true)
     .order('starts_at')
     .limit(100)
   for (const c of (groups ?? []) as any[]) {
     const gym = gyms.find((g) => g.id === c.gym_id) ?? gyms.find((g) => g.is_default) ?? null
     const done = (patch: Record<string, unknown> = {}) => db.from('group_classes').update({ gcal_dirty: false, gcal_synced_at: now(), ...patch }).eq('id', c.id)
+    const target = c.gcal_event_id ? (c.gcal_calendar_id ?? main) : calForGym(c.gym_id)
+    const base = baseOf(target)
     const body = {
       summary: eventTitle(c.kind, gym?.code ?? null),
       start: { dateTime: c.starts_at, timeZone: TZ },
@@ -482,14 +516,14 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
     }
     try {
       if (c.cancelled) {
-        if (c.gcal_event_id) await markCancelled(c.gcal_event_id, { title: body.summary, starts: c.starts_at, ends: c.ends_at, restoreFree: false, reason: 'cancelled' })
-        await done({ gcal_event_id: null })
+        if (c.gcal_event_id) await markCancelled(c.gcal_event_id, { cal: target, title: body.summary, starts: c.starts_at, ends: c.ends_at, restoreFree: false, reason: 'cancelled' })
+        await done({ gcal_event_id: null, gcal_calendar_id: null })
       } else if (c.gcal_event_id) {
         await gapi(token, `${base}/${encodeURIComponent(c.gcal_event_id)}`, { method: 'PATCH', body: JSON.stringify(body) })
         await done()
       } else {
         const created = await gapi<{ id: string }>(token, base, { method: 'POST', body: JSON.stringify(body) })
-        await done({ gcal_event_id: created.id })
+        await done({ gcal_event_id: created.id, gcal_calendar_id: target })
       }
       n++
     } catch (e) {
@@ -502,7 +536,7 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
 
 // ===================== Powiadomienia z Google (kanał watch) =====================
 async function ensureWatch(db: SupabaseClient, token: string, calendarId: string) {
-  const { data: g } = await db.from('google_connection').select('channel_id, channel_resource_id, channel_expires').eq('id', 1).single()
+  const { data: g } = await db.from('google_calendars').select('channel_id, channel_resource_id, channel_expires').eq('calendar_id', calendarId).single()
   if (g?.channel_expires && new Date(g.channel_expires).getTime() > Date.now() + 864e5) return
   if (g?.channel_id && g.channel_resource_id) {
     await gapi(token, '/channels/stop', { method: 'POST', body: JSON.stringify({ id: g.channel_id, resourceId: g.channel_resource_id }) }).catch(() => null)
@@ -513,9 +547,9 @@ async function ensureWatch(db: SupabaseClient, token: string, calendarId: string
     body: JSON.stringify({ id: crypto.randomUUID(), type: 'web_hook', address: SYNC_URL, token: channelToken, params: { ttl: String(7 * 86400) } }),
   })
   await db
-    .from('google_connection')
+    .from('google_calendars')
     .update({ channel_id: res.id, channel_resource_id: res.resourceId, channel_token: channelToken, channel_expires: new Date(Number(res.expiration)).toISOString() })
-    .eq('id', 1)
+    .eq('calendar_id', calendarId)
 }
 
 // ===================== Wejście =====================
@@ -544,22 +578,36 @@ Deno.serve(async (req) => {
     if (!(await acquireLock(db))) return json({ ok: true, queued: true }, 202)
     const { data: gymRows } = await db.from('gyms').select('id, code, name, color_id, is_default')
     const gyms = (gymRows ?? []) as Gym[]
+    // Kalendarze do synchronizacji (główny zawsze na liście).
+    await db.from('google_calendars').upsert({ calendar_id: calendarId }, { onConflict: 'calendar_id', ignoreDuplicates: true })
+    const { data: calRows } = await db.from('google_calendars').select('calendar_id, gym_id').order('created_at')
+    const cals = ((calRows ?? []) as CalRow[]).sort((a, b) => (a.calendar_id === calendarId ? -1 : b.calendar_id === calendarId ? 1 : 0))
+    const [{ data: clientRows }, { data: aliasRows }] = await Promise.all([
+      db.from('clients').select('id, full_name').eq('archived', false),
+      db.from('client_aliases').select('alias_norm, client_id'),
+    ])
+    const ctx: Ctx = { clients: (clientRows ?? []) as ClientRef[], aliases: new Map((aliasRows ?? []).map((a) => [a.alias_norm as string, a.client_id as string | null])) }
     let pulled = 0
     let pushed = 0
     let partial = false
     try {
       for (let round = 0; round < 3; round++) {
-        const r = await pull(db, token, calendarId, gyms)
-        pulled += r.processed
-        partial = r.partial
-        if (partial) break // pełny import w toku – wysyłka i reszta po jego zakończeniu
-        pushed += await push(db, token, calendarId, gyms)
+        for (const cal of cals) {
+          const r = await pull(db, token, cal, gyms, ctx, Math.max(50, MAX_EVENTS - pulled))
+          pulled += r.processed
+          if (r.partial) {
+            partial = true
+            break
+          }
+        }
+        if (partial) break // import w toku – wysyłka i reszta po jego zakończeniu
+        pushed += await push(db, token, calendarId, cals, gyms)
         const { data: again } = await db.from('google_connection').select('sync_requested').eq('id', 1).single()
         if (!again?.sync_requested) break
         await db.from('google_connection').update({ sync_requested: false }).eq('id', 1)
       }
       if (!partial) {
-        await ensureWatch(db, token, calendarId).catch((e) => console.error('watch', e))
+        for (const cal of cals) await ensureWatch(db, token, cal.calendar_id).catch((e) => console.error('watch', e))
         await db.from('google_connection').update({ last_sync_at: new Date().toISOString(), last_error: null }).eq('id', 1)
       }
     } finally {

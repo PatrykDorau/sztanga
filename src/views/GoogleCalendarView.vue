@@ -40,9 +40,31 @@ async function refresh() {
   if (cal.status?.connected) {
     todo.value = await cal.unmatched()
     cancelled.value = await cal.cancelledEvents()
-    calendarList.value = await cal.calendars().catch(() => [])
+    await loadSynced(await cal.calendars().catch(() => []))
   }
 }
+
+// ===== Kalendarze: które synchronizować, z którą siłownią, który główny =====
+const calId = (c: { id: string; primary: boolean }) => (c.primary ? 'primary' : c.id)
+const sel = reactive<Record<string, { on: boolean; gym_id: string }>>({})
+const mainCal = ref('primary')
+async function loadSynced(list: typeof calendarList.value) {
+  const synced = await cal.syncedCalendars().catch(() => [])
+  for (const c of list) {
+    const r = synced.find((x) => x.calendar_id === calId(c))
+    sel[calId(c)] = { on: !!r, gym_id: r?.gym_id ?? '' }
+  }
+  mainCal.value = synced.find((x) => x.is_main)?.calendar_id ?? cal.status?.calendar_id ?? 'primary'
+  calendarList.value = list // dopiero gdy sel jest gotowe
+}
+const saveCalendars = () =>
+  run(async () => {
+    const chosen = calendarList.value.filter((c) => sel[calId(c)]?.on).map((c) => ({ id: calId(c), name: c.name, gym_id: sel[calId(c)].gym_id || null }))
+    if (!chosen.some((c) => c.id === mainCal.value)) mainCal.value = chosen[0]?.id ?? 'primary'
+    await cal.setCalendars(chosen, mainCal.value)
+    info.value = 'Zapisano – trwa import wybranych kalendarzy.'
+    await refresh()
+  })
 onMounted(() => run(refresh).then(() => router.replace({ query: {} })))
 
 // ===== Siłownie =====
@@ -120,12 +142,31 @@ const lastSync = computed(() =>
             </div>
           </div>
           <p v-if="cal.status.last_error" class="warn-box"><Icon name="alert" class="size-5 shrink-0" />{{ cal.status.last_error }}</p>
-          <label v-if="calendarList.length" class="block">
-            <span class="label">Kalendarz do synchronizacji</span>
-            <select class="input" :value="cal.status.calendar_id" :disabled="busy" @change="run(() => cal.setCalendar(($event.target as HTMLSelectElement).value))">
-              <option v-for="c in calendarList" :key="c.id" :value="c.primary ? 'primary' : c.id">{{ c.name }}{{ c.primary ? ' (główny)' : '' }}</option>
-            </select>
-          </label>
+          <div v-if="calendarList.length" class="space-y-2">
+            <p class="label">Kalendarze do synchronizacji</p>
+            <p class="text-xs text-muted">
+              Zaznacz kalendarze z treningami i przypisz im siłownię – wydarzenia bez własnego koloru dostaną siłownię kalendarza, a sesje dodane w aplikacji trafią do kalendarza swojej siłowni. Pozostałe sesje idą do kalendarza głównego. Synchronizujemy miesiąc do przodu (co dzień kolejny dzień).
+            </p>
+            <ul class="divide-y divide-line rounded-xl border border-line">
+              <li v-for="c in calendarList" :key="c.id" class="space-y-2 p-3">
+                <label class="flex min-h-10 items-center gap-3">
+                  <input v-model="sel[calId(c)].on" type="checkbox" class="size-5 shrink-0 accent-primary" />
+                  <span class="size-3 shrink-0 rounded-full" :style="{ background: c.color }" aria-hidden="true" />
+                  <span class="min-w-0 flex-1 truncate font-semibold">{{ c.name }}</span>
+                </label>
+                <div v-if="sel[calId(c)]?.on" class="flex flex-wrap items-center gap-2 pl-8">
+                  <select v-model="sel[calId(c)].gym_id" class="input !min-h-10 w-auto py-1 text-sm" :aria-label="`Siłownia kalendarza ${c.name}`">
+                    <option value="">bez siłowni (z koloru / domyślna)</option>
+                    <option v-for="g in cal.gyms" :key="g.id" :value="g.id">{{ g.name }} ({{ g.code }})</option>
+                  </select>
+                  <label class="flex min-h-10 items-center gap-2 text-sm">
+                    <input v-model="mainCal" type="radio" name="main-cal" :value="calId(c)" class="size-4 accent-primary" />główny
+                  </label>
+                </div>
+              </li>
+            </ul>
+            <button class="btn-ghost w-full border border-line-strong" :disabled="busy || !calendarList.some((c) => sel[calId(c)]?.on)" @click="saveCalendars">Zapisz kalendarze</button>
+          </div>
           <div class="grid grid-cols-2 gap-2">
             <button class="btn-primary" :disabled="busy || cal.syncing" @click="run(() => cal.syncNow().then(refresh))">
               <Icon name="swap" class="size-5" />{{ cal.syncing ? 'Synchronizuję…' : 'Synchronizuj teraz' }}

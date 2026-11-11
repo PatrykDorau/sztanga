@@ -114,6 +114,16 @@ export const useCalendarStore = defineStore('calendar', () => {
     return data.calendars as { id: string; name: string; primary: boolean; color: string }[]
   }
 
+  /** Synchronizowane kalendarze (siłownia każdego, który jest główny). */
+  async function syncedCalendars() {
+    return ok(await supabase.rpc('google_calendars_list')) as { calendar_id: string; name: string | null; gym_id: string | null; is_main: boolean; imported: boolean }[]
+  }
+  async function setCalendars(cals: { id: string; name: string; gym_id: string | null }[], main: string) {
+    ok(await supabase.rpc('google_set_calendars', { cals, main }))
+    await loadStatus()
+    await syncNow()
+  }
+
   async function setCalendar(id: string) {
     ok(await supabase.rpc('google_set_calendar', { cal: id }))
     await syncNow()
@@ -131,5 +141,5 @@ export const useCalendarStore = defineStore('calendar', () => {
     await syncNow()
   }
 
-  return { pendingAlias, gyms, status, blocks, syncing, defaultGym, gymById, loadGyms, saveGym, removeGym, loadStatus, loadBlocks, unmatched, cancelledEvents, decideCancelled, connect, syncNow, calendars, setCalendar, disconnect, assign }
+  return { pendingAlias, gyms, status, blocks, syncing, defaultGym, gymById, loadGyms, saveGym, removeGym, loadStatus, loadBlocks, unmatched, cancelledEvents, decideCancelled, connect, syncNow, calendars, syncedCalendars, setCalendars, setCalendar, disconnect, assign }
 })

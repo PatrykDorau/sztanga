@@ -7,6 +7,7 @@
 export interface Gym {
   id: string
   code: string
+  name?: string
   color_id: number
   is_default: boolean
 }
@@ -35,17 +36,31 @@ export const isFree = (title: string) => /^free\b/i.test(splitTitle(title).base)
 const COLOR_FAMILY: Record<number, string> = { 1: 'blue', 7: 'blue', 9: 'blue', 11: 'red', 4: 'red', 6: 'orange', 5: 'yellow', 2: 'green', 10: 'green', 3: 'purple', 8: 'gray' }
 export const colorFamily = (id: number | null) => (id == null ? null : (COLOR_FAMILY[id] ?? null))
 
-/** Siłownia: najpierw kod w nawiasie, potem kolor wydarzenia (dokładny, potem ta sama rodzina), na końcu domyślna. */
-export function gymFor(title: string, colorId: number | null, gyms: Gym[]): Gym | null {
+/**
+ * Siłownia: najpierw kod w nawiasie, potem kolor wydarzenia (dokładny, potem ta sama rodzina), potem siłownia kalendarza
+ * (wydarzenie bez własnego koloru ma kolor kalendarza), na końcu domyślna.
+ */
+export function gymFor(title: string, colorId: number | null, gyms: Gym[], calendarGym: Gym | null = null): Gym | null {
   const { code } = splitTitle(title)
   const fam = colorFamily(colorId)
   return (
     (code && gyms.find((g) => g.code === code)) ||
     (colorId != null && gyms.find((g) => g.color_id === colorId)) ||
     (fam && gyms.find((g) => colorFamily(g.color_id) === fam)) ||
+    calendarGym ||
     gyms.find((g) => g.is_default) ||
     null
   )
+}
+
+/** „Anna Kowalska forto” / „Miriam FO” → „Anna Kowalska (FO)”: nazwa albo kod siłowni na końcu tytułu jako dopisek. */
+export function withGymWord(title: string, gyms: Gym[]): string {
+  if (SUFFIX.test(title)) return title
+  const words = title.trim().split(/\s+/)
+  if (words.length < 2) return title
+  const last = norm(words.at(-1)!)
+  const g = gyms.find((x) => norm(x.code) === last || (x.name && norm(x.name) === last))
+  return g ? `${words.slice(0, -1).join(' ')} (${g.code})` : title
 }
 
 /** Pierwsze słowa, które nie są imieniem (żeby „Trening Funkcjonalny” albo „Dzień Niepodległości” nie stały się klientem). */
@@ -86,6 +101,11 @@ export function matchClient(title: string, clients: ClientRef[], aliases: Map<st
   if (aliases.has(key)) return aliases.get(key) ?? 'ignored'
   const exact = clients.find((c) => norm(c.full_name) === key)
   if (exact) return exact.id
+  // Samo imię („Miriam (FO)”) – gdy dokładnie jeden klient ma takie imię.
+  if (key && !key.includes(' ') && !NOT_PERSON.has(key)) {
+    const same = clients.filter((c) => norm(c.full_name).split(' ')[0] === key)
+    if (same.length === 1) return same[0].id
+  }
   // Najdłuższe pasujące imię i nazwisko na początku tytułu (żeby "Anna Kowalska-Nowak" nie wygrała z "Anna Kowalska").
   const prefix = clients
     .map((c) => ({ c, n: norm(c.full_name) }))
