@@ -180,6 +180,7 @@ async function pull(db: SupabaseClient, token: string, cal: CalRow, gyms: Gym[],
       .eq('calendar_id', calendarId)
     // Koniec pełnego importu: z aplikacji znika to, co jest dalej niż okno (wróci, gdy okno do tego dojdzie).
     if (done && win.max) await db.rpc('google_trim_beyond', { cal: calendarId, until: win.max })
+    if (done) await db.rpc('google_trim_before', { since: new Date(Date.now() - PAST_DAYS * 864e5).toISOString() })
   }
   return { processed, partial: false }
 }
@@ -244,6 +245,8 @@ async function applyEvent(
   if (!t) return null
   // Dalej niż okno (miesiąc naprzód) – pomijamy, także przy bieżących zmianach (edycja serii daje lata wystąpień).
   if (windowEnd && t.starts > new Date(new Date(windowEnd).getTime() + 864e5).toISOString()) return null
+  // … i starsze niż 60 dni (zmiana cyklicznej serii odsyła jej wystąpienia sprzed lat).
+  if (t.ends < new Date(Date.now() - PAST_DAYS * 864e5).toISOString()) return null
   const raw = (e.summary ?? '').trim()
   // „Wiktoria Ciesielska forto” → „Wiktoria Ciesielska (FO)”: nazwa / kod siłowni na końcu tytułu jak dopisek.
   const title = withGymWord(raw, gyms)
