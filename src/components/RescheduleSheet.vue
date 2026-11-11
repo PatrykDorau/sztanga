@@ -8,7 +8,10 @@ import {
   applyOffer,
   clientSeries,
   createOffer,
+  markBest,
+  offerExpired,
   offers,
+  setOfferExpiry,
   offerUrl,
   setOfferStatus,
   slotKey,
@@ -68,8 +71,32 @@ async function suggest() {
   const days = 28
   const to = new Date(from.getTime() + (days - 1) * 864e5)
   const free = await schedule.freeSlots(from.toISOString().slice(0, 10), to.toISOString().slice(0, 10))
-  candidates.value = weeklyCandidates(free, from, days, duration.value)
+  candidates.value = await markBest(weeklyCandidates(free, from, days, duration.value), from, days, calendar.defaultGym?.id ?? null)
   picked.value = new Set(candidates.value.map(slotKey))
+}
+const bestCount = computed(() => candidates.value.filter((c) => c.best).length)
+/** Zaznacz tylko najlepsze (trening za treningiem na tej samej siłowni). */
+function onlyBest() {
+  picked.value = new Set([...candidates.value, ...extra.value].filter((x) => x.best).map(slotKey))
+}
+
+// ---------- Ważność linku ----------
+const EXPIRY = [
+  { days: 2, label: '2 dni' },
+  { days: 3, label: '3 dni' },
+  { days: 7, label: 'tydzień' },
+  { days: 14, label: '2 tygodnie' },
+  { days: 30, label: 'miesiąc' },
+]
+const expiryDays = ref(7)
+const expiryDate = ref('') // własna data (ma pierwszeństwo)
+const expiresAt = computed(() => (expiryDate.value ? new Date(expiryDate.value + 'T23:59:59').toISOString() : new Date(Date.now() + expiryDays.value * 864e5).toISOString()))
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'long' })
+async function extend(o: RescheduleOffer) {
+  const base = Math.max(Date.now(), new Date(o.expires_at ?? o.created_at).getTime())
+  const iso = new Date(base + 7 * 864e5).toISOString()
+  await setOfferExpiry(o.id, iso)
+  o.expires_at = iso
 }
 
 const byDay = computed(() => {
@@ -105,7 +132,14 @@ async function create() {
   busy.value = true
   error.value = ''
   try {
-    const o = await createOffer({ client_id: props.clientId ?? null, prospect_name: prospect.value.trim() || null, series_id: seriesId.value, slots: chosenSlots.value, note: note.value.trim() || null })
+    const o = await createOffer({
+      client_id: props.clientId ?? null,
+      prospect_name: prospect.value.trim() || null,
+      series_id: seriesId.value,
+      slots: chosenSlots.value,
+      note: note.value.trim() || null,
+      expires_at: expiresAt.value,
+    })
     list.value.unshift(o)
     creating.value = false
     await share(o)
@@ -178,7 +212,11 @@ const hm = (t: string) => t.slice(0, 5)
           </template>
           <template v-else-if="o.status === 'open'">
             <p>Wysłano {{ o.slots.length }} terminów – czeka na wybór klienta.</p>
+            <p class="text-xs" :class="offerExpired(o) ? 'font-semibold text-danger' : 'text-muted'">
+              {{ offerExpired(o) ? 'Link wygasł' : 'Link ważny do' }} {{ o.expires_at ? fmtDate(o.expires_at) : '' }}
+            </p>
             <div class="mt-2 flex flex-wrap gap-2">
+              <button class="chip border-line-strong bg-surface" @click="extend(o)">Przedłuż o tydzień</button>
               <button class="chip border-line-strong bg-surface" @click="share(o)"><Icon name="share" class="size-4" />{{ copied === o.id ? 'Skopiowano' : 'Wyślij link ponownie' }}</button>
               <a :href="offerUrl(o)" target="_blank" rel="noopener" class="chip border-line-strong bg-surface">Podgląd</a>
               <button class="chip border-line-strong bg-surface text-danger" @click="cancel(o)">Anuluj</button>
@@ -204,6 +242,10 @@ const hm = (t: string) => t.slice(0, 5)
 
         <div>
           <p class="label">Terminy do wyboru (wolne w każdym tygodniu)</p>
+          <p v-if="bestCount" class="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+            <span><span class="font-bold text-primary-fg">★</span> najlepsze – zaraz przed albo po innym treningu na tej samej siłowni (bez dziur w grafiku). Klient zobaczy je jako polecane.</span>
+            <button type="button" class="underline" @click="onlyBest">zaznacz tylko najlepsze ({{ bestCount }})</button>
+          </p>
           <p v-if="!byDay.length" class="text-sm text-muted">Brak terminów wolnych co tydzień – dopisz własne poniżej albo poszerz dostępność w grafiku.</p>
           <div v-for="d in byDay" :key="d.wd" class="mb-2">
             <div class="mb-1 flex items-center gap-2 text-sm">
@@ -220,9 +262,11 @@ const hm = (t: string) => t.slice(0, 5)
                 class="min-h-10 rounded-lg border px-3 text-sm font-semibold tabular-nums"
                 :class="picked.has(slotKey(s)) ? 'border-primary bg-primary text-on-primary' : 'border-line-strong bg-surface text-muted line-through'"
                 :aria-pressed="picked.has(slotKey(s))"
+                :aria-label="`${WEEKDAY_PL[s.weekday]} ${s.start_time}${s.best ? ' – najlepszy (trening za treningiem)' : ''}`"
+                :style="s.best ? 'box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--color-primary, #f97316)' : undefined"
                 @click="toggle(s)"
               >
-                {{ s.start_time }}
+                <span v-if="s.best" aria-hidden="true">★ </span>{{ s.start_time }}
               </button>
             </div>
           </div>
@@ -241,6 +285,24 @@ const hm = (t: string) => t.slice(0, 5)
         <label class="block"><span class="label">Wiadomość do klienta (opcjonalnie)</span>
           <input v-model="note" class="input" maxlength="500" placeholder="np. od grudnia zmieniam godziny we wtorki" />
         </label>
+        <div>
+          <p class="label">Link ważny</p>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button
+              v-for="e in EXPIRY"
+              :key="e.days"
+              type="button"
+              class="chip"
+              :class="!expiryDate && expiryDays === e.days ? 'border-primary bg-primary font-semibold text-on-primary' : 'border-line-strong bg-surface'"
+              :aria-pressed="!expiryDate && expiryDays === e.days"
+              @click="(expiryDays = e.days), (expiryDate = '')"
+            >
+              {{ e.label }}
+            </button>
+            <input v-model="expiryDate" type="date" class="input !min-h-10 w-auto" :min="new Date().toISOString().slice(0, 10)" aria-label="Własna data ważności" />
+          </div>
+          <p class="mt-1 text-xs text-muted">Do {{ fmtDate(expiresAt) }} – potem link pokaże „nieaktywny”.</p>
+        </div>
         <button class="btn-primary w-full" :disabled="busy || !chosenSlots.length" @click="create">
           {{ busy ? 'Tworzenie…' : `Utwórz link (${chosenSlots.length} ${chosenSlots.length === 1 ? 'termin' : 'terminów'})` }}
         </button>

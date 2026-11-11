@@ -6,6 +6,7 @@ import { useCalendarStore } from '@/stores/calendar'
 import { addDays, isoWeekday, localIso, ymd } from '@/lib/dates'
 import { GCAL_COLORS, WEEKDAYS } from '@/lib/vocab'
 import Icon from './Icon.vue'
+import ConflictWarning from './ConflictWarning.vue'
 
 const props = defineProps<{ day?: string; item?: GroupClass | null }>()
 const emit = defineEmits<{ close: []; done: [] }>()
@@ -141,6 +142,7 @@ const remove = (following: boolean) => it && confirm(following ? 'Usunąć te i 
 
       <label class="block"><span class="label">Notatka (opcjonalnie)</span><input v-model="f.notes" class="input" /></label>
 
+      <ConflictWarning :windows="times" :ignore-id="it?.id" />
       <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
       <button class="btn-primary w-full" :disabled="busy">{{ it ? 'Zapisz' : times.length > 1 ? `Dodaj ${times.length} ${times.length < 5 ? 'terminy' : 'terminów'}` : 'Dodaj zajęcia' }}</button>
 

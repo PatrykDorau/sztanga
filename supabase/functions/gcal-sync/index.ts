@@ -33,7 +33,8 @@ const PAST_DAYS = 60 // pierwszy import: od 60 dni wstecz (historia sesji do das
 // Odwołane w aplikacji: wydarzenie zostaje w Google z tym dopiskiem, grafitowe, „dostępny” – usuwa je trenerka z panelu.
 const CANCELLED_PREFIX = 'ODWOŁANE · '
 const CANCELLED_COLOR = '8' // grafit
-const FROM_APP = 'Dodane z aplikacji Trener'
+const FROM_APP = 'Aplikacja' // dopisek (opis wydarzenia) – widać, co dodała aplikacja
+const stamp = () => new Date().toLocaleString('pl-PL', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const isCancelledTitle = (t: string) => /^odwo[łl]ane\b/i.test(t.trim())
 
 // ===================== Autoryzacja wywołania =====================
@@ -156,6 +157,12 @@ async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: C
   const colorId = e.colorId ? Number(e.colorId) : null
   const gym = gymFor(title, colorId, gyms)
 
+  // Zajęcia grupowe wysłane z aplikacji – są już w grafiku (tabela group_classes), nie dublujemy ich jako „zajęte”.
+  if (e.extendedProperties?.private?.trenerGroupId) {
+    await db.from('calendar_events').delete().eq('gcal_event_id', e.id)
+    return null
+  }
+
   // Oznaczone jako odwołane (przez aplikację albo ręcznie) – nie blokuje grafiku i nie tworzy sesji.
   if (isCancelledTitle(title)) {
     await cancelLinked('Odwołane w Google Calendar')
@@ -254,7 +261,14 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
     const title = isCancelledTitle(old) ? old : `${CANCELLED_PREFIX}${old}`
     await gapi(token, path, {
       method: 'PATCH',
-      body: JSON.stringify({ summary: title, colorId: CANCELLED_COLOR, transparency: 'transparent', status: 'confirmed', extendedProperties: { private: { trenerSessionId: '' } } }),
+      body: JSON.stringify({
+        summary: title,
+        description: `${FROM_APP} · odwołane ${stamp()}`,
+        colorId: CANCELLED_COLOR,
+        transparency: 'transparent',
+        status: 'confirmed',
+        extendedProperties: { private: { trenerSessionId: '', trenerGroupId: '' } },
+      }),
     })
     await db.from('gcal_cancelled').upsert({
       gcal_event_id: eventId,
@@ -350,6 +364,43 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
         // Wydarzenie zniknęło z Google – następnym razem utworzymy nowe.
         await db.from('sessions').update({ gcal_event_id: null }).eq('id', s.id)
       } else throw e
+    }
+  }
+
+  // 3) Zajęcia grupowe z aplikacji (siłowy, obwód, core…): tytuł „Obwód (BW)”, kolor siłowni, dopisek „Aplikacja”.
+  const { data: groups } = await db
+    .from('group_classes')
+    .select('id, starts_at, ends_at, gym_id, kind, cancelled, gcal_event_id')
+    .eq('gcal_dirty', true)
+    .order('starts_at')
+    .limit(100)
+  for (const c of (groups ?? []) as any[]) {
+    const gym = gyms.find((g) => g.id === c.gym_id) ?? gyms.find((g) => g.is_default) ?? null
+    const done = (patch: Record<string, unknown> = {}) => db.from('group_classes').update({ gcal_dirty: false, gcal_synced_at: now(), ...patch }).eq('id', c.id)
+    const body = {
+      summary: eventTitle(c.kind, gym?.code ?? null),
+      start: { dateTime: c.starts_at, timeZone: TZ },
+      end: { dateTime: c.ends_at, timeZone: TZ },
+      colorId: gym ? String(gym.color_id) : undefined,
+      status: 'confirmed',
+      description: `${FROM_APP} · zajęcia grupowe`,
+      extendedProperties: { private: { trenerGroupId: c.id } },
+    }
+    try {
+      if (c.cancelled) {
+        if (c.gcal_event_id) await markCancelled(c.gcal_event_id, { title: body.summary, starts: c.starts_at, ends: c.ends_at, restoreFree: false, reason: 'cancelled' })
+        await done({ gcal_event_id: null })
+      } else if (c.gcal_event_id) {
+        await gapi(token, `${base}/${encodeURIComponent(c.gcal_event_id)}`, { method: 'PATCH', body: JSON.stringify(body) })
+        await done()
+      } else {
+        const created = await gapi<{ id: string }>(token, base, { method: 'POST', body: JSON.stringify(body) })
+        await done({ gcal_event_id: created.id })
+      }
+      n++
+    } catch (e) {
+      if (gone(e) && c.gcal_event_id) await db.from('group_classes').update({ gcal_event_id: null }).eq('id', c.id)
+      else throw e
     }
   }
   return n

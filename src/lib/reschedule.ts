@@ -9,6 +9,7 @@ export interface WeeklySlot {
   start_time: string // "HH:MM"
   duration_minutes: number
   gym_id: string | null
+  best?: boolean // zaraz przed / po innym treningu na tej samej siłowni (bez dziur w grafiku)
 }
 export interface RescheduleOffer {
   id: string
@@ -28,6 +29,7 @@ export interface RescheduleOffer {
   chosen_note: string | null
   chosen_at: string | null
   created_at: string
+  expires_at: string | null // po tej dacie link nie działa
 }
 export interface Series {
   id: string
@@ -79,6 +81,44 @@ export function weeklyCandidates(free: { starts_at: string; ends_at: string; gym
     .map(({ n: _n, ...s }) => s)
 }
 
+/**
+ * Najlepsze terminy: zaczynają się dokładnie wtedy, gdy kończy się inny trening (sesja albo zajęcia grupowe) na tej samej
+ * siłowni, albo kończą się, gdy inny się zaczyna – trening za treningiem, bez dziur. Liczone z najbliższych tygodni:
+ * „najlepszy”, gdy tak jest w co najmniej połowie tygodni.
+ */
+export async function markBest(slots: WeeklySlot[], from: Date, days: number, defaultGym: string | null): Promise<WeeklySlot[]> {
+  if (!slots.length) return slots
+  const to = new Date(from.getTime() + days * 864e5)
+  const [se, gr] = await Promise.all([
+    supabase.from('sessions').select('starts_at, ends_at, gym_id').in('status', ['pending', 'confirmed']).gte('starts_at', from.toISOString()).lt('starts_at', to.toISOString()),
+    supabase.from('group_classes').select('starts_at, ends_at, gym_id').eq('cancelled', false).gte('starts_at', from.toISOString()).lt('starts_at', to.toISOString()),
+  ])
+  const busy = [...((se.data ?? []) as { starts_at: string; ends_at: string; gym_id: string | null }[]), ...((gr.data ?? []) as { starts_at: string; ends_at: string; gym_id: string | null }[])].map((b) => ({
+    s: new Date(b.starts_at).getTime(),
+    e: new Date(b.ends_at).getTime(),
+    gym: b.gym_id ?? defaultGym,
+    ...local(b.starts_at),
+  }))
+  const TOL = 5 * 60000
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  return slots.map((sl) => {
+    const gym = sl.gym_id ?? defaultGym
+    const start = toMin(sl.start_time)
+    const end = start + sl.duration_minutes
+    // Ten sam dzień tygodnia: koniec innego treningu = nasz start albo jego start = nasz koniec (na tej samej siłowni).
+    const weeks = new Set<string>()
+    let total = 0
+    for (let i = 0; i < days; i++) if (local(new Date(from.getTime() + i * 864e5).toISOString()).weekday === sl.weekday) total++
+    for (const b of busy) {
+      if (b.weekday !== sl.weekday || b.gym !== gym) continue
+      const bs = toMin(b.time)
+      const be = bs + Math.round((b.e - b.s) / 60000)
+      if (Math.abs(be - start) * 60000 <= TOL || Math.abs(bs - end) * 60000 <= TOL) weeks.add(new Date(b.s).toISOString().slice(0, 10))
+    }
+    return { ...sl, best: weeks.size >= Math.max(1, Math.ceil(total / 2)) }
+  })
+}
+
 export const slotKey = (s: Pick<WeeklySlot, 'weekday' | 'start_time'>) => `${s.weekday}|${s.start_time}`
 export const slotLabel = (s: Pick<WeeklySlot, 'weekday' | 'start_time'>) => `${WEEKDAY_PL[s.weekday]} ${s.start_time}`
 
@@ -97,12 +137,17 @@ export async function offers(clientId?: string) {
   if (clientId) q = q.eq('client_id', clientId)
   return ok(await q) as RescheduleOffer[]
 }
-export async function createOffer(input: { client_id: string | null; prospect_name?: string | null; series_id: string | null; slots: WeeklySlot[]; note: string | null }) {
+export async function createOffer(input: { client_id: string | null; prospect_name?: string | null; series_id: string | null; slots: WeeklySlot[]; note: string | null; expires_at: string }) {
   return ok(await supabase.from('reschedule_offers').insert(input).select('*').single()) as RescheduleOffer
 }
 export async function setOfferStatus(id: string, status: RescheduleOffer['status']) {
   ok(await supabase.from('reschedule_offers').update({ status, ...(status === 'applied' ? { applied_at: new Date().toISOString() } : {}) }).eq('id', id))
 }
+export async function setOfferExpiry(id: string, expires_at: string) {
+  ok(await supabase.from('reschedule_offers').update({ expires_at }).eq('id', id))
+}
+export const offerExpired = (o: Pick<RescheduleOffer, 'expires_at' | 'created_at'>) =>
+  new Date(o.expires_at ?? new Date(new Date(o.created_at).getTime() + 30 * 864e5).toISOString()).getTime() < Date.now()
 export const offerUrl = (o: RescheduleOffer) => `${location.origin}/t/${o.token}`
 
 /** Kto wybrał: klient z bazy albo nowa osoba z linku. */

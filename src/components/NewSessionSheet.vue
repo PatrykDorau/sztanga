@@ -4,10 +4,11 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
 import { useScheduleStore } from '@/stores/schedule'
-import { hm, isoWeekday, localIso } from '@/lib/dates'
+import { isoWeekday, localIso } from '@/lib/dates'
 import { WEEKDAYS } from '@/lib/vocab'
 import type { ProgramTree } from '@/types'
 import Icon from './Icon.vue'
+import ConflictWarning from './ConflictWarning.vue'
 import { useCalendarStore } from '@/stores/calendar'
 import { GCAL_COLORS } from '@/lib/vocab'
 
@@ -53,13 +54,19 @@ watch(
   },
 )
 
-const conflicts = computed(() => {
+/** Terminy do sprawdzenia kolizji: jeden albo kolejne tygodnie serii (do daty końca, maks. 12). */
+const windows = computed(() => {
   if (!f.day || !f.time) return []
-  const start = new Date(localIso(f.day, f.time)).getTime()
-  const end = start + f.duration * 60000
-  return schedule.sessions.filter(
-    (s) => ['pending', 'confirmed'].includes(s.status) && new Date(s.starts_at).getTime() < end && new Date(s.ends_at).getTime() > start,
-  )
+  const out: { starts_at: string; ends_at: string }[] = []
+  const first = new Date(f.day + 'T12:00')
+  const last = f.repeat ? (f.until ? new Date(f.until + 'T12:00') : new Date(first.getTime() + 11 * 7 * 864e5)) : first
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(first.getTime() + i * 7 * 864e5)
+    if (d > last) break
+    const s = localIso(d.toISOString().slice(0, 10), f.time)
+    out.push({ starts_at: s, ends_at: new Date(new Date(s).getTime() + f.duration * 60000).toISOString() })
+  }
+  return out
 })
 
 async function submit() {
@@ -160,10 +167,7 @@ async function submit() {
         </select>
       </div>
 
-      <div v-if="conflicts.length" class="warn-box" role="alert">
-        <Icon name="alert" class="size-5 shrink-0" />
-        <p>Koliduje z sesją o {{ conflicts.map((c) => hm(c.starts_at)).join(', ') }}.</p>
-      </div>
+      <ConflictWarning :windows="windows" />
 
       <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
       <button class="btn-primary w-full" :disabled="busy || !f.client_id">{{ busy ? 'Zapisywanie…' : f.repeat ? 'Utwórz serię' : 'Dodaj sesję' }}</button>

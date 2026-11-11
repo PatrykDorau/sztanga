@@ -12,6 +12,7 @@ interface Offer {
   contact_name: string | null
   current: { weekday: number; start_time: string; duration_minutes: number } | null
   slots: WeeklySlot[]
+  expires_at?: string | null
   note: string | null
   status: 'open' | 'chosen' | 'applied'
   chosen: WeeklySlot | null
@@ -107,6 +108,8 @@ async function choose() {
         <h1 class="font-display text-3xl font-bold">{{ o.first_name ? `Cześć ${o.first_name}! ` : 'Cześć! ' }}{{ o.is_new ? 'Wybierz stały termin treningów' : 'Wybierz nowy stały termin' }}</h1>
         <p v-if="o.current" class="mt-1 text-sm text-muted">Obecnie: {{ WEEKDAY_PL[o.current.weekday] }} {{ o.current.start_time }} ({{ o.current.duration_minutes }} min)</p>
         <p v-if="o.note" class="mt-3 rounded-xl bg-surface-2 p-3 text-sm">„{{ o.note }}”</p>
+        <p v-if="o.slots.some((s) => s.best)" class="mt-3 text-sm"><span class="font-bold text-primary-fg">★ polecane</span> – te godziny trenerce najbardziej pasują.</p>
+        <p v-if="o.expires_at" class="mt-1 text-xs text-muted">Wybierz do {{ new Date(o.expires_at).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }) }}.</p>
       </header>
 
       <div v-if="o.status === 'applied'" class="card space-y-2 p-5 text-center">
@@ -145,7 +148,7 @@ async function choose() {
               :aria-label="`${WEEKDAY_PL[d.wd]} ${x.s.start_time}${state2(x.i) === 'pref' ? ' – najbardziej pasuje' : state2(x.i) === 'backup' ? ' – mogę też' : ''}`"
               @click="tap(x.i)"
             >
-              <span v-if="state2(x.i) === 'pref' && o.is_new" class="mr-1 text-xs align-top">★{{ pref.indexOf(x.i) + 1 }}</span>{{ x.s.start_time }}<span v-if="multiGym && x.s.gym_id" class="block text-[11px] font-normal opacity-80">{{ o.gyms[x.s.gym_id] }}</span>
+              <span v-if="state2(x.i) === 'pref' && o.is_new" class="mr-1 text-xs align-top">★{{ pref.indexOf(x.i) + 1 }}</span>{{ x.s.start_time }}<span v-if="x.s.best" class="block text-[11px] font-semibold" :class="state2(x.i) === 'pref' ? '' : 'text-primary-fg'">polecane</span><span v-if="multiGym && x.s.gym_id" class="block text-[11px] font-normal opacity-80">{{ o.gyms[x.s.gym_id] }}</span>
             </button>
           </div>
         </fieldset>
