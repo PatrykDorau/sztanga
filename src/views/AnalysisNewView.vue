@@ -16,6 +16,8 @@ import { searchExercises } from '@/lib/exerciseSearch'
 import { useExercisesStore } from '@/stores/exercises'
 import { compressVideo } from '@/lib/video'
 import PosePlayer from '@/components/PosePlayer.vue'
+import CalibrateFrame from '@/components/CalibrateFrame.vue'
+import { applyCalib, calibFrame, guessSide, trackBar, type Calib } from '@/lib/pose/calib'
 import LiveCamera from '@/components/LiveCamera.vue'
 import CoachingPanel from '@/components/CoachingPanel.vue'
 import TempoPower from '@/components/TempoPower.vue'
@@ -52,13 +54,69 @@ function pickExercise(id: string) {
 }
 const recommendedView = computed(() => (famChoice.value === 'auto' ? null : FAMILIES[famChoice.value].view))
 
-type Stage = 'pick' | 'live' | 'loading' | 'processing' | 'result'
+type Stage = 'pick' | 'live' | 'loading' | 'processing' | 'calibrate' | 'tracking' | 'result'
 const stage = ref<Stage>('pick')
 const progress = ref(0)
 const error = ref('')
 const file = ref<File | null>(null)
 const url = ref<string | null>(null)
 const track = ref<Track | null>(null)
+/** Nagranie przed kalibracją (do ponownej kalibracji). */
+const baseTrack = ref<Track | null>(null)
+
+// ---------- Tryb kalibracji (włączany przez trenerkę, pamiętany na tym urządzeniu) ----------
+const CALIB_KEY = 'analysis.calibrate'
+const calibOn = ref((() => {
+  try {
+    return localStorage.getItem(CALIB_KEY) === '1'
+  } catch {
+    return false
+  }
+})())
+function setCalibOn(v: boolean) {
+  calibOn.value = v
+  try {
+    localStorage.setItem(CALIB_KEY, v ? '1' : '0')
+  } catch {
+    /* tryb prywatny – tylko na tę sesję */
+  }
+}
+const calibStart = ref(0)
+const calibSide = ref<'L' | 'R' | null>(null)
+const calibrated = computed(() => !!track.value?.calib)
+function openCalib() {
+  const base = baseTrack.value
+  if (!base || !url.value) return
+  calibStart.value = calibFrame(base, result.value?.reps[0]?.start)
+  const v = result.value?.view
+  calibSide.value = track.value?.calib ? track.value.calib.side : v === 'front' || v === 'back' ? null : guessSide(base)
+  stage.value = 'calibrate'
+}
+/** Po stopie: śledzenie sztangi w obrazie, poprawki szkieletu, analiza od nowa. */
+async function onCalib(c: Calib) {
+  const base = baseTrack.value
+  if (!base || !url.value) return
+  stage.value = 'tracking'
+  progress.value = 0
+  error.value = ''
+  abort = new AbortController()
+  try {
+    const video = await loadVideo(url.value)
+    const bar = await trackBar(video, base, c, profile.value, (p) => (progress.value = p), abort.signal)
+    track.value = applyCalib({ ...base, bar }, c, profile.value)
+    rerun()
+  } catch (err) {
+    if ((err as Error).name !== 'AbortError') error.value = (err as Error).message || 'Nie udało się śledzić sztangi.'
+  } finally {
+    stage.value = 'result'
+  }
+}
+/** Po rozpoznaniu sylwetki: kalibracja (gdy włączona i jest wideo) albo od razu wynik. */
+function afterExtract() {
+  rerun()
+  if (calibOn.value && url.value) openCalib()
+  else stage.value = 'result'
+}
 const result = ref<AnalysisResult | null>(null)
 let abort: AbortController | null = null
 
@@ -104,8 +162,8 @@ async function onFile(e: Event) {
     await loadPose()
     stage.value = 'processing'
     track.value = smoothTrack(await extractTrack(video, (p) => (progress.value = p), abort.signal))
-    rerun()
-    stage.value = 'result'
+    baseTrack.value = track.value
+    afterExtract()
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
       stage.value = 'pick'
@@ -123,8 +181,8 @@ function onLive(tr: Track, video: Blob | null) {
   if (url.value) URL.revokeObjectURL(url.value)
   url.value = video ? URL.createObjectURL(video) : null
   file.value = video ? new File([video], `kamera.${video.type.includes('mp4') ? 'mp4' : 'webm'}`, { type: video.type, lastModified: Date.now() }) : null
-  rerun()
-  stage.value = 'result'
+  baseTrack.value = track.value
+  afterExtract()
 }
 
 function rerun() {
@@ -204,6 +262,7 @@ async function save() {
 function reset() {
   stage.value = 'pick'
   track.value = null
+  baseTrack.value = null
   result.value = null
   shownFinding.value = null
 }
@@ -286,6 +345,13 @@ const signalLabel = computed(() => SIGNAL_LABEL[profile.value.signal])
             </label>
           </div>
         </template>
+        <label v-if="stage === 'pick'" class="card flex items-start gap-3 p-4 text-sm">
+          <input :checked="calibOn" type="checkbox" class="mt-0.5 size-5 accent-primary" @change="setCalibOn(($event.target as HTMLInputElement).checked)" />
+          <span
+            ><strong>Tryb kalibracji</strong> – po rozpoznaniu sylwetki zatwierdzasz punkty na jednej klatce (strona bliżej kamery, stawy, pięta i palce, koniec sztangi).
+            Aplikacja śledzi wtedy sztangę w obrazie, trzyma stopy w miejscu i odrzuca klatki, w których model „rozciąga” kończynę. Potrzebne nagranie wideo.</span
+          >
+        </label>
         <p v-if="stage === 'pick'" class="text-xs text-muted">
           Nagranie analizuje telefon – nie jest wysyłane, dopóki sama nie zdecydujesz. Maks. {{ MAX_SECONDS }} s.
         </p>
@@ -300,6 +366,25 @@ const signalLabel = computed(() => SIGNAL_LABEL[profile.value.signal])
         </div>
         <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
       </template>
+
+      <CalibrateFrame
+        v-else-if="stage === 'calibrate' && url && baseTrack"
+        :video-url="url"
+        :track="baseTrack"
+        :profile="profile"
+        :frame="calibStart"
+        :side="calibSide"
+        @confirm="onCalib"
+        @cancel="stage = 'result'"
+      />
+      <div v-else-if="stage === 'tracking'" class="card space-y-3 p-4" role="status">
+        <p class="font-semibold">Śledzenie sztangi i poprawki szkieletu…</p>
+        <div class="h-2 overflow-hidden rounded-full bg-surface-2">
+          <div class="h-full rounded-full bg-primary transition-[width]" :style="{ width: `${Math.round(progress * 100)}%` }" />
+        </div>
+        <p class="text-sm text-muted tabular-nums">{{ Math.round(progress * 100) }}%</p>
+        <button class="btn-ghost w-full" @click="abort?.abort()">Przerwij</button>
+      </div>
 
       <template v-else-if="result && track">
         <section class="grid grid-cols-2 gap-3">
@@ -348,6 +433,15 @@ const signalLabel = computed(() => SIGNAL_LABEL[profile.value.signal])
 
         <TempoPower v-if="result.reps.length" v-model:load-kg="loadKg" :exercise="ex" :reps="result.reps" :phases="profile.phases" :history="lvHistory" />
 
+        <div v-if="url" class="card flex flex-wrap items-center gap-3 p-4 text-sm">
+          <span class="min-w-0 flex-1">
+            <template v-if="calibrated"
+              ><strong>Skalibrowane</strong>{{ track.bar?.some(Boolean) ? ` · sztanga śledzona w ${Math.round((track.bar.filter(Boolean).length / track.bar.length) * 100)}% klatek` : '' }}</template
+            >
+            <template v-else>Punkty i sztanga z samego modelu. Kalibracja poprawia stopy, kończyny i daje prawdziwy tor sztangi.</template>
+          </span>
+          <button class="btn-ghost border border-line-strong" @click="openCalib">{{ calibrated ? 'Popraw punkty' : 'Kalibruj punkty' }}</button>
+        </div>
         <section class="space-y-2">
           <h2 class="text-xl font-bold">Nagranie</h2>
           <PosePlayer ref="player" :track="result.track" :video-url="url" :reps="result.reps" :flagged="flagged" :signal="result.signal" :signal-label="signalLabel" :highlight="shownFinding?.joints" :hidden="hiddenJoints(result.track, PROFILES[ex])" :bar="PROFILES[ex].bar" />

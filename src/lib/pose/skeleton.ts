@@ -64,7 +64,21 @@ export interface Track {
   t: number[] // czas klatki [s]
   poses: (Pose | null)[] // null = nie wykryto osoby
   smoothed?: boolean // punkty już ustabilizowane (filter.ts)
+  bar?: ([number, number] | null)[] // tor sztangi śledzony w obrazie (x, y w 0..1) – tylko po kalibracji
+  calib?: Calib // punkty zatwierdzone przez trenerkę
 }
+
+/** Punkty zatwierdzane na jednej klatce (tryb kalibracji). */
+export type CalibKey = 'shoulder' | 'elbow' | 'wrist' | 'hip' | 'knee' | 'ankle' | 'heel' | 'toe' | 'bar'
+export interface Calib {
+  frame: number // klatka, na której zatwierdzono punkty
+  side: 'L' | 'R' | null // strona bliżej kamery (null = z przodu / z tyłu)
+  pts: Partial<Record<CalibKey, [number, number]>> // obraz 0..1
+}
+
+/** Tor sztangi i kalibracja do zapisu (małe – JSON obok punktów). */
+const packBar = (b?: Track['bar']) => b?.map((q) => (q ? [Math.round(q[0] * 1e4), Math.round(q[1] * 1e4)] : null))
+const unpackBar = (b?: (number[] | null)[]) => b?.map((q) => (q ? ([q[0] / 1e4, q[1] / 1e4] as [number, number]) : null))
 
 // ---------- Kodowanie: liczby całkowite w płaskiej tablicy na klatkę (~6 KB/s nagrania w JSON) ----------
 export interface EncodedTrack {
@@ -123,6 +137,8 @@ export interface PackedTrack {
   n: number // liczba klatek
   s?: 1 // punkty ustabilizowane przed zapisem
   z: string // base64(gzip(Int32[n] czasy + Int16[n·17·6] punkty))
+  b?: (number[] | null)[] // tor sztangi: x·1e4, y·1e4 na klatkę
+  c?: Calib
 }
 export type StoredTrack = EncodedTrack | PackedTrack
 
@@ -173,7 +189,7 @@ export async function packTrack(tr: Track): Promise<PackedTrack> {
   raw.set(new Uint8Array(times.buffer), 0)
   raw.set(new Uint8Array(pts.buffer), times.byteLength)
   const z = toB64(await pipe(raw, new CompressionStream('gzip')))
-  return { v: 2, fps: tr.fps, w: tr.width, h: tr.height, n, z, ...(tr.smoothed ? { s: 1 as const } : {}) }
+  return { v: 2, fps: tr.fps, w: tr.width, h: tr.height, n, z, ...(tr.smoothed ? { s: 1 as const } : {}), ...(tr.bar ? { b: packBar(tr.bar) } : {}), ...(tr.calib ? { c: tr.calib } : {}) }
 }
 
 export async function unpackTrack(e: StoredTrack): Promise<Track> {
@@ -199,5 +215,5 @@ export async function unpackTrack(e: StoredTrack): Promise<Track> {
       }),
     )
   }
-  return { fps: e.fps, width: e.w, height: e.h, t, poses, smoothed: e.s === 1 }
+  return { fps: e.fps, width: e.w, height: e.h, t, poses, smoothed: e.s === 1, ...(e.b ? { bar: unpackBar(e.b) } : {}), ...(e.c ? { calib: e.c } : {}) }
 }

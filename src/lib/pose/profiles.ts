@@ -98,6 +98,7 @@ const DETAILED: Record<'squat' | 'deadlift' | 'pushup' | 'press', Profile> = {
       { key: 'hip_rise', label: 'Biodra przed barkami przy wstawaniu', short: 'biodra pierwsze', unit: '°', views: ['side', 'oblique'], tol: 3, decimals: 0, help: 'O ile stopni tułów pochyla się bardziej w pierwszej połowie wstawania. Dużo = biodra wstają szybciej niż barki.' },
       { key: 'back', label: 'Skrócenie tułowia (plecy)', short: 'plecy', unit: '%', views: ['side'], tol: 3, decimals: 0, help: 'O ile skraca się odcinek bark–biodro względem pozycji wyprostowanej. Pośredni znak zaokrąglenia pleców – model nie widzi kręgosłupa.' },
       { key: 'heel_lift', label: 'Uniesienie pięt', short: 'pięty', unit: '%', views: ['side'], tol: 5, decimals: 0, help: 'O ile pięta unosi się względem palców, w % długości stopy.' },
+      { key: 'bar_mid', label: 'Sztanga od środka stopy (najdalej w powtórzeniu)', short: 'sztanga–stopa', unit: '%', views: ['side'], tol: 4, decimals: 0, help: 'Największa pozioma odległość śledzonej sztangi od środka stopy, w % długości tułowia. Mało = sztanga przez cały ruch nad środkiem stopy. Tylko z kalibracją (zaznaczony koniec sztangi).' },
       ...tempo('opuszczania', 'wstawania'),
     ],
     flags: [
@@ -182,6 +183,7 @@ const DETAILED: Record<'squat' | 'deadlift' | 'pushup' | 'press', Profile> = {
       { key: 'lockout', label: 'Wyprost łokci na górze', short: 'wyprost', unit: '°', views: ['front', 'side', 'oblique', 'unknown'], tol: 5, decimals: 0, help: 'Największy kąt w łokciu po wyciśnięciu; ok. 170–180° = pełny wyprost.' },
       { key: 'wrist_asym', label: 'Różnica wysokości dłoni', short: 'asymetria rąk', unit: '%', views: ['front'], tol: 4, decimals: 0, help: 'Największa różnica wysokości nadgarstków podczas wyciskania, w % szerokości barków.' },
       { key: 'lean', label: 'Odchylenie tułowia', short: 'odchylenie', unit: '°', views: ['side', 'oblique'], tol: 4, decimals: 0, help: 'Największe odchylenie linii biodra–barki od pionu.' },
+      { key: 'bar_mid', label: 'Sztanga od środka stopy (najdalej w powtórzeniu)', short: 'sztanga–stopa', unit: '%', views: ['side'], tol: 4, decimals: 0, help: 'Największa pozioma odległość śledzonej sztangi od środka stopy, w % długości tułowia. Mało = sztanga przez cały ruch nad środkiem stopy. Tylko z kalibracją (zaznaczony koniec sztangi).' },
       ...tempo('opuszczania', 'wyciskania'),
     ],
     flags: [
@@ -210,6 +212,7 @@ interface GenericSpec {
   trace?: Profile['trace']
   arms?: false
   bar?: Profile['bar']
+  extra?: MetricDef[]
 }
 function generic(key: ExerciseKey, g: GenericSpec): Profile {
   const unit = g.unit ?? '°'
@@ -234,6 +237,7 @@ function generic(key: ExerciseKey, g: GenericSpec): Profile {
       { key: 'turn', label: g.turnLabel, short: 'punkt zwrotny', unit, views: all, tol: 6, decimals: 0, help: 'Wartość kąta (albo rozstawu) w najdalszym punkcie ruchu.' },
       { key: 'range', label: 'Zakres ruchu', short: 'zakres', unit, views: all, tol: 6, decimals: 0, help: 'Różnica między pozycją startową a punktem zwrotnym.' },
       { key: 'trunk_move', label: 'Ruch tułowia', short: 'tułów', unit: '°', views: all, tol: 4, decimals: 0, help: 'O ile zmienia się pochylenie tułowia w powtórzeniu – w ćwiczeniach izolowanych powinno być małe.' },
+      ...(g.extra ?? []),
       ...tempo(g.phases[0], g.phases[1]),
     ],
     flags: [{ key: 'range', metric: 'range', op: '<', value: g.rangeFlag, label: 'niepełny zakres ruchu' }],
@@ -243,7 +247,7 @@ const SIDE = 'Telefon z boku, 2–3 m od ćwiczącego, cała sylwetka w kadrze.'
 const GENERIC: Record<Exclude<ExerciseKey, keyof typeof DETAILED>, Profile> = {
   lunge: generic('lunge', { arms: false, name: 'Wykrok', signal: 'knee', minRange: 35, rangeFlag: 55, turnLabel: 'Kąt w kolanie w dole', phases: ['opuszczania', 'wstawania'], hint: SIDE, trace: 'hip' }),
   hip_thrust: generic('hip_thrust', { arms: false, bar: 'hip', name: 'Hip thrust', signal: 'hip', minRange: 30, rangeFlag: 45, turnLabel: 'Kąt w biodrze w dole', phases: ['opuszczania', 'wypychania'], hint: SIDE, trace: 'hip' }),
-  bench: generic('bench', { bar: 'wrist', name: 'Wyciskanie leżąc', signal: 'elbow', minRange: 35, rangeFlag: 55, turnLabel: 'Kąt w łokciu w dole', phases: ['opuszczania', 'wyciskania'], hint: 'Telefon z boku ławki na wysokości ławki, 1,5–2 m, cała sylwetka z rękami w kadrze.', anchor: 'wrists', facing: 'head' }),
+  bench: generic('bench', { bar: 'wrist', extra: [{ key: 'bar_travel', label: 'Poziomy ruch sztangi', short: 'sztanga w poziomie', unit: '%', views: ['side'], tol: 4, decimals: 0, help: 'O ile śledzona sztanga przesuwa się w poziomie w powtórzeniu (od dolnej części klatki nad barki), w % długości tułowia. Tylko z kalibracją.' }], name: 'Wyciskanie leżąc', signal: 'elbow', minRange: 35, rangeFlag: 55, turnLabel: 'Kąt w łokciu w dole', phases: ['opuszczania', 'wyciskania'], hint: 'Telefon z boku ławki na wysokości ławki, 1,5–2 m, cała sylwetka z rękami w kadrze.', anchor: 'wrists', facing: 'head' }),
   pullup: generic('pullup', { name: 'Podciąganie', signal: 'elbow', minRange: 40, rangeFlag: 70, turnLabel: 'Kąt w łokciu na górze', phases: ['podciągania', 'opuszczania'], hint: 'Telefon z tyłu albo z boku, 3 m od drążka, cała sylwetka z drążkiem w kadrze.', anchor: 'wrists', facing: 'head', trace: 'shoulder' }),
   pulldown: generic('pulldown', { name: 'Ściąganie drążka', signal: 'elbow', minRange: 35, rangeFlag: 60, turnLabel: 'Kąt w łokciu na dole', phases: ['ściągania', 'oddawania'], hint: 'Telefon z tyłu albo z boku, 2–3 m, ręce z drążkiem w kadrze.', anchor: 'ankles' }),
   row: generic('row', { bar: 'wrist', name: 'Wiosłowanie', signal: 'elbow', minRange: 30, rangeFlag: 50, turnLabel: 'Kąt w łokciu przy przyciągnięciu', phases: ['przyciągania', 'oddawania'], hint: SIDE }),

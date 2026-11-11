@@ -25,6 +25,7 @@ const props = defineProps<{
 // Tor sztangi: punkt z bliższej strony (z boku), inaczej środek obu stron.
 const near = computed(() => nearSide(props.track))
 function barAt(i: number): [number, number] | null {
+  if (props.track.bar) return props.track.bar[i] ?? null // śledzona w obrazie (kalibracja)
   const p = props.track.poses[i]
   if (!p || !props.bar) return null
   const [l, r] = props.bar === 'shoulder' ? [J.lSh, J.rSh] : props.bar === 'wrist' ? [J.lWr, J.rWr] : [J.lHip, J.rHip]
@@ -385,7 +386,7 @@ defineExpose({ setTime, step, showFrame })
       <label v-if="videoUrl" class="ml-auto flex min-h-11 cursor-pointer items-center gap-2 text-sm">
         <input v-model="showVideo" type="checkbox" class="size-5 accent-primary" />Obraz
       </label>
-      <label v-if="bar" class="flex min-h-11 cursor-pointer items-center gap-2 text-sm" :class="videoUrl ? '' : 'ml-auto'" title="Szacowany z punktu, który niesie sztangę – model nie widzi samej sztangi">
+      <label v-if="bar" class="flex min-h-11 cursor-pointer items-center gap-2 text-sm" :class="videoUrl ? '' : 'ml-auto'" :title="track.bar ? 'Sztanga śledzona w obrazie (kalibracja)' : 'Szacowany z punktu, który niesie sztangę – bez kalibracji model nie widzi samej sztangi'">
         <input v-model="showBar" type="checkbox" class="size-5 accent-primary" /><span class="inline-block h-1 w-4 rounded-full bg-[#22d3ee]" aria-hidden="true" />Tor sztangi
       </label>
       <div class="flex rounded-xl bg-surface-2 p-1" :class="videoUrl || bar ? '' : 'ml-auto'" role="group" aria-label="Prędkość">

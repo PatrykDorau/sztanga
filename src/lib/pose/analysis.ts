@@ -56,6 +56,8 @@ export interface Series {
   hShoulder: number[] // wysokość barków nad dłońmi [m] (pompka)
   leftVis: number[]
   rightVis: number[]
+  barX: number[] // śledzona sztanga względem środka bliższej stopy [% długości tułowia], plus = do przodu (w prawo w obrazie × kierunek)
+  hBar: number[] // wysokość śledzonej sztangi [m] (dowolne zero – liczą się różnice)
 }
 
 /**
@@ -69,10 +71,22 @@ export function computeSeries(tr: Track, view: View = 'unknown'): Series {
   const s: Series = {
     kneeL: [], kneeR: [], hipL: [], hipR: [], elbowL: [], elbowR: [], shoulderL: [], shoulderR: [], spread: [], trunk: [], valgus: [], shift: [], bodyLine: [], wristDrift: [],
     kneeInL: [], kneeInR: [], shiftS: [], hipTilt: [], torsoRatio: [], hipSag: [], wristDy: [], heel: [], hHip: [], hWrist: [], hShoulder: [], leftVis: [], rightVis: [],
+    barX: [], hBar: [],
   }
   const W = tr.width || 1
   const H = tr.height || 1
   const flat = view === 'side'
+  // Skala obrazu: metry na piksel z długości tułowia (świat 3D MediaPipe / obraz) – do prędkości śledzonej sztangi.
+  const mPerPx = tr.bar
+    ? median(
+        tr.poses.map((p) => {
+          if (!p) return NaN
+          const t3 = len(sub(mid3(w3(p, J.lSh), w3(p, J.rSh)), mid3(w3(p, J.lHip), w3(p, J.rHip))))
+          const t2 = Math.hypot(((p[J.lSh].x + p[J.rSh].x - p[J.lHip].x - p[J.rHip].x) / 2) * W, ((p[J.lSh].y + p[J.rSh].y - p[J.lHip].y - p[J.rHip].y) / 2) * H)
+          return t2 > 1 ? t3 / t2 : NaN
+        }),
+      )
+    : NaN
   for (let i = 0; i < n; i++) {
     const p = tr.poses[i]
     if (!p) {
@@ -177,6 +191,17 @@ export function computeSeries(tr: Track, view: View = 'unknown'): Series {
     s.hShoulder.push(wrY - wv(J.lSh, J.rSh, wy))
     const footLen = d2(nHeel, nFoot)
     s.heel.push(footLen > 1 ? ((py(nFoot) - py(nHeel)) / footLen) * 100 : NaN)
+    // Śledzona sztanga (tryb kalibracji)
+    const b = tr.bar?.[i]
+    if (b && torsoPx > 1) {
+      const fwd = Math.sign(px(nFoot) - px(nHeel)) || 1
+      const mid = (px(nHeel) + px(nFoot)) / 2
+      s.barX.push((((b[0] * W - mid) * fwd) / torsoPx) * 100)
+      s.hBar.push(Number.isFinite(mPerPx) ? -b[1] * H * mPerPx : NaN)
+    } else {
+      s.barX.push(NaN)
+      s.hBar.push(NaN)
+    }
   }
   return s
 }
@@ -413,13 +438,15 @@ export function repMetrics(profile: Profile, s: Series, sig: number[], t: number
     put('hip_rise', hipRise())
     put('back', backRound())
     put('heel_lift', maxIn(s.heel, start, end) - around(s.heel, start, 3))
+    put('bar_mid', maxIn(s.barX.map(Math.abs), start, end))
   } else if (profile.key === 'deadlift') {
     put('hip_bottom', sig[bottom])
     const knee = pick(s.kneeL, s.kneeR) ?? s.kneeL
     put('knee_bottom', around(knee, bottom))
     put('trunk', around(s.trunk, bottom))
     put('lockout', maxIn(sig, bottom, end))
-    put('bar_drift', maxIn(s.wristDrift, start, end))
+    // Śledzona sztanga, gdy jest (kalibracja); inaczej dłonie.
+    put('bar_drift', finite(s.barX.slice(start, end + 1)).length > (end - start) * 0.6 ? maxIn(s.barX.map(Math.abs), start, end) : maxIn(s.wristDrift, start, end))
     put('hip_rise', hipRise())
     put('back', backRound())
   } else if (profile.key === 'press') {
@@ -427,6 +454,7 @@ export function repMetrics(profile: Profile, s: Series, sig: number[], t: number
     put('lockout', maxIn(sig, bottom, end))
     put('wrist_asym', percentile(s.wristDy.slice(bottom, end + 1).map(Math.abs), 0.9))
     put('lean', maxIn(s.trunk, start, end))
+    put('bar_mid', maxIn(s.barX.map(Math.abs), start, end))
   } else if (profile.key === 'pushup') {
     put('elbow_bottom', sig[bottom])
     put('body_line', maxIn(s.bodyLine.map(Math.abs), start, end))
@@ -435,10 +463,13 @@ export function repMetrics(profile: Profile, s: Series, sig: number[], t: number
     put('turn', rawOf(profile, sig[bottom]))
     put('range', Math.max(sig[start], sig[end]) - sig[bottom])
     put('trunk_move', maxIn(s.trunk, start, end) - minIn(s.trunk, start, end))
+    put('bar_travel', maxIn(s.barX, start, end) - minIn(s.barX, start, end))
   }
   // Prędkość fazy koncentrycznej (w górę) punktu, który podnosi ciężar: biodra (przysiad), dłonie (martwy ciąg,
   // wyciskanie), barki (pompka). Tylko informacyjnie – nie flagujemy i nie porównujemy na heatmapie.
-  const h = profile.key === 'squat' || profile.trace === 'hip' ? s.hHip : profile.key === 'pushup' ? s.hShoulder : s.hWrist
+  // Śledzona sztanga (kalibracja) – najlepszy punkt do prędkości (VBT mierzy prędkość sztangi).
+  const barOk = !!profile.bar && finite(s.hBar.slice(p1, end + 1)).length > (end - p1) * 0.7
+  const h = barOk ? s.hBar : profile.key === 'squat' || profile.trace === 'hip' ? s.hHip : profile.key === 'pushup' ? s.hShoulder : s.hWrist
   const dur = t[end] - t[p1]
   const rise = at(h, end) - at(h, p1)
   if (dur > 0.1 && Number.isFinite(rise) && rise > 0.05) {
@@ -751,6 +782,7 @@ const LIMB_R = [J.rEl, J.rWr, J.rKnee, J.rAnk, J.rHeel, J.rFoot]
 
 /** Strona bliżej kamery, gdy druga jest wyraźnie gorzej widoczna (ujęcie z boku); null = obie widać podobnie. */
 export function nearSide(tr: Track, from = 0, to = tr.poses.length - 1): 'L' | 'R' | null {
+  if (tr.calib) return tr.calib.side // zatwierdzona przez trenerkę
   let l = 0
   let r = 0
   let c = 0
