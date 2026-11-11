@@ -138,6 +138,7 @@ export interface Session {
   cancel_reason: string | null
   gym_id: string | null
   gcal_event_id: string | null
+  moved_from?: string | null // prośba klienta o przełożenie tej sesji (po potwierdzeniu stara jest odwoływana)
 }
 
 export interface BookingSettings {

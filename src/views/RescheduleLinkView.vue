@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { slotKey, slotLabel, WEEKDAY_PL, type WeeklySlot } from '@/lib/reschedule'
 import Icon from '@/components/Icon.vue'
+import { notifyOffer } from '@/lib/push'
 
 interface Offer {
   first_name: string | null
@@ -89,6 +90,7 @@ async function choose() {
     return
   }
   editing.value = false
+  notifyOffer(props.token)
   await load()
 }
 </script>

@@ -9,6 +9,7 @@ import type { Session } from '@/types'
 import Icon from '@/components/Icon.vue'
 import GymBadge from '@/components/GymBadge.vue'
 import { useCalendarStore } from '@/stores/calendar'
+import { notifySession } from '@/lib/push'
 
 const schedule = useScheduleStore()
 const cal = useCalendarStore()
@@ -23,6 +24,8 @@ const days = computed(() => Array.from({ length: Math.min(horizon.value, 28) }, 
 const day = ref(ymd(new Date()))
 const slots = ref<{ starts_at: string; ends_at: string; gym_id: string | null }[]>([])
 const slotsLoading = ref(false)
+// Nazwa siłowni przy godzinie tylko, gdy w wynikach jest więcej niż jedna (klient z przypisaną siłownią widzi tylko ją).
+const multiGym = computed(() => new Set(slots.value.map((x) => x.gym_id)).size > 1)
 const picked = ref<string | null>(null)
 const cancelling = ref<string | null>(null)
 const reason = ref('')
@@ -81,16 +84,31 @@ async function run(fn: () => Promise<unknown>) {
   }
 }
 
+// Przekładanie: wybrana sesja + nowy termin z wolnych godzin → prośba do trenerki (stara obowiązuje do potwierdzenia).
+const moving = ref<Session | null>(null)
+function startMove(s: Session) {
+  moving.value = s
+  day.value = ymd(new Date(s.starts_at)) < ymd(new Date()) ? ymd(new Date()) : ymd(new Date(s.starts_at))
+  tab.value = 'book'
+}
+/** Prośba o przełożenie czekająca na trenerkę (nowa sesja wskazuje starą). */
+const moveRequestOf = (s: Session) => schedule.sessions.find((x) => x.moved_from === s.id && x.status === 'pending')
+
 const book = () =>
   run(async () => {
-    const s = await schedule.book(picked.value!)
-    info.value = s.status === 'pending' ? 'Wysłano prośbę o termin – trenerka ją potwierdzi.' : 'Termin zarezerwowany.'
+    const s = await schedule.book(picked.value!, moving.value?.id)
+    notifySession('request', s.id)
+    info.value = moving.value
+      ? `Wysłano prośbę o przełożenie na ${hm(s.starts_at)} – do potwierdzenia przez trenerkę obowiązuje dotychczasowy termin.`
+      : 'Trenerka dostała powiadomienie – potwierdzi termin albo zaproponuje inny.'
+    moving.value = null
     tab.value = 'mine'
   }).finally(loadSlots)
 
 const cancel = (id: string) =>
   run(async () => {
     await schedule.cancelMine(id, reason.value || undefined)
+    notifySession('cancel', id)
     cancelling.value = null
     reason.value = ''
     info.value = 'Sesja odwołana.'
@@ -105,7 +123,7 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
       <h1 class="page-title">Terminy</h1>
       <div class="grid grid-cols-2 rounded-xl bg-surface-2 p-1">
         <button class="min-h-10 rounded-lg text-sm font-semibold" :class="tab === 'mine' ? 'bg-surface shadow' : 'text-muted'" @click="tab = 'mine'">Moje sesje</button>
-        <button class="min-h-10 rounded-lg text-sm font-semibold" :class="tab === 'book' ? 'bg-surface shadow' : 'text-muted'" @click="tab = 'book'">Zarezerwuj</button>
+        <button class="min-h-10 rounded-lg text-sm font-semibold" :class="tab === 'book' ? 'bg-surface shadow' : 'text-muted'" @click="tab = 'book'">Chcę trening</button>
       </div>
     </header>
 
@@ -118,14 +136,14 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
 
       <button v-for="w in notified" :key="w.id" class="warn-box pressable w-full text-left" @click="(tab = 'book'), (day = w.day)">
         <Icon name="bell" class="size-5 shrink-0" />
-        <span>Zwolnił się termin {{ new Date(w.day + 'T12:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }) }} – kto pierwszy, ten lepszy.</span>
+        <span>Zwolnił się termin {{ new Date(w.day + 'T12:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }) }} – daj znać trenerce, jeśli chcesz go zająć.</span>
       </button>
 
       <template v-if="tab === 'mine'">
         <p v-if="loading" class="text-muted">Ładowanie…</p>
         <div v-else-if="!upcoming.length" class="card p-6 text-center">
           <p class="font-semibold">Brak zaplanowanych sesji</p>
-          <button class="btn-primary mt-3" @click="tab = 'book'">Zarezerwuj termin</button>
+          <button class="btn-primary mt-3" @click="tab = 'book'">Daj znać, kiedy chcesz trenować</button>
         </div>
         <ul class="space-y-2">
           <li v-for="s in upcoming" :key="s.id" class="card p-4">
@@ -144,10 +162,19 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
                 <button class="btn-danger" :disabled="busy" @click="cancel(s.id)">Odwołaj</button>
               </div>
             </template>
-            <button v-else-if="canCancel(s)" class="btn-ghost mt-3 w-full" @click="cancelling = s.id">Odwołaj sesję</button>
-            <p v-else-if="['pending', 'confirmed'].includes(s.status)" class="mt-3 text-xs text-muted">
-              Do sesji zostało mniej niż {{ schedule.settings?.cancel_limit_hours ?? 24 }} h – żeby odwołać, skontaktuj się z trenerką.
-            </p>
+            <template v-else>
+              <p v-if="moveRequestOf(s)" class="mt-3 rounded-lg bg-warn-soft p-2 text-sm text-warn-fg">
+                Prośba o przełożenie na {{ shortDay(new Date(moveRequestOf(s)!.starts_at)) }} {{ hm(moveRequestOf(s)!.starts_at) }} – czeka na trenerkę.
+              </p>
+              <p v-if="s.moved_from" class="mt-3 text-sm text-muted">To prośba o przełożenie wcześniejszego terminu.</p>
+              <div v-if="['pending', 'confirmed'].includes(s.status) && !s.moved_from" class="mt-3 grid gap-2" :class="canCancel(s) ? 'grid-cols-2' : ''">
+                <button class="btn-ghost border border-line-strong" @click="startMove(s)"><Icon name="calendar" class="size-4" />{{ moveRequestOf(s) ? 'Zmień prośbę' : 'Przełóż' }}</button>
+                <button v-if="canCancel(s)" class="btn-ghost border border-line-strong" @click="cancelling = s.id">Odwołaj</button>
+              </div>
+              <p v-if="['pending', 'confirmed'].includes(s.status) && !canCancel(s)" class="mt-2 text-xs text-muted">
+                Do sesji zostało mniej niż {{ schedule.settings?.cancel_limit_hours ?? 24 }} h – odwołać możesz po kontakcie z trenerką. Przełożenie możesz zaproponować.
+              </p>
+            </template>
           </li>
         </ul>
 
@@ -163,6 +190,11 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
       </template>
 
       <template v-else>
+        <div v-if="moving" class="flex items-center gap-2 rounded-xl bg-primary-soft p-3 text-sm">
+          <span class="min-w-0 flex-1">Przekładasz trening z <strong>{{ shortDay(new Date(moving.starts_at)) }} {{ hm(moving.starts_at) }}</strong> – wybierz nowy termin.</span>
+          <button class="btn-ghost !min-h-9 text-sm" @click="(moving = null), (tab = 'mine')">Anuluj</button>
+        </div>
+        <p v-else class="text-sm text-muted">Wybierz, kiedy chcesz trenować – trenerka dostanie powiadomienie i potwierdzi termin.</p>
         <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]" role="tablist" aria-label="Dzień">
           <button
             v-for="d in days"
@@ -192,14 +224,14 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
             >
               <span class="flex flex-col items-center leading-tight">
                 <span>{{ hm(sl.starts_at) }}</span>
-                <span v-if="cal.gyms.length > 1 && cal.gymById(sl.gym_id)" class="text-[11px] font-medium opacity-80">{{ cal.gymById(sl.gym_id)!.name }}</span>
+                <span v-if="multiGym && cal.gymById(sl.gym_id)" class="text-[11px] font-medium opacity-80">{{ cal.gymById(sl.gym_id)!.name }}</span>
               </span>
             </button>
           </div>
           <button class="btn-primary w-full" :disabled="!picked || busy || !myClientId" @click="book">
-            {{ picked ? `Rezerwuję ${hm(picked)}` : 'Wybierz godzinę' }}
+            {{ !picked ? 'Wybierz godzinę' : moving ? `Poproś o przełożenie na ${hm(picked)}` : `Powiadom trenerkę: chcę trening o ${hm(picked)}` }}
           </button>
-          <p v-if="schedule.settings?.require_approval" class="text-xs text-muted">Trenerka potwierdza każdą rezerwację.</p>
+          <p class="text-xs text-muted">To prośba, nie rezerwacja – termin jest Twój dopiero po potwierdzeniu przez trenerkę.</p>
         </template>
         <div v-else class="card space-y-3 p-5 text-center">
           <p class="font-semibold">Brak wolnych terminów tego dnia</p>
