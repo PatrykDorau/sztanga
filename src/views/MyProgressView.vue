@@ -85,7 +85,7 @@ const day = (d: string) => new Date(d).toLocaleDateString('pl-PL', { day: 'numer
 
       <section v-if="myView('measurements') && kinds.length" class="space-y-2">
         <h2 class="text-lg font-bold">Pomiary i testy</h2>
-        <select v-model="mKind" class="input" aria-label="Rodzaj pomiaru">
+        <select :value="kind" class="input" aria-label="Rodzaj pomiaru" @change="mKind = ($event.target as HTMLSelectElement).value">
           <option v-for="k in kinds" :key="k" :value="k">{{ MEASUREMENTS[k]?.label ?? k }}</option>
         </select>
         <LineChart v-if="kind" :points="mPoints" :unit="unitOf(kind)" :title="MEASUREMENTS[kind]?.label ?? kind" :mark-best="false" />
