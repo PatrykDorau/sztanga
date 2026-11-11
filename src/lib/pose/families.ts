@@ -521,6 +521,8 @@ const RULES: Rule[] = [
   [/stretch|smr|foam|roll(er|ing)|rozciag|rolowan|mobiliz|yoga|pose\b/, null],
   [/treadmill|running|jogging|bike|bicycl|elliptical|stair|rowing, stationary|ski machine|jumping jack|rope jump|skakank|pajacyk|sprint|carry|farmer|walk\b|spacer|plank|deska|hold\b|wall sit|krzeselko|isometric|izometr/, null],
   [/wrist|forearm|finger|nadgarst|przedrami|shrug|szrugs|neck|szyj/, null],
+  // Antyrotacja, rotacje i stabilizacja – inna płaszczyzna niż spięcia brzucha; lepiej bez animacji niż z mylącą.
+  [/pallof|anti.?rotation|antyrotac|woodchop|wood chop|drwal|twist|skret|rotac|rotation|dead.?bug|bird.?dog|stir the pot|mieszanie|bear|niedzwiad|hollow|lodka|superman|side bend|sklon(y)? boczn|windmill|wiatrak|turkish|get.?up/, null],
   [/calf|donkey|wspiec|lydk/, 'calf'],
   [/leg extension|prostowanie nog/, 'knee_ext'],
   [/leg curl|hamstring curl|nordic|uginanie nog|glute.?ham/, 'knee_flex'],
@@ -528,6 +530,8 @@ const RULES: Rule[] = [
   [/deadlift|\brdl\b|good morning|stiff.?leg|pull.?through|swing|hyperextension|back extension|martwy|dzien dobry|wyprost(y)? tulowia|wymach/, 'hinge'],
   [/lunge|split squat|step.?up|bulgarian|pistol|wykrok|wejsci|bulgar|jednonoz.*przysiad|przysiad.*jednonoz/, 'lunge'],
   [/squat|leg press|hack|przysiad|suwnic.*nog|wypychanie.*suwnic|suwnica|thruster/, 'squat'],
+  [/pike push|pompki w pozycji scyzoryka/, 'ohp'],
+  [/hanging pike|w zwisie/, 'leg_raise'],
   [/crunch|sit.?up|situp|v-up|jackknife|brzuszk|spiec|scyzoryk/, 'crunch'],
   [/leg raise|knee raise|knee tuck|toes to bar|unoszenie nog|unoszenie kolan|podciaganie kolan/, 'leg_raise'],
   [/push.?up|press.?up|pompk(?!i na porecz)/, 'pushup'],
@@ -549,10 +553,13 @@ const RULES: Rule[] = [
 
 /** Rodzina z nazwy i mięśni (automatycznie). null = nietypowe ćwiczenie bez wzorca. */
 export function autoFamily(e: Pick<Exercise, 'name_pl' | 'name_en' | 'primary_muscles' | 'muscle_groups' | 'force' | 'mechanic'>): FamilyKey | null {
+  // Izometria (utrzymanie pozycji) – ruchoma animacja by myliła.
+  if (e.force === 'static') return null
   const n = `${norm(e.name_en)} | ${norm(e.name_pl)}`
   for (const [re, fam] of RULES) if (re.test(n)) return fam
-  // Mobilność, kondycja, skoki, „inne” – bez wzorca z samego mięśnia (rozciąganie barków to nie wyciskanie).
-  if (['mobility', 'cardio', 'plyo', 'other', 'carry', 'rotation'].includes((e as { movement_pattern?: string | null }).movement_pattern ?? '')) return null
+  // Mobilność, kondycja, skoki, core, „inne” – bez wzorca z samego mięśnia (rozciąganie barków to nie wyciskanie,
+  // Pallof press to nie spięcie brzucha). Spięcia i unoszenie nóg łapią reguły z nazwy wyżej.
+  if (['mobility', 'cardio', 'plyo', 'other', 'carry', 'rotation', 'core'].includes((e as { movement_pattern?: string | null }).movement_pattern ?? '')) return null
   const m =e.primary_muscles?.[0] ?? e.muscle_groups?.[0]
   const push = e.force === 'push'
   const pull = e.force === 'pull'
