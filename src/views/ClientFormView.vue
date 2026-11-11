@@ -146,12 +146,12 @@ async function remove() {
       </div>
       <div>
         <p class="label">Ograniczenia / kontuzje</p>
-        <ChipSelect v-model="form.limitations" :options="CONTRAINDICATIONS" />
+        <ChipSelect v-model="form.limitations" :options="CONTRAINDICATIONS" custom placeholder="brak – dodaj" />
         <p class="mt-1 text-xs text-muted">Kreator ostrzeże, gdy dodasz ćwiczenie z pasującym przeciwwskazaniem.</p>
       </div>
       <div>
         <p class="label">Dostępny sprzęt</p>
-        <ChipSelect v-model="form.equipment" :options="EQUIPMENT" />
+        <ChipSelect v-model="form.equipment" :options="EQUIPMENT" custom placeholder="wybierz sprzęt" />
       </div>
       <div>
         <label class="label" for="no">Notatki</label>

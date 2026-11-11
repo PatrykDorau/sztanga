@@ -8,6 +8,7 @@ import { avgRpe, inRange, seriesByExercise, setsPerMuscle, totalVolume } from '@
 import { MEASUREMENTS, MUSCLES, label } from '@/lib/vocab'
 import { fmtKg } from '@/lib/strength'
 import LineChart from './LineChart.vue'
+import ClientExerciseStats from './ClientExerciseStats.vue'
 import Icon from './Icon.vue'
 
 const props = defineProps<{ clientId: string }>()
@@ -26,14 +27,6 @@ const prev = computed(() => inRange(logs.value, prevMonth, thisMonth))
 const delta = (a: number, b: number) => (b ? Math.round(((a - b) / b) * 100) : null)
 
 const series = computed(() => seriesByExercise(logs.value))
-const exId = ref<string | null>(null)
-watch(series, (s) => (exId.value ??= s[0]?.exercise_id ?? null), { immediate: true })
-const metric = ref<'e1rm' | 'maxLoad' | 'volume'>('e1rm')
-const selected = computed(() => series.value.find((s) => s.exercise_id === exId.value))
-const chartPoints = computed(() =>
-  (selected.value?.points ?? []).filter((p) => (metric.value === 'e1rm' ? p.e1rm : p[metric.value])).map((p) => ({ x: p.x, y: Number(metric.value === 'e1rm' ? p.e1rm : p[metric.value]) })),
-)
-const METRIC_LABEL = { e1rm: 'Szacowane 1RM', maxLoad: 'Maks. ciężar', volume: 'Objętość (serie × powt. × kg)' }
 
 const records = computed(() => series.value.filter((s) => s.best).map((s) => ({ ...s.best!, id: s.exercise_id })).sort((a, b) => b.date.localeCompare(a.date)))
 const recent = (d: string) => Date.now() - new Date(d).getTime() < 14 * 864e5
@@ -116,21 +109,7 @@ const isPerformanceTest = (k: string | null) => ['sit_reach', 'plank', 'pushups'
       </div>
     </div>
 
-    <section v-if="series.length" class="space-y-2">
-      <h3 class="text-lg font-bold">Progres ćwiczenia</h3>
-      <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-        <button v-for="s in series" :key="s.exercise_id" :class="exId === s.exercise_id ? 'chip-on' : 'chip-off'" class="shrink-0" @click="exId = s.exercise_id">
-          {{ ex.byId(s.exercise_id)?.name_pl ?? '…' }}
-        </button>
-      </div>
-      <div class="flex gap-2">
-        <button v-for="k in (Object.keys(METRIC_LABEL) as (keyof typeof METRIC_LABEL)[])" :key="k" class="chip !min-h-9 text-sm" :class="metric === k ? 'border-primary bg-primary-soft font-semibold' : 'border-line bg-surface text-muted'" @click="metric = k">
-          {{ k === 'e1rm' ? '1RM' : k === 'maxLoad' ? 'Maks.' : 'Objętość' }}
-        </button>
-      </div>
-      <LineChart :points="chartPoints" :unit="metric === 'volume' ? 'kg' : 'kg'" :title="`${METRIC_LABEL[metric]} – ${ex.byId(exId ?? '')?.name_pl ?? ''}`" />
-    </section>
-    <p v-else class="card p-4 text-sm text-muted">Postępy pojawią się po pierwszej sesji zapisanej w trybie „sesja na żywo”.</p>
+    <ClientExerciseStats :logs="logs" />
 
     <section v-if="records.length">
       <h3 class="mb-2 text-lg font-bold">Rekordy</h3>

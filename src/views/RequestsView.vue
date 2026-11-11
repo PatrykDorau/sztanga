@@ -5,7 +5,7 @@ import { useScheduleStore } from '@/stores/schedule'
 import type { ConsultationRequest } from '@/types'
 import Icon from '@/components/Icon.vue'
 import RescheduleSheet from '@/components/RescheduleSheet.vue'
-import { applyOffer, offers, offerUrl, offerWho, setOfferStatus, slotLabel, type RescheduleOffer } from '@/lib/reschedule'
+import { applyOffer, offers, offerUrl, offerWho, setOfferStatus, slotKey, slotLabel, type RescheduleOffer, type WeeklySlot } from '@/lib/reschedule'
 import { useClientsStore } from '@/stores/clients'
 import { useCalendarStore } from '@/stores/calendar'
 
@@ -31,12 +31,27 @@ onMounted(loadOffers)
 const waiting = computed(() => termOffers.value.filter((o) => o.status === 'chosen'))
 const sentNew = computed(() => termOffers.value.filter((o) => o.status === 'open' && !o.client_id))
 const nameOf = (o: RescheduleOffer) => offerWho(o, o.client_id ? clients.byId(o.client_id)?.full_name : null)
+// Terminy do przyjęcia: domyślnie pierwszy priorytetowy; trenerka może zaznaczyć kilka (także z rezerwowych).
+const picks = ref<Record<string, string[]>>({})
+const pickedOf = (o: RescheduleOffer) => picks.value[o.id] ?? (o.chosen ? [slotKey(o.chosen)] : [])
+function togglePick(o: RescheduleOffer, s: WeeklySlot) {
+  const cur = [...pickedOf(o)]
+  const k = slotKey(s)
+  const i = cur.indexOf(k)
+  if (i >= 0) cur.splice(i, 1)
+  else cur.push(k)
+  picks.value = { ...picks.value, [o.id]: cur }
+}
+const allSlots = (o: RescheduleOffer) => [...(o.preferred ?? (o.chosen ? [o.chosen] : [])), ...(o.backup ?? [])]
+const pickedSlots = (o: RescheduleOffer) => allSlots(o).filter((s) => pickedOf(o).includes(slotKey(s)))
 async function accept(o: RescheduleOffer) {
-  if (!confirm(`${o.client_id ? 'Zmienić stały termin' : 'Dodać nowego klienta i stały termin'}: ${nameOf(o)} – ${o.chosen ? slotLabel(o.chosen) : ''}?`)) return
+  const chosen = pickedSlots(o)
+  if (!chosen.length) return
+  if (!confirm(`${o.client_id ? 'Zmienić stały termin' : 'Dodać nowego klienta i stały termin'}: ${nameOf(o)} – ${chosen.map(slotLabel).join(', ')}?`)) return
   busyId.value = o.id
   error.value = ''
   try {
-    const id = await applyOffer(o, schedule, calendar.defaultGym?.id ?? null)
+    const id = await applyOffer(o, schedule, calendar.defaultGym?.id ?? null, chosen)
     await clients.load(true).catch(() => null)
     termOffers.value = termOffers.value.filter((x) => x.id !== o.id)
     router.push(`/klienci/${id}`)
@@ -98,7 +113,18 @@ function toClient(r: ConsultationRequest) {
           <p class="font-semibold">
             {{ nameOf(o) }} <span v-if="!o.client_id" class="tag ml-1">nowa osoba</span>
           </p>
-          <p class="text-sm">
+          <div v-if="o.preferred?.length" class="space-y-1.5 text-sm">
+            <p class="text-muted">Zaznacz terminy do przyjęcia (kilka = kilka treningów w tygodniu):</p>
+            <div v-for="[title, list] in ([['★ Najbardziej pasuje', o.preferred], ['Może też', o.backup ?? []]] as [string, WeeklySlot[]][]).filter((x) => x[1].length)" :key="title">
+              <p class="mb-1 text-xs font-semibold tracking-wide text-muted uppercase">{{ title }}</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button v-for="s in list" :key="slotKey(s)" type="button" :class="pickedOf(o).includes(slotKey(s)) ? 'chip-on' : 'chip-off'" :aria-pressed="pickedOf(o).includes(slotKey(s))" @click="togglePick(o, s)">
+                  {{ slotLabel(s) }}<span v-if="s.gym_id && calendar.gyms.length > 1" class="ml-1 opacity-75">· {{ calendar.gymById(s.gym_id)?.code ?? '' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <p v-else class="text-sm">
             Wybrany termin: <strong>{{ o.chosen ? slotLabel(o.chosen) : '—' }}</strong>
             <span v-if="o.chosen?.gym_id" class="text-muted"> · {{ calendar.gymById(o.chosen.gym_id)?.name }}</span>
           </p>
@@ -106,7 +132,7 @@ function toClient(r: ConsultationRequest) {
           <p v-if="o.chosen_note" class="text-sm italic">„{{ o.chosen_note }}”</p>
           <div class="grid grid-cols-2 gap-2">
             <button class="btn-ghost border border-line-strong" :disabled="busyId === o.id" @click="reject(o)">Odrzuć</button>
-            <button class="btn-primary" :disabled="busyId === o.id" @click="accept(o)">{{ busyId === o.id ? 'Dodawanie…' : 'Akceptuj i dodaj do grafiku' }}</button>
+            <button class="btn-primary" :disabled="busyId === o.id || !pickedSlots(o).length" @click="accept(o)">{{ busyId === o.id ? 'Dodawanie…' : pickedSlots(o).length > 1 ? `Akceptuj ${pickedSlots(o).length} terminy` : 'Akceptuj i dodaj do grafiku' }}</button>
           </div>
         </article>
         <details v-if="sentNew.length" class="text-sm">

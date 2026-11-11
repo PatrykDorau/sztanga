@@ -8,7 +8,8 @@ import { prsInLog } from '@/lib/analytics'
 import type { SessionLog } from '@/types'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ clientId: string }>()
+// readonly = widok klienta: bez edycji, bez notatek trenerki, tylko zatwierdzone podsumowania.
+const props = defineProps<{ clientId: string; readonly?: boolean }>()
 const progress = useProgressStore()
 const ex = useExercisesStore()
 const logs = computed(() => progress.logs[props.clientId] ?? [])
@@ -58,9 +59,13 @@ const approve = (log: SessionLog) => progress.updateLog(props.clientId, log.id, 
           </span>
         </li>
       </ul>
-      <p v-if="log.notes" class="mt-2 rounded-lg bg-surface-2 p-2 text-sm"><span class="font-semibold">Notatki:</span> {{ log.notes }}</p>
+      <p v-if="log.notes && !readonly" class="mt-2 rounded-lg bg-surface-2 p-2 text-sm"><span class="font-semibold">Notatki:</span> {{ log.notes }}</p>
 
-      <div class="mt-3 border-t border-line pt-3">
+      <div v-if="readonly && log.summary_status === 'approved' && log.summary" class="mt-3 border-t border-line pt-3">
+        <p class="text-xs font-semibold text-muted">Podsumowanie od trenerki</p>
+        <p class="mt-1 text-sm whitespace-pre-line">{{ log.summary }}</p>
+      </div>
+      <div v-if="!readonly" class="mt-3 border-t border-line pt-3">
         <template v-if="editing === log.id">
           <label class="label" :for="`sum-${log.id}`">Podsumowanie dla klienta</label>
           <textarea :id="`sum-${log.id}`" v-model="text" rows="6" class="input py-2 text-sm" />

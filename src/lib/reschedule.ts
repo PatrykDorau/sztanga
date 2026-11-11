@@ -23,6 +23,8 @@ export interface RescheduleOffer {
   note: string | null
   status: 'open' | 'chosen' | 'applied' | 'cancelled'
   chosen: WeeklySlot | null
+  preferred?: WeeklySlot[] | null // nowa osoba: terminy „najbardziej mi pasuje”
+  backup?: WeeklySlot[] | null // nowa osoba: terminy „mogę też”
   chosen_note: string | null
   chosen_at: string | null
   created_at: string
@@ -110,9 +112,11 @@ export const offerWho = (o: RescheduleOffer, clientName?: string | null) => clie
  * Akceptacja wyboru: nowa osoba → nowy klient; stary stały termin (jeśli był) odwołany od dziś, nowa seria od najbliższego
  * wybranego dnia (sesje trafiają do grafiku i Kalendarza Google), propozycja oznaczona jako zrealizowana.
  */
-export async function applyOffer(o: RescheduleOffer, schedule: ReturnType<typeof useScheduleStore>, fallbackGym: string | null) {
-  if (!o.chosen) throw new Error('Brak wybranego terminu.')
-  const s = o.chosen
+export async function applyOffer(o: RescheduleOffer, schedule: ReturnType<typeof useScheduleStore>, fallbackGym: string | null, picked?: WeeklySlot[]) {
+  // Trenerka może przyjąć kilka terminów naraz (np. 2 treningi w tygodniu) – każdy to osobna seria.
+  const slots = picked?.length ? picked : o.chosen ? [o.chosen] : []
+  if (!slots.length) throw new Error('Brak wybranego terminu.')
+  const s = slots[0]
   let clientId = o.client_id
   if (!clientId) {
     const { data, error } = await supabase
@@ -126,14 +130,15 @@ export async function applyOffer(o: RescheduleOffer, schedule: ReturnType<typeof
   }
   const old = o.series_id ? ((ok(await supabase.from('session_series').select('*').eq('id', o.series_id).maybeSingle()) as Series | null) ?? null) : null
   if (old) await schedule.cancelSeriesFrom(old.id, new Date().toISOString(), 'Zmiana terminu')
-  await schedule.createSeries({
-    client_id: clientId,
-    weekday: s.weekday,
-    start_time: s.start_time,
-    duration_minutes: s.duration_minutes,
-    start_date: nextDate(s.weekday),
-    gym_id: s.gym_id ?? old?.gym_id ?? fallbackGym,
-  })
+  for (const x of slots)
+    await schedule.createSeries({
+      client_id: clientId,
+      weekday: x.weekday,
+      start_time: x.start_time,
+      duration_minutes: x.duration_minutes,
+      start_date: nextDate(x.weekday),
+      gym_id: x.gym_id ?? old?.gym_id ?? fallbackGym,
+    })
   await setOfferStatus(o.id, 'applied')
   o.status = 'applied'
   o.client_id = clientId
