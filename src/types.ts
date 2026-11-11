@@ -6,6 +6,7 @@ export interface Profile {
   id: string
   role: AppRole
   full_name: string | null
+  is_admin?: boolean // może nadawać rolę trenera (ekran „Konta trenerów”)
 }
 
 export interface Exercise {

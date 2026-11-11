@@ -195,6 +195,14 @@ async function logout() {
       <p v-if="pushError" class="text-danger" role="alert">{{ pushError }}</p>
     </section>
 
+    <RouterLink v-if="auth.isAdmin" to="/konta" class="card pressable flex items-center justify-between gap-3 p-4">
+      <span>
+        <span class="block font-semibold">Konta trenerów</span>
+        <span class="block text-xs text-muted">Admin: nadawanie i odbieranie roli trenera</span>
+      </span>
+      <span class="shrink-0 text-sm font-semibold text-primary-fg">Otwórz →</span>
+    </RouterLink>
+
     <InstallApp />
 
     <button class="btn-ghost w-full" @click="logout">Wyloguj</button>

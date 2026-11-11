@@ -62,7 +62,10 @@ function clearFilters() {
   <main>
     <header class="page-header space-y-3 px-4 pb-3">
       <div class="flex items-center justify-between">
-        <h1 class="page-title">Ćwiczenia</h1>
+        <div>
+          <h1 class="page-title">{{ auth.isTrainer ? 'Ćwiczenia' : 'Moje ćwiczenia' }}</h1>
+          <p v-if="!auth.isTrainer" class="text-sm text-muted">Ćwiczenia z Twojego planu – opisy, technika, filmy.</p>
+        </div>
         <RouterLink v-if="auth.isTrainer" to="/cwiczenia/nowe" class="btn-primary" aria-label="Dodaj ćwiczenie">
           <Icon name="plus" class="size-5" />Dodaj
         </RouterLink>
@@ -109,8 +112,8 @@ function clearFilters() {
       <p v-if="ex.loading && !ex.loaded" class="py-10 text-center text-muted">Ładowanie…</p>
 
       <div v-else-if="!ex.all.length" class="card p-6 text-center">
-        <p class="mb-1 font-semibold">Baza jest jeszcze pusta</p>
-        <p class="mb-4 text-sm text-muted">Dodaj swoje najczęstsze ćwiczenia albo zaimportuj bazę startową.</p>
+        <p class="mb-1 font-semibold">{{ auth.isTrainer ? 'Baza jest jeszcze pusta' : 'Nie masz jeszcze ćwiczeń' }}</p>
+        <p class="mb-4 text-sm text-muted">{{ auth.isTrainer ? 'Dodaj swoje najczęstsze ćwiczenia albo zaimportuj bazę startową.' : 'Pojawią się tu, gdy trenerka przygotuje Ci plan.' }}</p>
         <div v-if="auth.isTrainer" class="flex flex-col gap-2">
           <RouterLink to="/cwiczenia/nowe" class="btn-primary">Dodaj pierwsze ćwiczenie</RouterLink>
           <RouterLink to="/cwiczenia/import" class="btn-ghost">Importuj bazę startową (~870)</RouterLink>

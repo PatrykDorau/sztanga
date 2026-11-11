@@ -46,6 +46,7 @@ const router = createRouter({
     // Publiczny formularz dla nowych klientów – bez logowania.
     { path: '/konsultacja', name: 'consultation', component: () => import('@/views/ConsultationView.vue'), meta: { public: true } },
     { path: '/profil', name: 'profile', component: () => import('@/views/ProfileView.vue') },
+    { path: '/konta', name: 'accounts', component: () => import('@/views/AccountsView.vue'), meta: { trainer: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },

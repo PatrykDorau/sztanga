@@ -10,6 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const ready = ref(false)
 
   const isTrainer = computed(() => profile.value?.role === 'trainer')
+  const isAdmin = computed(() => !!profile.value?.is_admin)
 
   async function loadProfile() {
     if (!session.value) {
@@ -18,7 +19,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
     const { data } = await supabase
       .from('profiles')
-      .select('id, role, full_name')
+      .select('id, role, full_name, is_admin')
       .eq('id', session.value.user.id)
       .maybeSingle()
     profile.value = data as Profile | null
@@ -62,5 +63,6 @@ export const useAuthStore = defineStore('auth', () => {
     profile.value = null
   }
 
-  return { session, profile, ready, isTrainer, init, sendMagicLink, signInWithPassword, signOut, loadProfile }
+  return { session, profile, ready, isTrainer,
+    isAdmin, init, sendMagicLink, signInWithPassword, signOut, loadProfile }
 })
