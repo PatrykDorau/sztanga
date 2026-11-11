@@ -26,6 +26,7 @@ const router = createRouter({
     { path: '/grafik/zgloszenia', name: 'requests', component: () => import('@/views/RequestsView.vue'), meta: { trainer: true } },
     { path: '/grafik/google', name: 'google', component: () => import('@/views/GoogleCalendarView.vue'), meta: { trainer: true } },
     { path: '/grafik/raport', name: 'report', component: () => import('@/views/ReportView.vue'), meta: { trainer: true } },
+    { path: '/grafik/raport/druk', name: 'report-print', component: () => import('@/views/ReportPrintView.vue'), meta: { trainer: true, bare: true } },
     { path: '/analiza', name: 'analysis', component: () => import('@/views/AnalysisHomeView.vue'), meta: { trainer: true } },
     { path: '/analiza/nowa', name: 'analysis-new', component: () => import('@/views/AnalysisNewView.vue'), meta: { trainer: true } },
     { path: '/analiza/progi', name: 'analysis-settings', component: () => import('@/views/AnalysisSettingsView.vue'), meta: { trainer: true } },

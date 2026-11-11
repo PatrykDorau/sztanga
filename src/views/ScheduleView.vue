@@ -15,6 +15,9 @@ import GymBadge from '@/components/GymBadge.vue'
 import { useCalendarStore } from '@/stores/calendar'
 import { hm } from '@/lib/dates'
 import type { CalendarBlock, Session } from '@/types'
+import { useGroupClassesStore, type GroupClass } from '@/stores/groupClasses'
+import GroupClassSheet from '@/components/GroupClassSheet.vue'
+import GroupClassCard from '@/components/GroupClassCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,6 +32,8 @@ const weekStart = computed(() => startOfWeek(selected.value))
 const days = computed(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart.value, i)))
 const openId = ref<string | null>(null)
 const creating = ref(false)
+const groups = useGroupClassesStore()
+const groupSheet = ref<{ item: GroupClass | null } | null>(null)
 const loading = ref(false)
 const error = ref('')
 
@@ -38,6 +43,7 @@ async function load() {
   try {
     await Promise.all([
       schedule.loadRange(weekStart.value, addDays(weekStart.value, 7)),
+      groups.loadRange(weekStart.value, addDays(weekStart.value, 7)),
       cal.loadBlocks(weekStart.value, addDays(weekStart.value, 7)).catch(() => null),
     ])
   } catch (e) {
@@ -53,17 +59,19 @@ watch(weekStart, (a, b) => a.getTime() !== b?.getTime() && load())
 watch(selected, (d) => router.replace({ query: { d: ymd(d) } }))
 
 const sessionsOn = (d: Date) => schedule.sessions.filter((s) => sameDay(new Date(s.starts_at), d))
-const activeOn = (d: Date) => sessionsOn(d).filter((s) => ['pending', 'confirmed', 'completed'].includes(s.status)).length
-const daySessions = computed(() => sessionsOn(selected.value))
-// Dzień = sesje + wydarzenia z Google Calendar (Wolne / Zajęte / Do przypisania), po kolei w czasie.
+const groupsOn = (d: Date) => groups.list.filter((g) => sameDay(new Date(g.starts_at), d))
+const activeOn = (d: Date) => sessionsOn(d).filter((s) => ['pending', 'confirmed', 'completed'].includes(s.status)).length + groupsOn(d).filter((g) => !g.cancelled).length
+// Dzień = sesje + zajęcia grupowe + wydarzenia z Google Calendar (Wolne / Zajęte / Do przypisania), po kolei w czasie.
 const blocksOn = (d: Date) => cal.blocks.filter((b) => !b.all_day && sameDay(new Date(b.starts_at), d))
-type Row = { kind: 'session'; at: string; s: Session } | { kind: 'block'; at: string; b: CalendarBlock }
-const dayRows = computed<Row[]>(() =>
+type Row = { kind: 'session'; at: string; s: Session } | { kind: 'block'; at: string; b: CalendarBlock } | { kind: 'group'; at: string; g: GroupClass }
+const rowsOn = (d: Date, withBlocks: boolean) =>
   [
-    ...daySessions.value.map((s) => ({ kind: 'session' as const, at: s.starts_at, s })),
-    ...blocksOn(selected.value).map((b) => ({ kind: 'block' as const, at: b.starts_at, b })),
-  ].sort((a, b) => a.at.localeCompare(b.at)),
-)
+    ...sessionsOn(d).map((s) => ({ kind: 'session' as const, at: s.starts_at, s })),
+    ...groupsOn(d).map((g) => ({ kind: 'group' as const, at: g.starts_at, g })),
+    ...(withBlocks ? blocksOn(d).map((b) => ({ kind: 'block' as const, at: b.starts_at, b })) : []),
+  ].sort((a, b) => a.at.localeCompare(b.at)) as Row[]
+const dayRows = computed<Row[]>(() => rowsOn(selected.value, true))
+const rowKey = (r: Row) => (r.kind === 'session' ? r.s.id : r.kind === 'group' ? r.g.id : r.b.gcal_event_id)
 const allDayOn = (d: Date) => cal.blocks.filter((b) => b.all_day && new Date(b.starts_at) <= d && new Date(b.ends_at) > d)
 const BLOCK_LABEL = { free: 'Wolne', busy: 'Zajęte', unmatched: 'Do przypisania', session: '' }
 const unmatchedCount = computed(() => cal.blocks.filter((b) => b.kind === 'unmatched').length)
@@ -146,8 +154,9 @@ const shift = (n: number) => (selected.value = addDays(selected.value, n))
           <p class="text-sm text-muted">Dodaj sesję albo pozwól klientom rezerwować w godzinach dostępności.</p>
         </div>
         <ul class="space-y-2">
-          <li v-for="r in dayRows" :key="r.kind === 'session' ? r.s.id : r.b.gcal_event_id">
+          <li v-for="r in dayRows" :key="rowKey(r)">
             <SessionCard v-if="r.kind === 'session'" :session="r.s" :title="clientName(r.s.client_id)" :subtitle="r.s.notes ?? undefined" @open="openId = r.s.id" />
+            <GroupClassCard v-else-if="r.kind === 'group'" :item="r.g" @open="groupSheet = { item: r.g }" />
             <!-- Wydarzenie z Google Calendar: Wolne (dashed), Zajęte (szare), Do przypisania (ostrzeżenie) -->
             <component
               :is="r.b.kind === 'unmatched' ? 'RouterLink' : 'div'"
@@ -178,25 +187,24 @@ const shift = (n: number) => (selected.value = addDays(selected.value, n))
       <template v-else>
         <section v-for="d in days" :key="ymd(d)">
           <h2 class="mb-2 text-lg font-bold first-letter:uppercase" :class="sameDay(d, today) ? 'text-primary-fg' : ''">{{ dayLabel(d) }}</h2>
-          <p v-if="!sessionsOn(d).length" class="mb-2 text-sm text-muted">—</p>
+          <p v-if="!rowsOn(d, false).length" class="mb-2 text-sm text-muted">—</p>
           <ul class="space-y-2">
-            <li v-for="s in sessionsOn(d)" :key="s.id">
-              <SessionCard :session="s" :title="clientName(s.client_id)" @open="openId = s.id" />
+            <li v-for="r in rowsOn(d, false)" :key="rowKey(r)">
+              <SessionCard v-if="r.kind === 'session'" :session="r.s" :title="clientName(r.s.client_id)" @open="openId = r.s.id" />
+              <GroupClassCard v-else-if="r.kind === 'group'" :item="r.g" @open="groupSheet = { item: r.g }" />
             </li>
           </ul>
         </section>
       </template>
     </div>
 
-    <button
-      class="btn-primary fixed right-4 z-20 shadow-lg"
-      style="bottom: calc(5rem + env(safe-area-inset-bottom))"
-      @click="creating = true"
-    >
-      <Icon name="plus" class="size-5" />Sesja
-    </button>
+    <div class="fixed right-4 z-20 flex gap-2" style="bottom: calc(5rem + env(safe-area-inset-bottom))">
+      <button class="btn-ghost border border-line-strong bg-surface shadow-lg" @click="groupSheet = { item: null }"><Icon name="users" class="size-5" />Zajęcia</button>
+      <button class="btn-primary shadow-lg" @click="creating = true"><Icon name="plus" class="size-5" />Sesja</button>
+    </div>
 
     <SessionSheet v-if="openId" :id="openId" @close="openId = null" />
+    <GroupClassSheet v-if="groupSheet" :item="groupSheet.item" :day="ymd(selected)" @close="groupSheet = null" @done="groupSheet = null" />
     <NewSessionSheet v-if="creating" :day="ymd(selected)" @close="creating = false" @done="(creating = false), load()" />
   </main>
 </template>
