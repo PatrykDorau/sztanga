@@ -73,8 +73,8 @@ export const useScheduleStore = defineStore('schedule', () => {
     exceptions.value = ok(e) as AvailabilityException[]
   }
 
-  async function addRule(weekday: number, start_time: string, end_time: string) {
-    const row = ok(await supabase.from('availability_rules').insert({ weekday, start_time, end_time }).select('*').single()) as AvailabilityRule
+  async function addRule(weekday: number, start_time: string, end_time: string, gym_id: string | null = null) {
+    const row = ok(await supabase.from('availability_rules').insert({ weekday, start_time, end_time, ...(gym_id ? { gym_id } : {}) }).select('*').single()) as AvailabilityRule
     rules.value.push(row)
     rules.value.sort((a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time))
   }

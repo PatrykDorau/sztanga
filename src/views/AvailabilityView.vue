@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // Dostępność trenerki: tygodniowy szablon godzin, wyjątki (urlop, choroba, dodatkowe godziny) i zasady rezerwacji.
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScheduleStore } from '@/stores/schedule'
 import { time5 } from '@/lib/dates'
 import { WEEKDAYS } from '@/lib/vocab'
 import type { BookingSettings } from '@/types'
 import Icon from '@/components/Icon.vue'
+import { covered, freeWindows, type FreeWindow } from '@/lib/freeWeek'
+import { useCalendarStore } from '@/stores/calendar'
 
 const router = useRouter()
 const schedule = useScheduleStore()
@@ -50,6 +52,32 @@ async function run(fn: () => Promise<unknown>) {
 }
 
 const rulesFor = (wd: number) => schedule.rules.filter((r) => r.weekday === wd)
+
+// ----- Uzupełnij z „Free” w Google Calendar -----
+const cal = useCalendarStore()
+const fromFree = ref<(FreeWindow & { on: boolean; have: boolean })[] | null>(null)
+const replaceAll = ref(false)
+const fwKey = (w: FreeWindow) => `${w.weekday}|${w.start}|${w.end}|${w.gym_id ?? ''}`
+async function openFromFree() {
+  await run(async () => {
+    if (!cal.gyms.length) await cal.loadGyms()
+    const list = await freeWindows()
+    fromFree.value = list.map((w) => {
+      const have = covered(w, schedule.rules)
+      return { ...w, have, on: !have && w.weeks >= 2 }
+    })
+  })
+}
+const chosenFree = computed(() => (fromFree.value ?? []).filter((w) => w.on))
+const multiGymFree = computed(() => new Set((fromFree.value ?? []).map((w) => w.gym_id)).size > 1)
+const shortDate = (d: string) => new Date(d + 'T12:00').toLocaleDateString('pl-PL', { day: 'numeric', month: 'numeric' })
+const applyFree = () =>
+  run(async () => {
+    if (replaceAll.value) for (const r of [...schedule.rules]) await schedule.removeRule(r.id)
+    for (const w of chosenFree.value) if (replaceAll.value || !covered(w, schedule.rules)) await schedule.addRule(w.weekday, w.start, w.end, w.gym_id)
+    fromFree.value = null
+    replaceAll.value = false
+  })
 const addRule = (wd: number) =>
   run(async () => {
     if (range.end <= range.start) throw new Error('Koniec musi być po początku.')
@@ -93,7 +121,42 @@ const fmtDay = (d: string) => new Date(d + 'T12:00').toLocaleDateString('pl-PL',
 
       <section>
         <h2 class="mb-1 text-xl font-bold">Tydzień pracy</h2>
-        <p class="mb-3 text-sm text-muted">W tych godzinach klienci widzą wolne terminy do rezerwacji.</p>
+        <p class="mb-3 text-sm text-muted">W tych godzinach klienci widzą wolne terminy do rezerwacji. Do tego dochodzą wydarzenia „Free” z Google Calendar.</p>
+        <button v-if="!fromFree" type="button" class="btn-ghost mb-3 w-full border border-line-strong" :disabled="busy" @click="openFromFree">
+          <Icon name="calendar" class="size-4" />Uzupełnij z „Free” w kalendarzu
+        </button>
+        <div v-else class="card mb-3 space-y-3 p-4">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="font-semibold">Godziny z „Free” w Google Calendar</p>
+              <p class="text-xs text-muted">Ostatnie 60 dni i przyszłe. Zaznaczone są te, które powtarzają się co tydzień (co najmniej 2 tygodnie).</p>
+            </div>
+            <button type="button" class="icon-btn -m-2 shrink-0" aria-label="Zamknij" @click="fromFree = null"><Icon name="x" class="size-5" /></button>
+          </div>
+          <p v-if="!fromFree.length" class="text-sm text-muted">W kalendarzu nie ma wydarzeń „Free”. Dodaj w Google wydarzenia o nazwie „Free” w godzinach, w których przyjmujesz klientów – najlepiej jako cykliczne co tydzień.</p>
+          <ul v-else class="divide-y divide-line">
+            <li v-for="w in fromFree" :key="fwKey(w)">
+              <label class="flex min-h-12 items-center gap-3 py-1.5">
+                <input v-model="w.on" type="checkbox" class="size-5 shrink-0 accent-primary" />
+                <span class="min-w-0 flex-1">
+                  <span class="block font-semibold tabular-nums">{{ WEEKDAYS[w.weekday - 1] }} {{ w.start }}–{{ w.end }}<span v-if="multiGymFree && w.gym_id" class="font-normal text-muted"> · {{ cal.gymById(w.gym_id)?.name }}</span></span>
+                  <span class="block text-xs text-muted">
+                    {{ w.weeks >= 2 ? `co tydzień – ${w.weeks} tyg.` : 'tylko raz' }} ({{ w.dates.map(shortDate).join(', ') }}){{ w.have ? ' · już jest w tygodniu pracy' : '' }}
+                  </span>
+                </span>
+              </label>
+            </li>
+          </ul>
+          <template v-if="fromFree.length">
+            <label class="flex min-h-11 items-center gap-3 rounded-xl bg-surface-2 px-3 text-sm">
+              <input v-model="replaceAll" type="checkbox" class="size-5 accent-primary" />
+              Zastąp obecne godziny (usuń te, których nie ma w „Free”)
+            </label>
+            <button type="button" class="btn-primary w-full" :disabled="busy || (!chosenFree.length && !replaceAll)" @click="applyFree">
+              {{ replaceAll ? `Ustaw tydzień pracy: ${chosenFree.length} przedziałów` : `Dodaj zaznaczone (${chosenFree.length})` }}
+            </button>
+          </template>
+        </div>
         <ul class="card divide-y divide-line">
           <li v-for="(name, i) in WEEKDAYS" :key="i" class="px-3 py-2">
             <div class="flex items-center gap-2">
