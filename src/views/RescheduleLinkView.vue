@@ -12,6 +12,7 @@ interface Offer {
   contact_name: string | null
   current: { weekday: number; start_time: string; duration_minutes: number } | null
   slots: WeeklySlot[]
+  taken?: number[] // indeksy terminów wybranych już przez kogoś innego
   expires_at?: string | null
   note: string | null
   status: 'open' | 'chosen' | 'applied'
@@ -29,7 +30,9 @@ const pref = ref<number[]>([])
 const backup = ref<number[]>([])
 const mode = ref<'pref' | 'backup'>('pref')
 const MAX_PREF = 5
+const isTaken = (i: number) => !!o.value?.taken?.includes(i)
 function tap(i: number) {
+  if (isTaken(i)) return
   if (!o.value?.is_new) {
     sel.value = i
     return
@@ -64,8 +67,10 @@ async function load() {
   o.value = data as Offer
   // „Zmień wybór” zaczyna od poprzednich zaznaczeń.
   const ix = (list: WeeklySlot[] | null) => (list ?? []).map((s) => o.value!.slots.findIndex((x) => slotKey(x) === slotKey(s))).filter((i) => i >= 0)
-  pref.value = ix(o.value.preferred)
+  // Zajęte przez kogoś innego nie mogą być „najlepsze” (pierwszy wybór); jako „mogę też” zostają.
+  pref.value = ix(o.value.preferred).filter((i) => !isTaken(i))
   backup.value = ix(o.value.backup)
+  if (sel.value != null && isTaken(sel.value)) sel.value = null
   state.value = 'ok'
 }
 onMounted(load)
@@ -87,7 +92,12 @@ async function choose() {
     : await supabase.rpc('choose_reschedule', { link_token: props.token, slot_index: sel.value, ...contact })
   busy.value = false
   if (e || !data) {
-    error.value = 'Nie udało się zapisać wyboru – możliwe, że trenerka już zatwierdziła zmianę. Odśwież stronę.'
+    const before = o.value.taken?.length ?? 0
+    await load()
+    error.value =
+      (o.value?.taken?.length ?? 0) > before
+        ? 'Ktoś właśnie zajął ten termin – wybierz inny.'
+        : 'Nie udało się zapisać wyboru – możliwe, że trenerka już zatwierdziła zmianę. Odśwież stronę.'
     return
   }
   editing.value = false
@@ -135,6 +145,7 @@ async function choose() {
             <button type="button" class="min-h-10 flex-1 rounded-lg text-sm font-semibold" :class="mode === 'backup' ? 'bg-surface text-fg shadow' : 'text-muted'" :aria-pressed="mode === 'backup'" @click="mode = 'backup'">Mogę też ({{ backup.length }})</button>
           </div>
         </div>
+        <p v-if="o.taken?.length" class="text-sm text-muted">Przekreślone terminy ktoś już wybrał – są zajęte.</p>
         <fieldset v-for="d in byDay" :key="d.wd">
           <legend class="mb-1.5 font-semibold">{{ WEEKDAY_PL[d.wd] }}</legend>
           <div class="grid grid-cols-3 gap-2">
@@ -143,12 +154,21 @@ async function choose() {
               :key="slotKey(x.s)"
               type="button"
               class="min-h-12 rounded-xl border text-base font-semibold tabular-nums"
-              :class="state2(x.i) === 'pref' ? 'border-primary bg-primary text-on-primary' : state2(x.i) === 'backup' ? 'border-2 border-dashed border-primary bg-primary-soft text-fg' : 'border-line-strong bg-surface'"
+              :class="
+                isTaken(x.i)
+                  ? 'cursor-not-allowed border-line bg-surface-2 text-muted line-through'
+                  : state2(x.i) === 'pref'
+                    ? 'border-primary bg-primary text-on-primary'
+                    : state2(x.i) === 'backup'
+                      ? 'border-2 border-dashed border-primary bg-primary-soft text-fg'
+                      : 'border-line-strong bg-surface'
+              "
+              :disabled="isTaken(x.i)"
               :aria-pressed="!!state2(x.i)"
-              :aria-label="`${WEEKDAY_PL[d.wd]} ${x.s.start_time}${state2(x.i) === 'pref' ? ' – najbardziej pasuje' : state2(x.i) === 'backup' ? ' – mogę też' : ''}`"
+              :aria-label="`${WEEKDAY_PL[d.wd]} ${x.s.start_time}${isTaken(x.i) ? ' – zajęty' : state2(x.i) === 'pref' ? ' – najbardziej pasuje' : state2(x.i) === 'backup' ? ' – mogę też' : ''}`"
               @click="tap(x.i)"
             >
-              <span v-if="state2(x.i) === 'pref' && o.is_new" class="mr-1 text-xs align-top">★{{ pref.indexOf(x.i) + 1 }}</span>{{ x.s.start_time }}<span v-if="x.s.best" class="block text-[11px] font-semibold" :class="state2(x.i) === 'pref' ? '' : 'text-primary-fg'">polecane</span><span v-if="multiGym && x.s.gym_id" class="block text-[11px] font-normal opacity-80">{{ o.gyms[x.s.gym_id] }}</span>
+              <span v-if="state2(x.i) === 'pref' && o.is_new" class="mr-1 text-xs align-top">★{{ pref.indexOf(x.i) + 1 }}</span>{{ x.s.start_time }}<span v-if="isTaken(x.i)" class="block text-[11px] font-semibold no-underline">zajęty</span><span v-else-if="x.s.best" class="block text-[11px] font-semibold" :class="state2(x.i) === 'pref' ? '' : 'text-primary-fg'">polecane</span><span v-if="multiGym && x.s.gym_id" class="block text-[11px] font-normal opacity-80">{{ o.gyms[x.s.gym_id] }}</span>
             </button>
           </div>
         </fieldset>
