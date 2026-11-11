@@ -54,6 +54,15 @@ begin
 end;
 $$;
 
+-- Klienci tworzeni automatycznie z kalendarza: po usunięciu klienta jego tytuł zostaje jako „to nie klient”
+-- (alias z client_id = null), żeby synchronizacja nie utworzyła go od nowa.
+alter table public.client_aliases drop constraint if exists client_aliases_client_id_fkey;
+alter table public.client_aliases
+  add constraint client_aliases_client_id_fkey foreign key (client_id) references public.clients (id) on delete set null;
+
+-- Pełny import od nowa po wdrożeniu: wydarzenia „Imię Nazwisko” staną się klientami i sesjami.
+update public.google_connection set sync_token = null where id = 1;
+
 -- Teraz: odwołane z poprzedniego kalendarza (sprzed podłączenia nowego) nie dotyczą obecnego.
 delete from public.gcal_cancelled c using public.google_connection g
 where g.id = 1 and g.connected_at is not null and c.created_at < g.connected_at;

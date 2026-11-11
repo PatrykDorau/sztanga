@@ -16,7 +16,7 @@ import {
   SYNC_URL,
   TZ,
 } from '../_shared/google.ts'
-import { eventTitle, gymFor, isFree, looksLikePerson, matchClient, splitTitle, type ClientRef, type Gym } from '../_shared/titles.ts'
+import { colorFamily, eventTitle, gymFor, isFree, looksLikePerson, matchClient, norm, personName, splitTitle, type ClientRef, type Gym } from '../_shared/titles.ts'
 
 interface GEvent {
   id: string
@@ -265,7 +265,32 @@ async function applyEvent(
     return null
   }
 
-  const match = t.allDay ? null : matchClient(title, clients, aliases)
+  let match = t.allDay ? null : matchClient(title, clients, aliases)
+  // Nowa osoba („Imię Nazwisko”, kolor siłowni albo domyślny) – od razu nowy klient w aplikacji, z siłownią z koloru.
+  if (!match && !t.allDay && e.status !== 'tentative') {
+    const fams = new Set(gyms.map((g) => colorFamily(g.color_id)))
+    const gymWords = gyms.flatMap((g) => [norm(g.code), ...norm((g as Gym & { name?: string }).name ?? '').split(' ')]).filter(Boolean)
+    const name = personName(title, gymWords)
+    if (name && (splitTitle(title).code !== null || colorId === null || fams.has(colorFamily(colorId)))) {
+      const existing = clients.find((c) => norm(c.full_name) === norm(name))
+      let id = existing?.id
+      if (!id) {
+        const { data: created, error } = await db
+          .from('clients')
+          .insert({ full_name: name, gym_id: gym?.id ?? null, notes: 'Dodany automatycznie z Google Calendar' })
+          .select('id')
+          .single()
+        if (error) throw error
+        id = created.id as string
+        clients.push({ id, full_name: name })
+      }
+      // Alias tytułu: po usunięciu klienta tytuł zostaje oznaczony „to nie klient” (nie wróci przy kolejnej synchronizacji).
+      const key = norm(splitTitle(title).base)
+      await db.from('client_aliases').upsert({ alias_norm: key, client_id: id })
+      aliases.set(key, id)
+      match = id
+    }
+  }
   // Wydarzenie utworzone przez aplikację, zanim zapisaliśmy jego id (np. przerwana synchronizacja).
   const appSessionId = e.extendedProperties?.private?.trenerSessionId
 
@@ -515,7 +540,7 @@ Deno.serve(async (req) => {
     }
 
     if (!(await acquireLock(db))) return json({ ok: true, queued: true }, 202)
-    const { data: gymRows } = await db.from('gyms').select('id, code, color_id, is_default')
+    const { data: gymRows } = await db.from('gyms').select('id, code, name, color_id, is_default')
     const gyms = (gymRows ?? []) as Gym[]
     let pulled = 0
     let pushed = 0

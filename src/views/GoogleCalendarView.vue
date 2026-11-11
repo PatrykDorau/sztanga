@@ -136,9 +136,9 @@ const lastSync = computed(() =>
         <template v-else>
           <p class="font-semibold">Połącz kalendarz Google</p>
           <ul class="space-y-1 text-sm text-muted">
-            <li>• Treningi z kalendarza („Imię Nazwisko (BW)”) pojawią się w grafiku.</li>
+            <li>• Treningi z kalendarza („Imię Nazwisko”) pojawią się w grafiku – nowe osoby od razu jako klienci. Siłownia z koloru wydarzenia (np. czerwone = BW, niebieskie = Forto) albo z dopisku „(BW)”.</li>
             <li>• Wydarzenia „Free” to wolne terminy do rezerwacji dla klientów.</li>
-            <li>• Sesje dodane w aplikacji trafiają do kalendarza z dopiskiem „Dodane z aplikacji Trener”.</li>
+            <li>• Sesje dodane w aplikacji trafiają do kalendarza z dopiskiem „Aplikacja” w opisie.</li>
             <li>• Odwołane w aplikacji nie znikają od razu – w kalendarzu dostają „ODWOŁANE”, a usuwasz je tutaj.</li>
             <li>• Prywatne wydarzenia blokują godziny, klienci nie widzą ich treści.</li>
           </ul>

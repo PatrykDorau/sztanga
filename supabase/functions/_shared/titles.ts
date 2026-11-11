@@ -31,15 +31,39 @@ export function splitTitle(title: string): { base: string; code: string | null }
 
 export const isFree = (title: string) => /^free\b/i.test(splitTitle(title).base)
 
-/** Siłownia: najpierw kod w nawiasie, potem kolor wydarzenia, na końcu domyślna. */
+/** Rodziny kolorów Google Calendar (colorId): „niebieski” to Lavender, Peacock albo Blueberry itd. */
+const COLOR_FAMILY: Record<number, string> = { 1: 'blue', 7: 'blue', 9: 'blue', 11: 'red', 4: 'red', 6: 'orange', 5: 'yellow', 2: 'green', 10: 'green', 3: 'purple', 8: 'gray' }
+export const colorFamily = (id: number | null) => (id == null ? null : (COLOR_FAMILY[id] ?? null))
+
+/** Siłownia: najpierw kod w nawiasie, potem kolor wydarzenia (dokładny, potem ta sama rodzina), na końcu domyślna. */
 export function gymFor(title: string, colorId: number | null, gyms: Gym[]): Gym | null {
   const { code } = splitTitle(title)
+  const fam = colorFamily(colorId)
   return (
     (code && gyms.find((g) => g.code === code)) ||
     (colorId != null && gyms.find((g) => g.color_id === colorId)) ||
+    (fam && gyms.find((g) => colorFamily(g.color_id) === fam)) ||
     gyms.find((g) => g.is_default) ||
     null
   )
+}
+
+/** Pierwsze słowa, które nie są imieniem (żeby „Trening Funkcjonalny” albo „Dzień Niepodległości” nie stały się klientem). */
+const NOT_PERSON = new Set(
+  'trening treningi zajecia zajecie obwod spotkanie konsultacja wizyta szkolenie kurs webinar wyjazd urlop silownia basen masaz fizjoterapia fizjo lekarz dentysta ortodonta dzien urodziny imieniny swieta wigilia sylwester free wolne przerwa obiad lunch odbior zakupy sprzatanie egzamin praca zebranie rozmowa nauka mobility stretching joga yoga pilates crossfit bieg rower mecz turniej zawody'.split(' '),
+)
+
+/**
+ * Imię i nazwisko z tytułu, jeśli to wygląda na klienta: dwa słowa z wielkiej litery na początku, bez słów-kluczy
+ * („Trening …”) i bez nazw/kodów siłowni („Wiktoria Forto”). Dopiski po nazwisku („2os”) są pomijane.
+ */
+export function personName(title: string, gymWords: string[] = []): string | null {
+  const { base } = splitTitle(title)
+  if (!looksLikePerson(base)) return null
+  const words = base.split(/\s+/).slice(0, 2)
+  const n = words.map(norm)
+  if (NOT_PERSON.has(n[0]) || n.some((w) => gymWords.includes(w))) return null
+  return words.join(' ')
 }
 
 /** Wygląda jak "Imię Nazwisko" (min. dwa słowa, każde z wielkiej litery) – kandydat na klienta. */
