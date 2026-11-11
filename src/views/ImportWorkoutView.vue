@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 import { useExercisesStore } from '@/stores/exercises'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
-import { matchExercise, parseWorkout, shrinkImage, speechSupported, startDictation, type ParsedPlan } from '@/lib/importWorkout'
+import { parseWorkout, shrinkImage, speechSupported, startDictation, suggestExercises, type ParsedPlan, type Suggestion } from '@/lib/importWorkout'
 import { savePlanDraft, type PlanDraft } from '@/lib/planRules'
 import { loadCredits, lowCredits, remaining, usd } from '@/lib/credits'
 import ExercisePicker from '@/components/ExercisePicker.vue'
@@ -84,6 +84,8 @@ interface Row {
   key: string
   w: number
   name: string
+  en?: string
+  alt?: string[]
   section: string | null
   group: string | null
   sets: number | null
@@ -94,7 +96,10 @@ interface Row {
   notes: string | null
   exerciseId: string | null
   createNew: boolean
+  suggestions: Suggestion[]
+  confirmed: boolean // trenerka zatwierdziła wybór (propozycję, ćwiczenie z bazy albo nowe)
 }
+const STRONG = 75 // od tylu % propozycję można zatwierdzić hurtem
 const rows = ref<Row[]>([])
 const workoutNames = ref<string[]>([])
 async function recognize() {
@@ -107,9 +112,11 @@ async function recognize() {
     form.name = p.name
     workoutNames.value = p.workouts.map((w) => w.name)
     rows.value = p.workouts.flatMap((w, wi) =>
-      w.exercises.map((e, i) => {
-        const m = matchExercise(e.name, ex.all, ex.favorites)
-        return { key: `${wi}-${i}`, w: wi, ...e, reps: e.reps ?? '', load: e.load ?? '', exerciseId: m?.id ?? null, createNew: false }
+      w.exercises.map((e, i): Row => {
+        // „Biceps + triceps” to dwa ćwiczenia – bez propozycji, trenerka wybiera sama.
+        const suggestions = /\s\+\s|\soraz\s/.test(e.name) ? [] : suggestExercises(e, ex.all, ex.favorites)
+        const best = suggestions[0]
+        return { key: `${wi}-${i}`, w: wi, ...e, reps: e.reps ?? '', load: e.load ?? '', exerciseId: best && best.pct >= 50 ? best.e.id : null, createNew: false, suggestions, confirmed: false }
       }),
     )
     loadCredits().catch(() => null)
@@ -119,12 +126,23 @@ async function recognize() {
     busy.value = false
   }
 }
-const unmatched = computed(() => rows.value.filter((r) => !r.exerciseId && !r.createNew).length)
+const unmatched = computed(() => rows.value.filter((r) => !r.confirmed || (!r.exerciseId && !r.createNew)).length)
+const strongPending = computed(() => rows.value.filter((r) => !r.confirmed && r.exerciseId && pctOf(r, r.exerciseId) >= STRONG))
+const pctOf = (r: Row, id: string) => r.suggestions.find((s) => s.e.id === id)?.pct ?? 0
+function choose(r: Row, id: string) {
+  Object.assign(r, { exerciseId: id, createNew: false, confirmed: true })
+}
+function confirmStrong() {
+  for (const r of strongPending.value) r.confirmed = true
+}
+function asNew(r: Row) {
+  Object.assign(r, { exerciseId: null, createNew: true, confirmed: true })
+}
 
 // ----- Podmiana ćwiczenia -----
 const picking = ref<Row | null>(null)
 function onPick(id: string) {
-  if (picking.value) Object.assign(picking.value, { exerciseId: id, createNew: false })
+  if (picking.value) choose(picking.value, id)
   picking.value = null
 }
 
@@ -132,7 +150,7 @@ function onPick(id: string) {
 const form = reactive({ name: '', client: '', kind: 'auto' as 'auto' | 'single' | 'plan' })
 const kind = computed(() => (form.kind === 'auto' ? (workoutNames.value.length > 1 ? 'plan' : 'single') : form.kind))
 async function save() {
-  if (unmatched.value) return void (error.value = `Dopasuj ${unmatched.value} ćwiczeń (Wybierz z bazy albo „Dodaj jako nowe”).`)
+  if (unmatched.value) return void (error.value = `Zatwierdź ${unmatched.value} ćwiczeń (propozycja, „Inne z bazy” albo „Dodaj jako nowe”).`)
   busy.value = true
   error.value = ''
   try {
@@ -228,28 +246,49 @@ async function save() {
           <ul class="list-disc pl-4"><li v-for="w in plan.warnings" :key="w">{{ w }}</li></ul>
         </div>
 
+        <div v-if="unmatched" class="card flex items-center gap-3 p-3 text-sm">
+          <span class="min-w-0 flex-1">Do zatwierdzenia: <strong>{{ unmatched }}</strong>. Procent = jak bardzo nazwa z treningu pasuje do ćwiczenia z bazy.</span>
+          <button v-if="strongPending.length" class="btn-primary !min-h-9 shrink-0 px-3 text-sm" @click="confirmStrong">Zatwierdź pewne ({{ strongPending.length }})</button>
+        </div>
+
         <section v-for="(_, wi) in workoutNames" :key="wi" class="card space-y-2 p-4">
           <input v-model="workoutNames[wi]" class="input !min-h-10 font-semibold" :aria-label="`Nazwa treningu ${wi + 1}`" />
           <template v-for="(r, i) in rows.filter((x) => x.w === wi)" :key="r.key">
             <p v-if="r.section && r.section !== rows.filter((x) => x.w === wi)[i - 1]?.section" class="pt-2 text-xs font-semibold tracking-wide text-muted uppercase">{{ r.section }}</p>
-            <div class="space-y-1.5 rounded-xl border p-2" :class="!r.exerciseId && !r.createNew ? 'border-warn-line bg-warn-soft/40' : 'border-line'">
+            <div class="space-y-1.5 rounded-xl border p-2" :class="!r.confirmed ? 'border-warn-line bg-warn-soft/40' : 'border-line'">
               <p class="text-xs text-muted">
-                <span v-if="r.group" class="mr-1 rounded bg-primary-soft px-1 font-bold text-primary-fg">{{ r.group }}</span>„{{ r.name }}”
+                <span v-if="r.group" class="mr-1 rounded bg-primary-soft px-1 font-bold text-primary-fg">{{ r.group }}</span>„{{ r.name }}”<template v-if="r.en"> · {{ r.en }}</template>
               </p>
-              <div v-if="r.exerciseId && ex.byId(r.exerciseId)" class="flex items-center gap-2">
+              <!-- zatwierdzone: jedna linia -->
+              <div v-if="r.confirmed && r.exerciseId && ex.byId(r.exerciseId)" class="flex items-center gap-2">
                 <ExerciseThumb :exercise="ex.byId(r.exerciseId)!" class="!size-10" />
                 <span class="min-w-0 flex-1 truncate text-sm font-semibold">{{ ex.byId(r.exerciseId)!.name_pl }}</span>
-                <button class="btn-ghost !min-h-8 shrink-0 px-2 text-xs" @click="picking = r">Zmień</button>
+                <span v-if="pctOf(r, r.exerciseId)" class="shrink-0 text-xs text-muted tabular-nums">{{ pctOf(r, r.exerciseId) }}%</span>
+                <button class="btn-ghost !min-h-8 shrink-0 px-2 text-xs" @click="r.confirmed = false">Zmień</button>
               </div>
-              <div v-else-if="r.createNew" class="flex items-center gap-2 text-sm">
+              <div v-else-if="r.confirmed && r.createNew" class="flex items-center gap-2 text-sm">
                 <Icon name="plus" class="size-4 text-primary-fg" /><span class="min-w-0 flex-1">Nowe ćwiczenie: <strong>{{ r.name }}</strong></span>
-                <button class="btn-ghost !min-h-8 shrink-0 px-2 text-xs" @click="r.createNew = false">Cofnij</button>
+                <button class="btn-ghost !min-h-8 shrink-0 px-2 text-xs" @click="Object.assign(r, { createNew: false, confirmed: false })">Zmień</button>
               </div>
-              <div v-else class="flex flex-wrap items-center gap-2 text-sm">
-                <span class="text-warn-fg">Nie znaleziono w bazie.</span>
-                <button class="btn-ghost !min-h-8 border border-line-strong px-2 text-xs" @click="picking = r">Wybierz z bazy</button>
-                <button class="btn-ghost !min-h-8 border border-line-strong px-2 text-xs" @click="r.createNew = true">Dodaj jako nowe</button>
-              </div>
+              <!-- do zatwierdzenia: propozycje z procentem zgodności -->
+              <template v-else>
+                <p class="text-xs font-semibold text-warn-fg">{{ r.suggestions.length ? 'Propozycje – wybierz albo zatwierdź zaznaczoną:' : 'Brak podobnych ćwiczeń w bazie.' }}</p>
+                <div v-for="s in r.suggestions" :key="s.e.id" class="flex items-center gap-2 rounded-lg border p-1.5" :class="r.exerciseId === s.e.id ? 'border-primary bg-primary-soft' : 'border-line bg-surface'">
+                  <button type="button" class="flex min-w-0 flex-1 items-center gap-2 text-left" :aria-pressed="r.exerciseId === s.e.id" @click="r.exerciseId = s.e.id">
+                    <ExerciseThumb :exercise="s.e" class="!size-9" />
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-sm font-semibold">{{ s.e.name_pl }}</span>
+                      <span v-if="s.e.name_en" class="block truncate text-[11px] text-muted">{{ s.e.name_en }}</span>
+                    </span>
+                    <span class="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold tabular-nums" :class="s.pct >= STRONG ? 'bg-success/15 text-success' : s.pct >= 55 ? 'bg-warn-soft text-warn-fg' : 'bg-surface-2 text-muted'">{{ s.pct }}%</span>
+                  </button>
+                  <button v-if="r.exerciseId === s.e.id" type="button" class="btn-primary !min-h-8 shrink-0 px-2 text-xs" @click="choose(r, s.e.id)">Zatwierdź</button>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button class="btn-ghost !min-h-8 border border-line-strong px-2 text-xs" @click="picking = r">Inne z bazy</button>
+                  <button class="btn-ghost !min-h-8 border border-line-strong px-2 text-xs" @click="asNew(r)">Dodaj jako nowe</button>
+                </div>
+              </template>
               <div class="grid grid-cols-3 gap-1.5">
                 <label class="block"><span class="text-[11px] text-muted">Serie</span><input v-model.number="r.sets" type="number" min="1" class="input !min-h-9 text-center text-sm" /></label>
                 <label class="block"><span class="text-[11px] text-muted">Powt.</span><input v-model="r.reps" class="input !min-h-9 text-center text-sm" /></label>
@@ -272,7 +311,7 @@ async function save() {
             <button type="button" class="min-h-10 flex-1 rounded-lg text-sm font-semibold" :class="kind === 'single' ? 'bg-surface shadow' : 'text-muted'" @click="form.kind = 'single'">Pojedynczy trening</button>
             <button type="button" class="min-h-10 flex-1 rounded-lg text-sm font-semibold" :class="kind === 'plan' ? 'bg-surface shadow' : 'text-muted'" @click="form.kind = 'plan'">Plan</button>
           </div>
-          <p v-if="unmatched" class="text-sm text-warn-fg">Do dopasowania: {{ unmatched }} {{ unmatched === 1 ? 'ćwiczenie' : 'ćwiczeń' }}.</p>
+          <p v-if="unmatched" class="text-sm text-warn-fg">Do zatwierdzenia: {{ unmatched }} {{ unmatched === 1 ? 'ćwiczenie' : [2, 3, 4].includes(unmatched % 10) && ![12, 13, 14].includes(unmatched % 100) ? 'ćwiczenia' : 'ćwiczeń' }}.</p>
           <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
           <div class="grid grid-cols-2 gap-2">
             <button class="btn-ghost border border-line-strong" :disabled="busy" @click="plan = null">Wróć</button>

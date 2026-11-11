@@ -83,7 +83,7 @@ function within1(a: string, b: string) {
 }
 
 /** Jak dobrze słowo zapytania pasuje do słowa z danych: 3 dokładnie, 2 początek/rdzeń, 1 literówka, 0 brak. */
-function wordScore(q: string, w: string) {
+export function wordScore(q: string, w: string) {
   if (w === q) return 3
   if (w.startsWith(q)) return 2
   // rdzeń: odcinamy końcówkę odmiany w dłuższych słowach („wyciskania” → „wyciska”)

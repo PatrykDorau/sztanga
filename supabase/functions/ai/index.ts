@@ -783,9 +783,11 @@ const IMPORT_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['name', 'section', 'group', 'sets', 'reps', 'load', 'tempo', 'rest_sec', 'notes'],
+              required: ['name', 'en', 'alt', 'section', 'group', 'sets', 'reps', 'load', 'tempo', 'rest_sec', 'notes'],
               properties: {
                 name: { type: 'string' },
+                en: { type: 'string' },
+                alt: { type: 'array', items: { type: 'string' } },
                 section: { type: ['string', 'null'] },
                 group: { type: ['string', 'null'] },
                 sets: { type: ['integer', 'null'] },
@@ -806,6 +808,8 @@ const IMPORT_SYSTEM = `Przepisujesz trening trenerki personalnej do aplikacji. D
 Zasady:
 - Przepisz WSZYSTKIE ćwiczenia w kolejności, po polsku, tak jak nazwała je trenerka (bez tłumaczenia jej skrótów: OHP, RDL, SL RDL, SA row zostają).
 - Kilka dni / jednostek (np. „Trening A”, kolumny T1–T6 to tygodnie, nie dni!) – osobne treningi tylko gdy to faktycznie różne jednostki; kolumny T1…T6 z wynikami potraktuj jako notatkę z ciężarami pierwszego tygodnia.
+- en: standardowa angielska nazwa ćwiczenia, jak w bazach ćwiczeń (np. „SL RDL” → „Single-Leg Romanian Deadlift”, „ISO wykrok” → „Split Squat Isometric Hold”, „windmill” → „Kettlebell Windmill”).
+- alt: 2–4 inne nazwy tego samego ćwiczenia po polsku i angielsku, jakimi mogło być zapisane w bazie – rozwiń skróty i slang trenerki (ISO/iso = izometria, utrzymanie pozycji, „hold”; „do boku” = boczne/lateral; „piłeczka od ściany” = ball wall bounce/rzuty piłką o ścianę). Gdy wpis ma warianty („z piłką/ciężar”), podaj nazwy wariantów.
 - section: część treningu z dokumentu (np. „Przygotowanie ruchowe”, „Aktywacja”, „Część główna”, „Relaks”) albo null.
 - group: litera superserii/obwodu, gdy ćwiczenia są oznaczone 5A/5B/5C, 6a/6b (np. „A”, „B”) albo null.
 - sets: liczba serii (np. „wszędzie 3 serie” → 3; „2/8” → sets 2 reps "8"); reps jako tekst („12/str”, „8-10”, „30 s”, „5 min”); load opisowo („42,5 kg”, „RPE 7”); tempo jak „5-3-0-0”; rest_sec w sekundach („20–30 s” → 30, „minuta” → 60).
