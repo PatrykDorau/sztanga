@@ -41,7 +41,9 @@ const badge = computed(
         </span>
         <GymBadge :gym-id="session.gym_id" />
         <span v-if="session.series_id" class="tag">co tydzień</span>
-        <span v-if="session.booked_by_client" class="tag">rezerwacja klienta</span>
+        <span v-if="session.moved_from" class="tag !bg-warn-soft !text-warn-fg">prośba o przełożenie</span>
+        <span v-else-if="session.weekly_request && session.status === 'pending'" class="tag !bg-warn-soft !text-warn-fg">prośba o stały termin</span>
+        <span v-else-if="session.booked_by_client" class="tag">prośba klienta</span>
       </div>
     </div>
     <Icon name="chevron" class="size-5 self-center text-subtle" />

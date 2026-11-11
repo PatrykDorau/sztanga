@@ -36,6 +36,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
+        // Obsługa powiadomień push (public/push-sw.js).
+        importScripts: ['push-sw.js'],
         runtimeCaching: [
           {
             // Fonty Barlow – po pierwszym wczytaniu działają offline.

@@ -48,6 +48,8 @@ function startLive() {
 }
 const hasDraft = computed(() => live.active.some((d) => d.session_id === props.id))
 
+// Sesja-prośba o przełożenie: skąd (stara sesja zostaje do akceptacji).
+const movedFrom = computed(() => (s.value?.moved_from ? schedule.sessions.find((x) => x.id === s.value!.moved_from) : null))
 const isOpen = computed(() => s.value && ['pending', 'confirmed'].includes(s.value.status))
 const isPast = computed(() => s.value && new Date(s.value.starts_at) < new Date())
 
@@ -64,7 +66,13 @@ async function run(fn: () => Promise<unknown>, close = false) {
   }
 }
 
-const setStatus = (st: SessionStatus) => run(() => schedule.setStatus(props.id, st, st === 'cancelled' ? reason.value || undefined : undefined))
+const setStatus = (st: SessionStatus) =>
+  run(async () => {
+    const old = movedFrom.value
+    await schedule.setStatus(props.id, st, st === 'cancelled' ? reason.value || undefined : undefined)
+    // Akceptacja przełożenia: baza odwołuje stary termin (wyzwalacz) – odświeżamy go lokalnie.
+    if (st === 'confirmed' && old && ['pending', 'confirmed'].includes(old.status)) old.status = 'cancelled'
+  })
 const setWorkout = (id: string) => run(() => schedule.updateSession(props.id, { workout_id: id || null }))
 const saveNotes = () => run(() => schedule.updateSession(props.id, { notes: notes.value.trim() || null }))
 const cancelSeries = () => run(() => schedule.cancelSeriesFrom(s.value!.series_id!, s.value!.starts_at), true)
@@ -87,8 +95,15 @@ const remove = () => (armedDelete.value ? run(() => schedule.removeSession(props
       <div class="flex flex-wrap gap-1.5">
         <span class="tag">{{ label(SESSION_STATUSES, s.status) }}</span>
         <span v-if="s.series_id" class="tag">sesja cykliczna</span>
-        <span v-if="s.booked_by_client" class="tag">zarezerwowana przez klienta</span>
+        <span v-if="s.booked_by_client" class="tag">prośba klienta</span>
       </div>
+      <p v-if="s.weekly_request && s.status === 'pending'" class="rounded-lg bg-warn-soft p-2 text-sm text-warn-fg">
+        Prośba o stały termin co tydzień. Akceptacja doda serię w tym dniu i o tej godzinie (od tej sesji).
+      </p>
+      <p v-if="movedFrom" class="rounded-lg bg-warn-soft p-2 text-sm text-warn-fg">
+        Przełożenie z {{ new Date(movedFrom.starts_at).toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}.
+        {{ s.status === 'pending' ? 'Akceptacja odwoła tamten termin; odrzucenie go zostawi.' : '' }}
+      </p>
       <p v-if="s.cancel_reason" class="text-sm text-muted">Powód odwołania: {{ s.cancel_reason }}</p>
 
       <button v-if="s.status === 'confirmed'" class="btn-primary w-full !min-h-12 text-base" @click="startLive">

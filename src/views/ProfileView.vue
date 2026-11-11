@@ -7,6 +7,7 @@ import { themePref, type ThemePref } from '@/lib/theme'
 import { loadAppSettings, parentConsent, setParentConsent } from '@/lib/appSettings'
 import { pendingCount, translateAll, type TranslateModel } from '@/lib/translateCues'
 import InstallApp from '@/components/InstallApp.vue'
+import { disablePush, enablePush, pushState, refreshPushState } from '@/lib/push'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -60,6 +61,23 @@ async function runTranslate() {
   } finally {
     trBusy.value = false
     pending.value = await pendingCount().catch(() => pending.value)
+  }
+}
+
+// ----- Powiadomienia push (trenerka): odwołania, prośby o termin, przełożenia, wybory z linków -----
+if (auth.isTrainer) refreshPushState().catch(() => null)
+const pushBusy = ref(false)
+const pushError = ref('')
+async function togglePush() {
+  pushBusy.value = true
+  pushError.value = ''
+  try {
+    if (pushState.value === 'on') await disablePush()
+    else await enablePush()
+  } catch (e) {
+    pushError.value = (e as Error).message
+  } finally {
+    pushBusy.value = false
   }
 }
 
@@ -121,6 +139,18 @@ async function logout() {
       <p v-if="trError" class="text-danger" role="alert">{{ trError }}</p>
       <button v-if="!trBusy" class="btn-primary w-full" @click="runTranslate">Przetłumacz ({{ pending }})</button>
       <button v-else class="btn-ghost w-full border border-line-strong" @click="trSignal.stop = true">Przerwij po bieżącej partii</button>
+    </section>
+
+    <section v-if="auth.isTrainer" class="card space-y-3 p-4 text-sm">
+      <p class="label">Powiadomienia na tym urządzeniu</p>
+      <p class="text-muted">Dostaniesz powiadomienie, gdy klient odwoła trening, poprosi o termin albo o przełożenie, a także gdy ktoś wybierze terminy z linku.</p>
+      <button class="w-full" :class="pushState === 'on' ? 'btn-ghost border border-line-strong' : 'btn-primary'" :disabled="pushBusy || pushState === 'unsupported' || pushState === 'denied'" @click="togglePush">
+        {{ pushBusy ? 'Chwila…' : pushState === 'on' ? 'Wyłącz powiadomienia' : 'Włącz powiadomienia' }}
+      </button>
+      <p v-if="pushState === 'on'" class="font-semibold text-success">Włączone na tym urządzeniu.</p>
+      <p v-else-if="pushState === 'unsupported'" class="text-muted">Ta przeglądarka nie obsługuje powiadomień. Na iPhonie: najpierw dodaj aplikację do ekranu początkowego (poniżej) i otwórz ją z ikony.</p>
+      <p v-else-if="pushState === 'denied'" class="text-muted">Powiadomienia są zablokowane w ustawieniach przeglądarki dla tej strony – odblokuj je tam.</p>
+      <p v-if="pushError" class="text-danger" role="alert">{{ pushError }}</p>
     </section>
 
     <InstallApp />
