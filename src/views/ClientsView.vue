@@ -30,7 +30,7 @@ onMounted(async () => {
 })
 
 const activeProgram = (clientId: string) =>
-  programs.list.find((p) => p.client_id === clientId && p.status === 'active') ??
+  programs.list.find((p) => p.client_id === clientId && p.status === 'active' && p.kind !== 'single') ??
   programs.list.find((p) => p.client_id === clientId && p.status === 'draft')
 
 const status = computed(() => {

@@ -27,6 +27,7 @@ const QUERY_SYN: Record<string, string[]> = {
 
 interface Indexed {
   e: Exercise
+  tags: string[] // etykiety trenerki jako całe frazy (znormalizowane) – sprawdzane najpierw
   name: string[] // słowa nazwy (PL + EN + etykiety) – najwyższa waga
   extra: string[] // frazy, mięsień główny, sprzęt, wzorzec
   minor: string[] // mięśnie pomocnicze – niższa waga
@@ -40,6 +41,7 @@ function index(e: Exercise): Indexed {
   const primary = e.primary_muscles?.length ? e.primary_muscles : e.muscle_groups.slice(0, 1)
   x = {
     e,
+    tags: (e.tags ?? []).map((t) => words(t).join(' ')).filter(Boolean),
     name: words([e.name_pl, e.name_en, ...(e.tags ?? [])].filter(Boolean).join(' ')),
     extra: words(
       [
@@ -104,11 +106,19 @@ function best(q: string, list: string[]) {
 }
 
 /** Ocena ćwiczenia dla zapytania (0 = nie pasuje). Każde słowo zapytania musi gdzieś pasować. */
-export function exerciseScore(query: string, e: Exercise) {
+export function exerciseScore(query: string, e: Exercise, favorites?: Set<string>) {
   const qs = words(query)
   if (!qs.length) return 1
   const x = index(e)
-  let total = 0
+  // Etykiety trenerki najpierw: jej nazwa ćwiczenia („OHP”, „rumun”, „sanki pchanie”) bije wszystko inne.
+  const nq0 = qs.join(' ')
+  let tagBonus = 0
+  for (const t of x.tags) {
+    if (t === nq0) tagBonus = Math.max(tagBonus, 30)
+    else if (t.startsWith(nq0) || (' ' + t + ' ').includes(' ' + nq0 + ' ')) tagBonus = Math.max(tagBonus, 18)
+    else if (nq0.length >= 4 && t.includes(nq0)) tagBonus = Math.max(tagBonus, 10)
+  }
+  let total = tagBonus + (favorites?.has(e.id) ? 2.5 : 0)
   for (const raw of qs) {
     const alts = [raw, ...(QUERY_SYN[raw] ?? [])]
     let s = 0
@@ -135,10 +145,10 @@ export function exerciseScore(query: string, e: Exercise) {
 }
 
 /** Filtrowanie i sortowanie po trafności (przy pustym zapytaniu – kolejność wejściowa). */
-export function searchExercises<T extends Exercise>(query: string, list: T[]): T[] {
+export function searchExercises<T extends Exercise>(query: string, list: T[], favorites?: Set<string>): T[] {
   if (!query.trim()) return list
   return list
-    .map((e) => ({ e, s: exerciseScore(query, e) }))
+    .map((e) => ({ e, s: exerciseScore(query, e, favorites) }))
     .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s)
     .map((x) => x.e)

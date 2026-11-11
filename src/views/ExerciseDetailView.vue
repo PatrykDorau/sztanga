@@ -65,7 +65,14 @@ const progressions = computed(() => (e.value ? ex.progressionsOf(e.value.id) : [
 const alternatives = computed(() => (e.value ? ex.alternativesOf(e.value.id) : []))
 const linked = computed(() => [props.id, ...regressions.value, ...progressions.value, ...alternatives.value])
 
-const pickerTitle = { regression: 'Dodaj regresję (łatwiejsze)', progression: 'Dodaj progresję (trudniejsze)', alternative: 'Dodaj alternatywę' }
+const pickerTitle = { regression: 'Wybierz łatwiejszą wersję (regresję)', progression: 'Wybierz trudniejszą wersję (progresję)', alternative: 'Wybierz alternatywę (zamiennik)' }
+type RelKind = 'regression' | 'progression' | 'alternative'
+const RELATION_GROUPS: { kind: RelKind; title: string; hint: string; add: string; icon: string }[] = [
+  { kind: 'regression', title: 'Regresje – łatwiejsze', hint: 'Gdy klient jeszcze nie daje rady albo coś boli.', add: 'Dodaj regresję', icon: 'down' },
+  { kind: 'progression', title: 'Progresje – trudniejsze', hint: 'Następny krok, gdy ćwiczenie idzie łatwo.', add: 'Dodaj progresję', icon: 'up' },
+  { kind: 'alternative', title: 'Alternatywy – zamienniki', hint: 'Podobny ruch, gdy brak sprzętu albo zajęte stanowisko.', add: 'Dodaj alternatywę', icon: 'swap' },
+]
+const idsOf = (k: RelKind) => (k === 'regression' ? regressions.value : k === 'progression' ? progressions.value : alternatives.value)
 
 async function onPick(otherId: string) {
   if (!picking.value) return
@@ -175,48 +182,44 @@ async function remove() {
       </section>
 
       <section class="card p-4">
-        <h2 class="mb-3 font-semibold">Łańcuch regresji i progresji</h2>
-        <ol v-if="chain.length > 1" class="space-y-1">
-          <li v-for="(cid, i) in chain" :key="cid" class="flex items-center gap-2">
-            <span class="w-5 text-center text-xs text-subtle">{{ i + 1 }}</span>
-            <RouterLink
-              v-if="cid !== e.id"
-              :to="`/cwiczenia/${cid}`"
-              class="flex-1 rounded-lg px-3 py-2 text-sm hover:bg-surface-2"
-            >{{ ex.byId(cid)?.name_pl }}</RouterLink>
-            <span v-else class="flex-1 rounded-lg bg-primary-soft px-3 py-2 text-sm font-semibold text-fg">{{ e.name_pl }}</span>
-          </li>
-        </ol>
-        <p v-else class="text-sm text-muted">Brak powiązań. {{ auth.isTrainer ? 'Dodaj łatwiejszą lub trudniejszą wersję.' : '' }}</p>
+        <h2 class="font-semibold">Regresje, progresje i alternatywy</h2>
+        <p class="mt-0.5 mb-3 text-sm text-muted">Łatwiejsze i trudniejsze wersje oraz zamienniki – w sesji na żywo podmienisz ćwiczenie jednym dotknięciem.</p>
 
-        <div v-if="regressions.length + progressions.length + alternatives.length" class="mt-4 space-y-3 border-t border-line pt-3">
-          <template v-for="grp in [
-            { title: 'Regresje (łatwiejsze)', ids: regressions, icon: 'down' },
-            { title: 'Progresje (trudniejsze)', ids: progressions, icon: 'up' },
-            { title: 'Alternatywy', ids: alternatives, icon: 'swap' },
-          ]" :key="grp.title">
-            <div v-if="grp.ids.length">
-              <p class="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{{ grp.title }}</p>
-              <ul class="space-y-1">
-                <li v-for="oid in grp.ids" :key="oid" class="flex items-center gap-2">
-                  <RouterLink :to="`/cwiczenia/${oid}`" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1 hover:bg-surface-2">
-                    <ExerciseThumb v-if="ex.byId(oid)" :exercise="ex.byId(oid)!" class="!size-10" />
-                    <span class="truncate text-sm">{{ ex.byId(oid)?.name_pl }}</span>
-                  </RouterLink>
-                  <button v-if="auth.isTrainer" class="icon-btn text-subtle hover:text-danger" aria-label="Usuń powiązanie" @click="unlink(oid)">
-                    <Icon name="x" class="size-4" />
-                  </button>
-                </li>
-              </ul>
+        <div v-for="grp in RELATION_GROUPS" :key="grp.kind" class="border-t border-line py-3 first-of-type:border-t-0">
+          <div class="mb-1.5 flex items-center gap-2">
+            <span class="flex size-7 items-center justify-center rounded-full bg-surface-2"><Icon :name="grp.icon" class="size-4" /></span>
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold">{{ grp.title }}</p>
+              <p class="text-xs text-muted">{{ grp.hint }}</p>
             </div>
-          </template>
+          </div>
+          <ul v-if="idsOf(grp.kind).length" class="space-y-1">
+            <li v-for="oid in idsOf(grp.kind)" :key="oid" class="flex items-center gap-2">
+              <RouterLink :to="`/cwiczenia/${oid}`" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1 hover:bg-surface-2">
+                <ExerciseThumb v-if="ex.byId(oid)" :exercise="ex.byId(oid)!" class="!size-10" />
+                <span class="truncate text-sm">{{ ex.byId(oid)?.name_pl }}</span>
+              </RouterLink>
+              <button v-if="auth.isTrainer" class="icon-btn text-subtle hover:text-danger" :aria-label="`Usuń powiązanie z ${ex.byId(oid)?.name_pl ?? 'ćwiczeniem'}`" @click="unlink(oid)">
+                <Icon name="x" class="size-4" />
+              </button>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-subtle">Brak.</p>
+          <button v-if="auth.isTrainer" class="mt-2 flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line-strong text-sm font-semibold text-primary-fg hover:bg-surface-2" @click="picking = grp.kind">
+            <Icon name="plus" class="size-4" />{{ grp.add }}
+          </button>
         </div>
 
-        <div v-if="auth.isTrainer" class="mt-4 grid grid-cols-3 gap-2">
-          <button class="btn-ghost !px-2 text-xs" @click="picking = 'regression'"><Icon name="down" class="size-4" />Regresja</button>
-          <button class="btn-ghost !px-2 text-xs" @click="picking = 'progression'"><Icon name="up" class="size-4" />Progresja</button>
-          <button class="btn-ghost !px-2 text-xs" @click="picking = 'alternative'"><Icon name="swap" class="size-4" />Alternatywa</button>
-        </div>
+        <details v-if="chain.length > 2" class="mt-1 border-t border-line pt-3">
+          <summary class="cursor-pointer text-sm font-semibold">Cała ścieżka od najłatwiejszego ({{ chain.length }})</summary>
+          <ol class="mt-2 space-y-1">
+            <li v-for="(cid, i) in chain" :key="cid" class="flex items-center gap-2">
+              <span class="w-5 text-center text-xs text-subtle">{{ i + 1 }}</span>
+              <RouterLink v-if="cid !== e.id" :to="`/cwiczenia/${cid}`" class="flex-1 rounded-lg px-3 py-2 text-sm hover:bg-surface-2">{{ ex.byId(cid)?.name_pl }}</RouterLink>
+              <span v-else class="flex-1 rounded-lg bg-primary-soft px-3 py-2 text-sm font-semibold text-fg">{{ e.name_pl }}</span>
+            </li>
+          </ol>
+        </details>
         <p v-if="error" class="mt-2 text-sm text-danger">{{ error }}</p>
       </section>
 

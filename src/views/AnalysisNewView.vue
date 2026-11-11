@@ -43,7 +43,7 @@ const profile = computed(() => PROFILES[ex.value])
 const exerciseId = ref<string | null>(route.query.exercise ? String(route.query.exercise) : null)
 const exQuery = ref('')
 const exercise = computed(() => (exerciseId.value ? exStore.byId(exerciseId.value) : null))
-const exResults = computed(() => (exQuery.value.trim().length >= 2 ? searchExercises(exQuery.value, exStore.all).slice(0, 6) : []))
+const exResults = computed(() => (exQuery.value.trim().length >= 2 ? searchExercises(exQuery.value, exStore.all, exStore.favorites).slice(0, 6) : []))
 function pickExercise(id: string) {
   exerciseId.value = id
   exQuery.value = ''

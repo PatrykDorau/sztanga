@@ -48,7 +48,7 @@ watch(
   async (cid) => {
     plan.value = null
     f.workout_id = ''
-    const p = programs.list.find((x) => x.client_id === cid && x.status === 'active')
+    const p = programs.list.find((x) => x.client_id === cid && x.status === 'active' && x.kind !== 'single')
     if (p) plan.value = JSON.parse(JSON.stringify(await programs.open(p.id)))
   },
 )

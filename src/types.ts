@@ -114,6 +114,7 @@ export interface Program {
   template_id: string | null
   start_date: string | null
   status: ProgramStatus
+  kind?: 'plan' | 'single' // single = pojedynczy trening (jeden tydzień, jedna jednostka)
   created_at: string
   updated_at: string
 }

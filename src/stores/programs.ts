@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { applyProgression } from '@/lib/progression'
 import type { Program, ProgramTree, ProgramWeek, Workout, WorkoutExercise } from '@/types'
 
-const PROGRAM_COLS = 'id, name, description, is_template, client_id, template_id, start_date, status, created_at, updated_at'
+const PROGRAM_COLS = 'id, name, description, is_template, client_id, template_id, start_date, status, kind, created_at, updated_at'
 const WE_COLS = 'id, workout_id, exercise_id, position, group_label, sets, reps, load, tempo, rest_sec, rpe, notes, progression'
 const TREE = `${PROGRAM_COLS}, program_weeks(id, program_id, position, phase, notes, workouts(id, week_id, position, name, notes, workout_exercises(${WE_COLS})))`
 
@@ -50,7 +50,7 @@ export const useProgramsStore = defineStore('programs', () => {
   }
 
   // ===== Program =====
-  async function create(input: Partial<Program> & { name: string }, weeks = 1) {
+  async function create(input: Partial<Program> & { name: string }, weeks = 1, workoutName = 'Trening A') {
     const p = ok(await supabase.from('programs').insert(input).select(PROGRAM_COLS).single()) as Program
     const wk = ok(
       await supabase
@@ -58,7 +58,7 @@ export const useProgramsStore = defineStore('programs', () => {
         .insert(Array.from({ length: weeks }, (_, i) => ({ program_id: p.id, position: i })))
         .select('id'),
     ) as { id: string }[]
-    await supabase.from('workouts').insert(wk.map((w) => ({ week_id: w.id, position: 0, name: 'Trening A' })))
+    await supabase.from('workouts').insert(wk.map((w) => ({ week_id: w.id, position: 0, name: workoutName })))
     touchList(p)
     return p
   }

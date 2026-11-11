@@ -9,33 +9,58 @@ const props = withDefaults(defineProps<{ family: FamilyKey; equipment?: string[]
 const v = computed(() => variantOf(props.equipment))
 const fam = computed(() => FAMILIES[props.family])
 const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+// Odtwarzanie w pętli: czas w cyklu (do punktu zwrotnego → pauza → powrót → pauza), pauza i przewijanie paskiem.
+const tempo = computed(() => animTempo(props.family))
+const total = computed(() => tempo.value.reduce((a, b) => a + b, 0))
 const paused = ref(reduced)
-const ph = ref(reduced ? 1 : 0)
+const t = ref(reduced ? tempo.value[0] : 0) // sekundy w cyklu
+const ease = (x: number) => (x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2)
+const ph = computed(() => {
+  const [a, b, c] = tempo.value
+  let x = t.value
+  if (x < a) return ease(x / a)
+  if ((x -= a) < b) return 1
+  if ((x -= b) < c) return 1 - ease(x / c)
+  return 0
+})
+const PHASE_NAMES = computed(() => (FAMILIES[props.family].effortTo1 ? ['ruch (wysiłek)', 'pauza', 'powrót', 'pauza'] : ['w dół', 'pauza', 'w górę', 'pauza']))
+const phaseName = computed(() => {
+  let x = t.value
+  for (let i = 0; i < 4; i++) {
+    if (x < tempo.value[i]) return PHASE_NAMES.value[i]
+    x -= tempo.value[i]
+  }
+  return PHASE_NAMES.value[3]
+})
 
 let raf = 0
-let t0 = 0
-const ease = (x: number) => (x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2)
+let last = 0
+let dragging = false
 function loop(now: number) {
-  if (!t0) t0 = now
-  if (!paused.value && props.phase == null) {
-    const [a, b, c, d] = animTempo(props.family)
-    const total = a + b + c + d
-    let t = ((now - t0) / 1000) % total
-    if (t < a) ph.value = ease(t / a)
-    else if ((t -= a) < b) ph.value = 1
-    else if ((t -= b) < c) ph.value = 1 - ease(t / c)
-    else ph.value = 0
-  }
+  const dt = last ? (now - last) / 1000 : 0
+  last = now
+  if (!paused.value && !dragging && props.phase == null) t.value = (t.value + dt) % total.value
   raf = requestAnimationFrame(loop)
 }
 onMounted(() => (raf = requestAnimationFrame(loop)))
 onBeforeUnmount(() => cancelAnimationFrame(raf))
 watch(
   () => props.family,
-  () => (t0 = 0),
+  () => (t.value = 0),
 )
+function scrub(e: Event) {
+  dragging = true
+  t.value = Number((e.target as HTMLInputElement).value)
+}
+const scrubEnd = () => (dragging = false)
+// Znaczniki faz na pasku (punkt zwrotny i powrót)
+const marks = computed(() => {
+  const [a, b, c] = tempo.value
+  return [a, a + b, a + b + c].map((x) => (x / total.value) * 100)
+})
 
 const fig = computed<Fig>(() => fam.value.pose(props.phase ?? ph.value, v.value))
+const fmtS = (x: number) => x.toFixed(1).replace('.', ',')
 const extra = computed(() => fam.value.props?.(v.value) ?? {})
 
 // Kadr: wszystkie pozycje ruchu + rekwizyty, żeby ludzik nie skakał.
@@ -51,6 +76,7 @@ const box = computed(() => {
   if (e.bar) pts.push([e.bar[0], e.bar[2]], [e.bar[1], e.bar[2]])
   if (e.pulley) pts.push(e.pulley)
   if (e.pulley2) pts.push(e.pulley2)
+  if (e.lever) pts.push(e.lever)
   pts.push([0, 0])
   const xs = pts.map((p) => p[0])
   const ys = pts.map((p) => p[1])
@@ -83,9 +109,10 @@ const wrists = computed(() => [fig.value.wrist, ...(fig.value.wrist2 ? [fig.valu
 </script>
 
 <template>
+  <div class="overflow-hidden rounded-2xl bg-surface-2">
   <button
     type="button"
-    class="relative block w-full overflow-hidden rounded-2xl bg-surface-2"
+    class="relative block w-full"
     :aria-label="paused ? 'Wznów animację ruchu' : 'Zatrzymaj animację ruchu'"
     @click="paused = !paused"
   >
@@ -102,6 +129,11 @@ const wrists = computed(() => [fig.value.wrist, ...(fig.value.wrist2 ? [fig.valu
       <line v-if="extra.pulley2 && fig.wrist2" :x1="extra.pulley2[0]" :y1="-extra.pulley2[1]" :x2="fig.wrist2[0]" :y2="-fig.wrist2[1]" stroke="var(--muted)" stroke-width="0.015" />
       <circle v-if="extra.pulley" :cx="extra.pulley[0]" :cy="-extra.pulley[1]" r="0.04" fill="var(--muted)" />
       <circle v-if="extra.pulley2" :cx="extra.pulley2[0]" :cy="-extra.pulley2[1]" r="0.04" fill="var(--muted)" />
+      <!-- landmine: sztanga oparta końcem o podłogę, drugi koniec w dłoni -->
+      <template v-if="extra.lever">
+        <line :x1="extra.lever[0]" :y1="-extra.lever[1]" :x2="fig.wrist[0]" :y2="-fig.wrist[1]" stroke="var(--primary)" stroke-width="0.04" />
+        <circle :cx="extra.lever[0]" :cy="-extra.lever[1]" r="0.05" fill="var(--muted)" />
+      </template>
       <line v-if="v === 'band'" :x1="fig.wrist[0]" :y1="-fig.wrist[1]" :x2="fig.toe[0]" :y2="-fig.toe[1]" stroke="var(--success)" stroke-width="0.02" stroke-dasharray="0.04 0.03" />
 
       <!-- dalsza strona -->
@@ -123,6 +155,34 @@ const wrists = computed(() => [fig.value.wrist, ...(fig.value.wrist2 ? [fig.valu
       </template>
       <circle v-for="(w, i) in wrists" :key="'h' + i" :cx="w[0]" :cy="-w[1]" r="0.035" fill="var(--fg)" />
     </svg>
-    <span class="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">{{ paused ? 'pauza' : 'wzorzec ruchu' }}</span>
+    <span class="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">{{ phaseName }}</span>
   </button>
+  <!-- Sterowanie: pauza / odtwarzanie i pasek postępu cyklu (przeciągnij, żeby obejrzeć dowolny moment ruchu) -->
+  <div v-if="phase == null" class="flex items-center gap-2 px-2 pb-2">
+    <button type="button" class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary" :aria-label="paused ? 'Odtwórz animację' : 'Pauza'" @click="paused = !paused">
+      <svg v-if="paused" viewBox="0 0 24 24" class="size-4" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z" /></svg>
+      <svg v-else viewBox="0 0 24 24" class="size-4" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+    </button>
+    <div class="relative h-9 flex-1">
+      <div class="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-line-strong" />
+      <div class="absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-full bg-primary" :style="{ width: `${(t / total) * 100}%` }" />
+      <span v-for="(m, i) in marks" :key="i" class="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded bg-muted" :style="{ left: `${m}%` }" />
+      <span class="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-primary bg-surface" :style="{ left: `${(t / total) * 100}%` }" />
+      <input
+        type="range"
+        class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        :min="0"
+        :max="total"
+        step="0.01"
+        :value="t"
+        aria-label="Moment ruchu"
+        :aria-valuetext="`${fmtS(t)} z ${fmtS(total)} s – ${phaseName}`"
+        @input="scrub"
+        @change="scrubEnd"
+        @pointerup="scrubEnd"
+      />
+    </div>
+    <span class="w-14 shrink-0 text-right text-xs text-muted tabular-nums">{{ fmtS(t) }} / {{ fmtS(total) }} s</span>
+  </div>
+  </div>
 </template>

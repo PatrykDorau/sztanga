@@ -4,11 +4,43 @@
 //   POST { action: 'ask', messages: [...] }    → { answer }
 import Anthropic from 'npm:@anthropic-ai/sdk@1.7.0'
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4'
-import { asUser, cors, isTrainer, json } from '../_shared/google.ts'
+import { admin, asUser, cors, isTrainer, json } from '../_shared/google.ts'
 
 const MODEL = 'claude-opus-5-5'
 // Gdy model odmówi (filtry bezpieczeństwa), API samo ponawia na modelu zapasowym.
 const FALLBACK = { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as const
+// Model wybrany przez trenerkę w Profilu (app_settings). Zapasowy model po stronie serwera tylko przy Opusie.
+const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'] as const
+async function modelFor(db: SupabaseClient, kind: 'assistant' | 'plan') {
+  const { data } = await db.from('app_settings').select('model_assistant, model_plan').eq('id', 1).maybeSingle()
+  const m = (kind === 'assistant' ? data?.model_assistant : data?.model_plan) as string | undefined
+  return (MODELS as readonly string[]).includes(m ?? '') ? (m as string) : kind === 'assistant' ? 'claude-haiku-5-5' : 'claude-sonnet-5-5'
+}
+const fallbackFor = (model: string) => (model === MODEL ? FALLBACK : {})
+
+// ----- Koszt wywołań (USD za milion tokenów: wejście, wyjście, odczyt z cache, zapis do cache 5 min) -----
+const PRICES: Record<string, [number, number, number, number]> = {
+  'claude-opus-5-5': [4, 20, 0.2, 5],
+  'claude-sonnet-5-5': [2, 10, 0.1, 2.5],
+  'claude-haiku-5-5': [0.1, 0.5, 0.01, 0.125],
+}
+type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }
+/** Zapis kosztu do ai_usage (licznik kredytów w Profilu). Błąd zapisu nie psuje odpowiedzi. */
+function logUsage(action: 'ask' | 'plan' | 'translate', model: string, u: Usage | undefined, actualModel?: string) {
+  if (!u) return
+  const m = actualModel && PRICES[actualModel] ? actualModel : model
+  const [pi, po, pr, pw] = PRICES[m] ?? PRICES['claude-opus-5-5']
+  const row = {
+    action,
+    model: m,
+    input_tokens: u.input_tokens ?? 0,
+    output_tokens: u.output_tokens ?? 0,
+    cache_read_tokens: u.cache_read_input_tokens ?? 0,
+    cache_write_tokens: u.cache_creation_input_tokens ?? 0,
+  }
+  const cost = (row.input_tokens * pi + row.output_tokens * po + row.cache_read_tokens * pr + row.cache_write_tokens * pw) / 1e6
+  admin().from('ai_usage').insert({ ...row, cost_usd: cost }).then(() => null, () => null)
+}
 
 const PHASES = ['adaptation', 'hypertrophy', 'strength', 'power', 'deload', 'peaking', 'conditioning']
 
@@ -37,6 +69,7 @@ function textOf(msg: Anthropic.Beta.BetaMessage) {
 // Generator planu
 // ======================================================================
 interface PlanInput {
+  structure?: boolean
   client_id?: string | null
   goal: string
   level: 'beginner' | 'intermediate' | 'advanced'
@@ -126,6 +159,7 @@ interface PlanOut {
 }
 
 async function generatePlan(db: SupabaseClient, input: PlanInput) {
+  const model = await modelFor(db, 'plan')
   const days = Math.max(1, Math.min(6, Math.round(input.days || 3)))
   const weeks = Math.max(1, Math.min(8, Math.round(input.weeks || 4)))
   let client: { id: string; full_name: string; goals: string | null; limitations: string[]; equipment: string[]; client_group: string; birth_date: string | null } | null = null
@@ -137,8 +171,11 @@ async function generatePlan(db: SupabaseClient, input: PlanInput) {
   const equipment = [...new Set([...(input.equipment ?? []), 'body only'])]
 
   // Tylko ćwiczenia z jej bazy, które da się zrobić tym sprzętem i bez przeciwwskazań klienta.
-  const { data: all, error } = await db.from('exercises').select('id, name_pl, movement_pattern, muscle_groups, equipment, level, contraindications')
+  const { data: all, error } = await db.from('exercises').select('id, name_pl, movement_pattern, muscle_groups, equipment, level, contraindications, tags')
   if (error) throw error
+  // Ulubione trenerki (gwiazdka) – model ma po nie sięgać częściej.
+  const { data: favRows } = await db.from('exercise_favorites').select('exercise_id')
+  const favs = new Set((favRows ?? []).map((f) => f.exercise_id as string))
   // Siłownia: kategorie sprzętu i konkretne maszyny ustawione przez trenerkę
   let gymRow: { name: string; equipment: string[] | null; machines: string[] | null } | null = null
   if (input.gym_id) {
@@ -154,7 +191,7 @@ async function generatePlan(db: SupabaseClient, input: PlanInput) {
   if (allowed.length < 8) throw new HttpError(400, 'Za mało ćwiczeń pasujących do sprzętu i ograniczeń – dodaj sprzęt albo ćwiczenia do bazy.')
   const codeToId = new Map(allowed.map((e, i) => [`e${i + 1}`, e.id as string]))
   const catalog = allowed
-    .map((e, i) => `e${i + 1} | ${e.name_pl} | ${e.movement_pattern ?? '-'} | ${(e.muscle_groups as string[]).join(',')} | ${e.level}`)
+    .map((e, i) => `e${i + 1} | ${favs.has(e.id as string) ? '★ ' : ''}${e.name_pl}${(e.tags as string[] | null)?.length ? ` [${(e.tags as string[]).join(', ')}]` : ''} | ${e.movement_pattern ?? '-'} | ${(e.muscle_groups as string[]).join(',')} | ${e.level}`)
     .join('\n')
 
   const system = `Jesteś doświadczonym trenerem personalnym i układasz SZKIC planu treningowego, który trenerka potem poprawi.
@@ -165,6 +202,12 @@ Zasady:
 - "reps" jako tekst, np. "8", "8-10", "30 s". "load" opisowo, np. "RPE 7", "60% 1RM", "masa ciała". "rest_sec" w sekundach.
 - Nazwy treningów i opisy po polsku, krótko. "description" planu: 1–2 zdania o celu i logice.
 - Fazy tygodni tylko z listy: ${PHASES.join(', ')}.
+- Ćwiczenia oznaczone ★ to ulubione trenerki – wybieraj je w pierwszej kolejności, gdy pasują do celu. W nawiasach [ ] są jej etykiety (jej nazwy i rola ćwiczenia).${
+    input.structure
+      ? `
+- Schemat trenerki dla każdego treningu: 1) przygotowanie ruchowe – ergometr 5 min, potem 3–4 ćwiczenia z etykietą „przygotowanie ruchowe” po 12/str (1 seria, notes "Przygotowanie ruchowe"); 2) aktywacja – 2–3 ćwiczenia z etykietą „aktywacja”, group "A", 2 serie (notes "Aktywacja"); 3) część główna w parach (group B, C, D…), wszędzie 3 serie; 4) na końcu finisher z etykietą „finisher” (np. sanki), jeśli jest w katalogu.`
+      : ''
+  }
 
 Katalog ćwiczeń (kod | nazwa | wzorzec ruchu | mięśnie | poziom):
 ${catalog}`
@@ -186,15 +229,16 @@ ${catalog}`
     .join('\n')
 
   const stream = anthropic().beta.messages.stream({
-    model: MODEL,
+    model,
     max_tokens: 64000,
-    ...FALLBACK,
+    ...fallbackFor(model),
     // Katalog jest stały między wywołaniami z tym samym filtrem – cache obniża koszt kolejnych prób.
     system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLAN_SCHEMA } },
     messages: [{ role: 'user', content: brief }],
   } as unknown as Anthropic.Beta.MessageCreateParamsStreaming)
   const msg = await stream.finalMessage()
+  logUsage('plan', model, msg.usage as Usage, (msg as { model?: string }).model)
   if (msg.stop_reason === 'max_tokens') throw new HttpError(502, 'Plan wyszedł za długi – zmniejsz liczbę tygodni albo treningów.')
   let plan: PlanOut
   try {
@@ -400,7 +444,7 @@ async function recentLogs(db: SupabaseClient, clientId: string, limit: number) {
 async function runTool(db: SupabaseClient, name: string, input: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case 'find_clients': {
-      let q = db.from('clients').select('id, full_name, client_group, archived').order('full_name').limit(100)
+      let q = db.from('clients').select('id, full_name, client_group, archived, gyms(name)').order('full_name').limit(100)
       if (input.query) q = q.ilike('full_name', `%${String(input.query).replace(/[%_]/g, '')}%`)
       const { data, error } = await q
       if (error) throw error
@@ -409,7 +453,7 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
     case 'client_profile': {
       const id = String(input.client_id)
       const [c, p, m] = await Promise.all([
-        db.from('clients').select('id, full_name, client_group, birth_date, goals, limitations, equipment, notes, archived').eq('id', id).maybeSingle(),
+        db.from('clients').select('id, full_name, client_group, birth_date, goals, limitations, equipment, notes, archived, gyms(name)').eq('id', id).maybeSingle(),
         db.from('programs').select('id, name, status, start_date').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
         db.from('measurements').select('measured_on, kind, value, unit').eq('client_id', id).order('measured_on', { ascending: false }).limit(20),
       ])
@@ -676,16 +720,18 @@ Jeśli pytanie dotyczy danych, których narzędzia nie dają (np. finanse, spraw
   const client = anthropic()
   const proposals: unknown[] = []
   const done = (answer: string) => ({ answer, proposals })
+  const model = await modelFor(db, 'assistant')
   for (let i = 0; i < 10; i++) {
     const msg = await client.beta.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 16000,
-      ...FALLBACK,
+      ...fallbackFor(model),
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       output_config: { effort: 'low' },
       tools: TOOLS,
       messages,
     } as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming)
+    logUsage('ask', model, msg.usage as Usage, (msg as { model?: string }).model)
     if (msg.stop_reason === 'refusal') return done(textOf(msg))
     if (msg.stop_reason !== 'tool_use') return done(textOf(msg) || (proposals.length ? 'Przygotowałem propozycję zmian – sprawdź kartę poniżej.' : 'Brak odpowiedzi.'))
     messages.push({ role: 'assistant', content: msg.content })
@@ -741,6 +787,7 @@ async function translate(items: { id: string; name: string; text: string }[], mo
     ],
     messages: [{ role: 'user', content: JSON.stringify(batch.map((i) => ({ id: i.id, exercise: i.name, text: i.text }))) }],
   } as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming)
+  logUsage('translate', model, msg.usage as Usage, (msg as { model?: string }).model)
   if (msg.stop_reason === 'max_tokens') throw new HttpError(502, 'Za długa partia – zmniejsz liczbę ćwiczeń w jednym wywołaniu.')
   const out = JSON.parse(textOf(msg)) as { items: { id: string; pl: string }[] }
   const ids = new Set(batch.map((i) => i.id))

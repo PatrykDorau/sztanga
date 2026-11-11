@@ -17,6 +17,7 @@ export interface RuleExercise {
   contraindications: string[]
   source: string
   video_path: string | null
+  tags?: string[]
 }
 export interface PlanDraft {
   name: string
@@ -151,7 +152,15 @@ function hash(s: string) {
   return (h >>> 0) / 4294967296
 }
 
-export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage: Map<string, number>, seed = '', group: string | null = null, allowed: Set<string> | null = null): PlanDraft {
+/** Schemat treningu trenerki (z jej planów): przygotowanie ruchowe → aktywacja → część główna w parach → finisher. */
+export interface PlanStyle {
+  favorites?: Set<string> // ulubione (gwiazdka) – wybierane częściej
+  structure?: boolean // rozgrzewka, aktywacja i pary jak w planach trenerki
+}
+const hasTag = (e: RuleExercise, t: string) => (e.tags ?? []).some((x) => x.toLowerCase() === t)
+
+export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage: Map<string, number>, seed = '', group: string | null = null, allowed: Set<string> | null = null, style: PlanStyle = {}): PlanDraft {
+  const favs = style.favorites ?? new Set<string>()
   // Dzieci: zawsze dawki ogólnorozwojowe (więcej powtórzeń, umiarkowany wysiłek), bez pracy siłowej na niskich powtórzeniach.
   const child = group === 'child'
   const goal: Goal = child ? 'general' : detectGoal(req.goal)
@@ -183,7 +192,8 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
   }
   const compound = (e: RuleExercise, role: Slot['role']) => (role !== 'main' ? 0 : e.muscle_groups.length >= 3 ? 3 : e.muscle_groups.length === 2 ? 1.5 : -2)
   const score = (e: RuleExercise, role: Slot['role']) =>
-    (usage.get(e.id) ?? 0) * 5 +
+    // Użycie w dotychczasowych planach – z limitem (wygenerowane szkice nie mogą przebić ulubionych z gwiazdką).
+    Math.min(usage.get(e.id) ?? 0, 3) * 3 +
     (e.source === 'own' ? 3 : 0) +
     (e.video_path ? 2 : 0) +
     (LEVEL_RANK[e.level] === maxLevel ? 2 : 1) +
@@ -191,6 +201,7 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
     compound(e, role) +
     (SPECIAL.test(e.name_pl) ? (req.level === 'advanced' ? -2 : -6) : 0) +
     (STAPLES.has((e.name_en ?? '').toLowerCase()) ? (role === 'main' ? 8 : 4) : 0) +
+    (favs.has(e.id) ? (role === 'main' ? 10 : 6) : 0) +
     hash(seed + e.id)
   const candidates = (slot: Slot) =>
     pool
@@ -232,6 +243,24 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
   })
   if (!chosen.some((w) => w.picks.length >= 3)) throw new Error('Za mało ćwiczeń w bazie pasujących do sprzętu, poziomu i ograniczeń.')
 
+  // ----- Rozgrzewka i aktywacja z ćwiczeń oznaczonych etykietami trenerki (ulubione najpierw, rotacja między treningami) -----
+  const usable = (e: RuleExercise) => (!allowed || allowed.has(e.id)) && e.equipment.every((q) => equipment.has(q)) && !e.contraindications.some((c) => limits.has(c))
+  const tagged = (t: string) =>
+    exercises.filter((e) => usable(e) && hasTag(e, t)).sort((a, b) => Number(favs.has(b.id)) - Number(favs.has(a.id)) || hash(seed + a.id) - hash(seed + b.id))
+  const ergo = exercises.find((e) => usable(e) && /^(rowing, stationary|bicycling, stationary|running, treadmill)$/i.test(e.name_en ?? ''))
+  const prepList = tagged('przygotowanie ruchowe').filter((e) => e.id !== ergo?.id)
+  const actList = tagged('aktywacja')
+  const finisher = exercises.find((e) => usable(e) && hasTag(e, 'finisher') && favs.has(e.id))
+  const rotate = <T,>(list: T[], start: number, n: number) => (list.length ? Array.from({ length: Math.min(n, list.length) }, (_, k) => list[(start + k) % list.length]) : [])
+  type Item = PlanDraft['weeks'][number]['workouts'][number]['exercises'][number]
+  function warmup(di: number): Item[] {
+    const out: Item[] = []
+    if (ergo) out.push({ exercise_id: ergo.id, group: null, sets: 1, reps: '5 min', load: null, tempo: null, rest_sec: null, rpe: null, notes: 'Przygotowanie ruchowe – ergometr wioślarski, bieżnia albo rower' })
+    for (const e of rotate(prepList, di * 2, 4)) out.push({ exercise_id: e.id, group: null, sets: 1, reps: '12/str', load: null, tempo: null, rest_sec: null, rpe: null, notes: 'Przygotowanie ruchowe' })
+    for (const e of rotate(actList, di * 3, 3)) out.push({ exercise_id: e.id, group: 'A', sets: 2, reps: '10/str', load: null, tempo: null, rest_sec: 30, rpe: null, notes: 'Aktywacja' })
+    return out
+  }
+
   const plan: PlanDraft = {
     name: `${GOAL_NAME[goal]} – ${days}× w tygodniu, ${weeks} tyg.`,
     description: `Plan z reguł: ${req.goal.trim()}. ${SPLIT_DESC[split[0]] ?? 'Podział góra–dół'}, progresja serii i RPE${weeks >= 4 ? ', lżejszy ostatni tydzień' : ''}.`,
@@ -242,10 +271,12 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
     plan.weeks.push({
       phase: deload ? 'deload' : GOAL_PHASE[goal],
       notes: deload ? 'Tydzień lżejszy: mniej serii, RPE 6.' : w > 0 ? `Progresja względem tygodnia ${w}: +1 seria w głównych lub wyższe RPE.` : null,
-      workouts: chosen.map((c) => ({
+      workouts: chosen.map((c, di) => ({
         name: c.name,
-        notes: null,
-        exercises: c.picks.map(({ ex, role }, i) => {
+        notes: style.structure ? 'Przygotowanie ruchowe → aktywacja → część główna w parach (wszędzie 3 serie)' : null,
+        exercises: [
+          ...(style.structure ? warmup(di) : []),
+          ...c.picks.map(({ ex, role }, i) => {
           const accIdx = c.picks.slice(0, i).filter((p) => p.role === 'acc').length
           const d = DOSES[goal][role]
           const step = Math.min(w, 2)
@@ -253,8 +284,13 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
           const rpe = deload || child ? 6 : Math.min(9, d.rpe + 0.5 * step)
           // Przy redukcji akcesoryjne w superseriach parami (A1/A2, B1/B2).
           const group = goal === 'fat_loss' && role === 'acc' ? letters[Math.floor(accIdx / 2)] : null
-          return { exercise_id: ex.id, group, sets: child ? Math.min(sets, 3) : sets, reps: child && role !== 'core' ? '10-12' : d.reps, load: `RPE ${String(rpe).replace('.', ',')}`, tempo: d.tempo, rest_sec: d.rest, rpe, notes: null }
-        }),
+          // Schemat trenerki: część główna w parach (B1/B2, C1/C2…), 3 serie.
+          const pairGroup = style.structure && role !== 'core' ? letters[1 + Math.floor(i / 2)] : group
+          const pairSets = style.structure && !deload ? 3 : sets
+          return { exercise_id: ex.id, group: pairGroup, sets: child ? Math.min(pairSets, 3) : pairSets, reps: child && role !== 'core' ? '10-12' : d.reps, load: `RPE ${String(rpe).replace('.', ',')}`, tempo: d.tempo, rest_sec: d.rest, rpe, notes: null }
+          }),
+          ...(style.structure && finisher ? [{ exercise_id: finisher.id, group: null, sets: deload ? 2 : 3, reps: '20 m', load: null, tempo: null, rest_sec: 90, rpe: null, notes: 'Finisher' }] : []),
+        ],
       })),
     })
   }
@@ -264,22 +300,24 @@ export function buildRulePlan(req: PlanRequest, exercises: RuleExercise[], usage
 /** Ćwiczenia z bazy i to, jak często trenerka ich używa w planach (ranking). */
 export async function loadRuleData() {
   const [ex, we] = await Promise.all([
-    supabase.from('exercises').select('id, name_pl, name_en, movement_pattern, muscle_groups, equipment, level, contraindications, source, video_path'),
+    supabase.from('exercises').select('id, name_pl, name_en, movement_pattern, muscle_groups, equipment, level, contraindications, source, video_path, tags'),
     supabase.from('workout_exercises').select('exercise_id').limit(10000),
   ])
   if (ex.error) throw ex.error
   const usage = new Map<string, number>()
   for (const r of we.data ?? []) usage.set(r.exercise_id, (usage.get(r.exercise_id) ?? 0) + 1)
-  return { exercises: ex.data as RuleExercise[], usage }
+  const fav = await supabase.from('exercise_favorites').select('exercise_id')
+  const favorites = new Set((fav.data ?? []).map((f) => f.exercise_id as string))
+  return { exercises: ex.data as RuleExercise[], usage, favorites }
 }
 
 /** Zapis szkicu (status draft) – tymi samymi tabelami co kreator. */
-export async function savePlanDraft(plan: PlanDraft, clientId: string | null): Promise<string> {
+export async function savePlanDraft(plan: PlanDraft, clientId: string | null, kind: 'plan' | 'single' = 'plan'): Promise<string> {
   const ok = <T>(r: { data: T; error: unknown }) => {
     if (r.error) throw r.error
     return r.data
   }
-  const prog = ok(await supabase.from('programs').insert({ name: plan.name, description: plan.description, client_id: clientId, is_template: !clientId, status: 'draft' }).select('id').single()) as { id: string }
+  const prog = ok(await supabase.from('programs').insert({ name: plan.name, description: plan.description, client_id: clientId, is_template: !clientId, status: 'draft', kind }).select('id').single()) as { id: string }
   try {
     for (const [wi, w] of plan.weeks.entries()) {
       const wk = ok(await supabase.from('program_weeks').insert({ program_id: prog.id, position: wi, phase: w.phase, notes: w.notes }).select('id').single()) as { id: string }

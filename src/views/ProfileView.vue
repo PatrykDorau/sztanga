@@ -4,9 +4,12 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
 import { themePref, type ThemePref } from '@/lib/theme'
-import { loadAppSettings, parentConsent, setParentConsent } from '@/lib/appSettings'
+import { AI_MODELS, loadAppSettings, modelAssistant, modelPlan, parentConsent, setModel, setParentConsent, type AiModel } from '@/lib/appSettings'
 import { pendingCount, translateAll, type TranslateModel } from '@/lib/translateCues'
 import InstallApp from '@/components/InstallApp.vue'
+import CreditsPanel from '@/components/CreditsPanel.vue'
+import { useCalendarStore } from '@/stores/calendar'
+import { EQUIPMENT } from '@/lib/vocab'
 import { disablePush, enablePush, pushState, refreshPushState } from '@/lib/push'
 
 const auth = useAuthStore()
@@ -81,6 +84,18 @@ async function togglePush() {
   }
 }
 
+// ----- Modele AI -----
+const modelError = ref('')
+const changeModel = (kind: 'assistant' | 'plan', m: string) => setModel(kind, m as AiModel).catch((e) => (modelError.value = (e as Error).message))
+
+// ----- Siłownie i ich sprzęt (skrót do stron „Sprzęt”) -----
+const cal = useCalendarStore()
+if (auth.isTrainer && !cal.gyms.length) cal.loadGyms().catch(() => null)
+const gymSummary = (g: { equipment?: string[] | null; machines?: string[] | null }) =>
+  !g.equipment && !g.machines
+    ? 'sprzęt nieustawiony – planer bierze wszystko'
+    : `${(g.equipment ?? []).length} rodzajów sprzętu${g.machines ? ` · ${g.machines.length} maszyn` : ''}: ${(g.equipment ?? []).slice(0, 5).map((k) => EQUIPMENT[k] ?? k).join(', ')}${(g.equipment ?? []).length > 5 ? '…' : ''}`
+
 async function logout() {
   await auth.signOut()
   router.replace('/login')
@@ -139,6 +154,36 @@ async function logout() {
       <p v-if="trError" class="text-danger" role="alert">{{ trError }}</p>
       <button v-if="!trBusy" class="btn-primary w-full" @click="runTranslate">Przetłumacz ({{ pending }})</button>
       <button v-else class="btn-ghost w-full border border-line-strong" @click="trSignal.stop = true">Przerwij po bieżącej partii</button>
+    </section>
+
+    <CreditsPanel v-if="auth.isTrainer" />
+
+    <section v-if="auth.isTrainer" class="card space-y-3 p-4 text-sm">
+      <p class="label">Modele AI (Claude)</p>
+      <p class="text-muted">Koszt idzie z Twojego klucza Anthropic. Ceny za milion tokenów: wejście / wyjście. Jedno pytanie do asystenta to zwykle kilka–kilkanaście tysięcy tokenów.</p>
+      <div v-for="[kind, title, current] in ([['assistant', 'Asystent (czat)', modelAssistant], ['plan', 'Generator planu „Z AI”', modelPlan]] as const)" :key="kind" class="space-y-1.5">
+        <p class="font-semibold">{{ title }}</p>
+        <label v-for="m in AI_MODELS" :key="m.id" class="flex cursor-pointer items-start gap-3 rounded-xl border p-2.5" :class="current === m.id ? 'border-primary bg-primary-soft' : 'border-line'">
+          <input type="radio" class="mt-0.5 size-5 accent-primary" :name="`model-${kind}`" :value="m.id" :checked="current === m.id" @change="changeModel(kind, m.id)" />
+          <span class="min-w-0 flex-1">
+            <span class="font-semibold">{{ m.name }}</span> <span class="text-muted tabular-nums">· {{ m.price }}</span>
+            <span class="block text-xs text-muted">{{ m.hint }}</span>
+          </span>
+        </label>
+      </div>
+      <p v-if="modelError" class="text-danger" role="alert">{{ modelError }}</p>
+    </section>
+
+    <section v-if="auth.isTrainer && cal.gyms.length" class="card space-y-2 p-4 text-sm">
+      <p class="label">Siłownie i sprzęt</p>
+      <p class="text-muted">Co jest w każdej siłowni – generator planu i dobór ćwiczeń biorą tylko to, co da się tam zrobić.</p>
+      <RouterLink v-for="g in cal.gyms" :key="g.id" :to="`/silownie/${g.id}`" class="flex items-center gap-3 rounded-xl border border-line p-3 hover:bg-surface-2">
+        <span class="min-w-0 flex-1">
+          <span class="block font-semibold">{{ g.name }}</span>
+          <span class="block truncate text-xs text-muted">{{ gymSummary(g) }}</span>
+        </span>
+        <span class="shrink-0 text-sm font-semibold text-primary-fg">Sprzęt →</span>
+      </RouterLink>
     </section>
 
     <section v-if="auth.isTrainer" class="card space-y-3 p-4 text-sm">
