@@ -7,6 +7,7 @@ import ClientKid from '@/components/ClientKid.vue'
 import RescheduleSheet from '@/components/RescheduleSheet.vue'
 import ClientAttendance from '@/components/ClientAttendance.vue'
 import ClientViewSettings from '@/components/ClientViewSettings.vue'
+import ClientDeleteButton from '@/components/ClientDeleteButton.vue'
 import ClientStudies from '@/components/ClientStudies.vue'
 import { offers as rescheduleOffers } from '@/lib/reschedule'
 import { useClientsStore } from '@/stores/clients'
@@ -196,6 +197,7 @@ async function newPlan() {
       </section>
 
       <ClientViewSettings :client-id="c.id" />
+      <ClientDeleteButton :client-id="c.id" :name="c.full_name" :archived="c.archived" />
       </template>
     </div>
 

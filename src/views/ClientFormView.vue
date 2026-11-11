@@ -9,6 +9,7 @@ import { CONTRAINDICATIONS, EQUIPMENT, GROUPS } from '@/lib/vocab'
 import type { ClientGroup } from '@/types'
 import ChipSelect from '@/components/ChipSelect.vue'
 import Icon from '@/components/Icon.vue'
+import ClientDeleteButton from '@/components/ClientDeleteButton.vue'
 
 const props = defineProps<{ id?: string }>()
 const clients = useClientsStore()
@@ -97,11 +98,6 @@ async function submit() {
   }
 }
 
-async function remove() {
-  if (!props.id || !confirm('Usunąć klienta razem z jego planami? Tego nie da się cofnąć. Jeśli tylko skończyliście współpracę, użyj archiwum.')) return
-  await clients.remove(props.id)
-  router.replace('/klienci')
-}
 </script>
 
 <template>
@@ -162,7 +158,7 @@ async function remove() {
       </label>
       <p v-if="error" class="text-sm text-danger">{{ error }}</p>
       <button class="btn-primary w-full" :disabled="busy">{{ id ? 'Zapisz' : 'Dodaj klienta' }}</button>
-      <button v-if="id" type="button" class="btn-danger w-full" @click="remove"><Icon name="trash" class="size-4" />Usuń klienta</button>
+      <ClientDeleteButton v-if="id" :client-id="id" :name="form.full_name || 'klient'" :archived="form.archived" />
     </form>
   </main>
 </template>
