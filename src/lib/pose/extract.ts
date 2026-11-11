@@ -1,6 +1,7 @@
 // Wykrywanie pozy na urządzeniu (MediaPipe Pose Landmarker). Wideo nie opuszcza telefonu.
 import type { PoseLandmarker, PoseLandmarkerResult } from '@mediapipe/tasks-vision'
 import { KEEP, type Pose, type Track } from './skeleton'
+import { createPersonPicker } from './pickPerson'
 
 const VERSION = '0.10.21'
 const WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm`
@@ -19,7 +20,7 @@ export function loadPose(): Promise<PoseLandmarker> {
     const opts = (delegate: 'GPU' | 'CPU') => ({
       baseOptions: { modelAssetPath: MODEL, delegate },
       runningMode: 'VIDEO' as const,
-      numPoses: 1,
+      numPoses: 3, // kilka osób w kadrze – wybieramy nagrywaną (pickPerson)
       minPoseDetectionConfidence: 0.5,
       minPosePresenceConfidence: 0.5,
       minTrackingConfidence: 0.5,
@@ -41,11 +42,14 @@ export function loadPose(): Promise<PoseLandmarker> {
 let clock = 0
 const tick = (ms = 0) => (clock = Math.max(clock + 1, Math.round(ms)))
 
-export const toPose = (r: PoseLandmarkerResult): Pose | null => {
-  const img = r.landmarks[0]
-  const world = r.worldLandmarks[0]
+/** Poza wybranej osoby z wyniku modelu (i = indeks sylwetki; -1 = brak). */
+export const toPose = (r: PoseLandmarkerResult, i = 0): Pose | null => {
+  const img = i >= 0 ? r.landmarks[i] : undefined
+  const world = i >= 0 ? r.worldLandmarks[i] : undefined
   return img && world ? KEEP.map((k) => ({ x: img[k].x, y: img[k].y, v: img[k].visibility ?? 1, wx: world[k].x, wy: world[k].y, wz: world[k].z })) : null
 }
+/** Wynik → poza osoby śledzonej przez picker (osoby w tle są pomijane). */
+const tracked = (pick: ReturnType<typeof createPersonPicker>) => (r: PoseLandmarkerResult) => toPose(r, pick(r.landmarks))
 
 /**
  * Detektor dla kamery na żywo: znaczniki czasu = rzeczywisty upływ czasu (MediaPipe wygładza ruch wg odstępów),
@@ -53,7 +57,8 @@ export const toPose = (r: PoseLandmarkerResult): Pose | null => {
  */
 export function liveDetector(pose: PoseLandmarker) {
   const offset = Math.max(0, clock + 1 - performance.now())
-  return (source: HTMLVideoElement): Pose | null => toPose(pose.detectForVideo(source, tick(performance.now() + offset)))
+  const read = tracked(createPersonPicker())
+  return (source: HTMLVideoElement): Pose | null => read(pose.detectForVideo(source, tick(performance.now() + offset)))
 }
 
 function seek(video: HTMLVideoElement, t: number) {
@@ -93,12 +98,13 @@ export async function extractTrack(video: HTMLVideoElement, onProgress?: (p: num
   const t: number[] = []
   const poses: (Pose | null)[] = []
   const base = clock + 1
+  const read = tracked(createPersonPicker())
   for (let i = 0; i < n; i++) {
     if (signal?.aborted) throw new DOMException('Przerwano', 'AbortError')
     const tt = i / FPS
     await seek(video, tt)
     t.push(tt)
-    poses.push(toPose(pose.detectForVideo(video, tick(base + tt * 1000))))
+    poses.push(read(pose.detectForVideo(video, tick(base + tt * 1000))))
     if (i % 3 === 0) onProgress?.(i / n)
   }
   onProgress?.(1)
