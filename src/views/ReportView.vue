@@ -5,7 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClientsStore } from '@/stores/clients'
 import { useCalendarStore } from '@/stores/calendar'
-import { buildReport, groupTsv, loadMonth, monthFromKey, monthKey, monthLabel, personalTsv } from '@/lib/gymReport'
+import { buildReport, excelCsv, groupTsv, loadMonth, monthFromKey, monthKey, monthLabel, personalTsv } from '@/lib/gymReport'
 import Icon from '@/components/Icon.vue'
 
 const route = useRoute()
@@ -52,6 +52,17 @@ async function copy(kind: 'personal' | 'groups') {
   setTimeout(() => (copied.value = ''), 1800)
 }
 
+/** Plik .csv dla Excela – obie tabele, nazwa: siłownia + miesiąc. */
+function downloadExcel() {
+  if (!report.value || !gym.value) return
+  const blob = new Blob([excelCsv(report.value)], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `${gym.value.name} ${monthLabel(month.value)}.csv`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+
 // ----- Wszystkie: liczba sesji na klienta -----
 const rows = computed(() => {
   const map = new Map<string, { done: number; planned: number; cancelled: number; noShow: number }>()
@@ -94,8 +105,18 @@ const groupTotal = computed(() => (data.value?.groups ?? []).filter((g) => !g.ca
       <template v-else-if="gym && report">
         <div class="flex items-center gap-2">
           <p class="min-w-0 flex-1 text-sm text-muted">Zestawienie dla recepcji {{ gym.name }} – bez kwot.</p>
+          <button class="btn-ghost !min-h-10 shrink-0 border border-line-strong px-3 text-sm" @click="downloadExcel"><Icon name="download" class="size-4" />Excel</button>
           <RouterLink :to="`/grafik/raport/druk?m=${monthKey(month)}&g=${gym.id}`" class="btn-primary !min-h-10 shrink-0 px-3 text-sm"><Icon name="download" class="size-4" />PDF</RouterLink>
         </div>
+        <details class="rounded-xl bg-surface-2 p-3 text-sm">
+          <summary class="cursor-pointer font-semibold">Jak wkleić do arkusza rozliczeniowego?</summary>
+          <ol class="mt-2 list-decimal space-y-1 pl-5 text-muted">
+            <li>Otwórz zakładkę miesiąca w arkuszu (Excel albo Arkusze Google).</li>
+            <li>„Kopiuj” przy treningach personalnych → kliknij pierwszą pustą komórkę w kolumnie <strong>DZIEŃ</strong> (np. A2) → Ctrl+V (na telefonie: przytrzymaj → Wklej). Wypełnią się tylko kolumny dzień i klient – kwoty obok zostają.</li>
+            <li>„Kopiuj” przy zajęciach grupowych → kliknij pierwszą pustą komórkę pod <strong>TRENINGI GRUPOWE</strong> (data) → Ctrl+V. Wkleją się: data, rodzaj, LP, liczba osób.</li>
+            <li>Albo „Excel” – plik z obiema tabelami do wysłania recepcji lub skopiowania w całości.</li>
+          </ol>
+        </details>
         <p v-if="plannedCount" class="warn-box text-sm"><Icon name="clock" class="size-5 shrink-0" />W zestawieniu jest {{ plannedCount }} zaplanowanych treningów, które jeszcze się nie odbyły (oznaczone szarym).</p>
         <p v-if="missingPeople" class="warn-box text-sm"><Icon name="alert" class="size-5 shrink-0" />Brak liczby osób przy {{ missingPeople }} zajęciach – uzupełnij w grafiku (dotknij zajęć).</p>
 

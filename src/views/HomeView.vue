@@ -282,7 +282,7 @@ onMounted(async () => {
           <p class="font-display text-2xl leading-tight font-bold first-letter:uppercase">{{ dayLabel(new Date(nextSession.starts_at)) }}</p>
           <p class="text-muted">godz. {{ hm(nextSession.starts_at) }}{{ nextSession.status === 'pending' ? ' · czeka na potwierdzenie' : '' }}</p>
         </template>
-        <p v-else class="font-semibold">Brak – zarezerwuj termin</p>
+        <p v-else class="font-semibold">Brak zaplanowanej sesji</p>
       </div>
       <Icon name="chevron" class="size-5 text-subtle" />
     </RouterLink>

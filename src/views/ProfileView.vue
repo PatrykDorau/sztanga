@@ -185,7 +185,7 @@ async function logout() {
 
     <section v-if="auth.isTrainer" class="card space-y-3 p-4 text-sm">
       <p class="label">Powiadomienia na tym urządzeniu</p>
-      <p class="text-muted">Dostaniesz powiadomienie, gdy klient odwoła trening, poprosi o termin albo o przełożenie, a także gdy ktoś wybierze terminy z linku.</p>
+      <p class="text-muted">Dostaniesz powiadomienie, gdy klient poprosi o termin (jeśli pokazujesz wolne godziny) albo gdy ktoś wybierze terminy z linku.</p>
       <button class="w-full" :class="pushState === 'on' ? 'btn-ghost border border-line-strong' : 'btn-primary'" :disabled="pushBusy || pushState === 'unsupported' || pushState === 'denied'" @click="togglePush">
         {{ pushBusy ? 'Chwila…' : pushState === 'on' ? 'Wyłącz powiadomienia' : 'Włącz powiadomienia' }}
       </button>

@@ -24,6 +24,8 @@ const s = reactive<BookingSettings>({
   cancel_limit_hours: 24,
   booking_horizon_days: 28,
   require_approval: false,
+  trainer_phone: null,
+  show_availability: false,
 })
 
 onMounted(async () => {
@@ -71,7 +73,7 @@ const addException = () =>
 
 const saveSettings = () =>
   run(async () => {
-    await schedule.saveSettings({ ...s })
+    await schedule.saveSettings({ ...s, trainer_phone: s.trainer_phone?.trim() || null })
     saved.value = true
     setTimeout(() => (saved.value = false), 1500)
   })
@@ -145,23 +147,27 @@ const fmtDay = (d: string) => new Date(d + 'T12:00').toLocaleDateString('pl-PL',
       </section>
 
       <section>
-        <h2 class="mb-3 text-xl font-bold">Zasady rezerwacji</h2>
+        <h2 class="mb-3 text-xl font-bold">Klienci i zapisy</h2>
         <form class="card space-y-4 p-4" @submit.prevent="saveSettings">
-          <div class="grid grid-cols-2 gap-3">
+          <label class="block">
+            <span class="label">Twój telefon (dla klientów)</span>
+            <input v-model="s.trainer_phone" type="tel" inputmode="tel" class="input" placeholder="np. 600 100 200" />
+            <span class="mt-1 block text-xs text-muted">Odwołania i przełożenia są tylko telefoniczne – klient zobaczy przy swoich sesjach „Zadzwoń”.</span>
+          </label>
+          <label class="flex min-h-11 items-center gap-3 rounded-xl bg-surface-2 px-3">
+            <input v-model="s.show_availability" type="checkbox" class="size-5 accent-primary" />
+            <span class="text-[15px]">Pokazuj klientom moje wolne godziny (prośby o termin w aplikacji)</span>
+          </label>
+          <p class="-mt-2 text-xs text-muted">Wyłączone: klient nie widzi wolnych godzin i nie wysyła próśb – zapisuje się przez telefon. Ty widzisz wolne godziny zawsze.</p>
+          <div v-if="s.show_availability" class="grid grid-cols-2 gap-3">
             <label><span class="label">Długość sesji (min)</span><input v-model.number="s.session_minutes" type="number" min="15" max="240" step="15" class="input" /></label>
             <label><span class="label">Co ile start (min)</span>
               <select v-model.number="s.slot_step_minutes" class="input"><option :value="15">15</option><option :value="30">30</option><option :value="60">60</option></select>
             </label>
-            <label><span class="label">Rezerwacja min. (h przed)</span><input v-model.number="s.min_notice_hours" type="number" min="0" class="input" /></label>
-            <label><span class="label">Odwołanie do (h przed)</span><input v-model.number="s.cancel_limit_hours" type="number" min="0" class="input" /></label>
-            <label class="col-span-2"><span class="label">Jak daleko naprzód (dni)</span><input v-model.number="s.booking_horizon_days" type="number" min="1" max="120" class="input" /></label>
+            <label><span class="label">Prośba min. (h przed)</span><input v-model.number="s.min_notice_hours" type="number" min="0" class="input" /></label>
+            <label><span class="label">Jak daleko naprzód (dni)</span><input v-model.number="s.booking_horizon_days" type="number" min="1" max="120" class="input" /></label>
           </div>
-          <label class="flex min-h-11 items-center gap-3 rounded-xl bg-surface-2 px-3">
-            <input v-model="s.require_approval" type="checkbox" class="size-5 accent-primary" />
-            <span class="text-[15px]">Rezerwacje klientów wymagają mojej akceptacji</span>
-          </label>
-          <p class="text-xs text-muted">Później niż {{ s.cancel_limit_hours }} h przed sesją klient nie odwoła jej sam – zobaczy prośbę o kontakt z Tobą.</p>
-          <button class="btn-primary w-full" :disabled="busy">{{ saved ? 'Zapisano' : 'Zapisz zasady' }}</button>
+          <button class="btn-primary w-full" :disabled="busy">{{ saved ? 'Zapisano' : 'Zapisz' }}</button>
         </form>
       </section>
     </div>

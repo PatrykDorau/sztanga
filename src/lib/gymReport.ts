@@ -56,5 +56,21 @@ export function buildReport(data: Awaited<ReturnType<typeof loadMonth>>, gym: Gy
 
 /** Tabela do schowka – wklejona w Arkusze Google / Excel rozkłada się na komórki. */
 export const tsv = (rows: (string | number | null)[][]) => rows.map((r) => r.map((c) => String(c ?? '').replace(/[\t\n]/g, ' ')).join('\t')).join('\n')
-export const personalTsv = (rows: PersonalRow[]) => tsv(rows.map((r) => [r.date, r.client]))
+/** Plik dla Excela (polski: średnik, UTF-8 z BOM): obie tabele obok siebie jak w arkuszu recepcji (A:B i D:G). */
+export function excelCsv(r: { personal: PersonalRow[]; groups: GroupRow[] }) {
+  const q = (c: string | number | null) => {
+    const v = String(c ?? '')
+    return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+  }
+  const head = ['DZIEŃ (data)', 'KLIENT', '', 'DATA', 'RODZAJ ZAJĘĆ', 'LP', 'OSOBY']
+  const n = Math.max(r.personal.length, r.groups.length)
+  const lines = [head]
+  for (let i = 0; i < n; i++) {
+    const p = r.personal[i]
+    const g = r.groups[i]
+    lines.push([p?.date ?? '', p?.client ?? '', '', g?.date ?? '', g?.kind ?? '', g ? String(g.lp) : '', g?.participants != null ? String(g.participants) : ''])
+  }
+  return '﻿' + lines.map((l) => l.map(q).join(';')).join('\r\n')
+}
+export const personalTsv =(rows: PersonalRow[]) => tsv(rows.map((r) => [r.date, r.client]))
 export const groupTsv = (rows: GroupRow[]) => tsv(rows.map((r) => [r.date, r.kind, r.lp, r.participants]))
