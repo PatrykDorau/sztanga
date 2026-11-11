@@ -161,16 +161,13 @@ async function logout() {
     <section v-if="auth.isTrainer" class="card space-y-3 p-4 text-sm">
       <p class="label">Modele AI (Claude)</p>
       <p class="text-muted">Koszt idzie z Twojego klucza Anthropic. Ceny za milion tokenów: wejście / wyjście. Jedno pytanie do asystenta to zwykle kilka–kilkanaście tysięcy tokenów.</p>
-      <div v-for="[kind, title, current] in ([['assistant', 'Asystent (czat)', modelAssistant], ['plan', 'Generator planu „Z AI”', modelPlan]] as const)" :key="kind" class="space-y-1.5">
-        <p class="font-semibold">{{ title }}</p>
-        <label v-for="m in AI_MODELS" :key="m.id" class="flex cursor-pointer items-start gap-3 rounded-xl border p-2.5" :class="current === m.id ? 'border-primary bg-primary-soft' : 'border-line'">
-          <input type="radio" class="mt-0.5 size-5 accent-primary" :name="`model-${kind}`" :value="m.id" :checked="current === m.id" @change="changeModel(kind, m.id)" />
-          <span class="min-w-0 flex-1">
-            <span class="font-semibold">{{ m.name }}</span> <span class="text-muted tabular-nums">· {{ m.price }}</span>
-            <span class="block text-xs text-muted">{{ m.hint }}</span>
-          </span>
-        </label>
-      </div>
+      <label v-for="[kind, title, current] in ([['assistant', 'Asystent (czat)', modelAssistant], ['plan', 'Plany „Z AI” i import treningu', modelPlan]] as const)" :key="kind" class="block space-y-1">
+        <span class="block font-semibold">{{ title }}</span>
+        <select class="input" :value="current" @change="changeModel(kind, ($event.target as HTMLSelectElement).value)">
+          <option v-for="m in AI_MODELS" :key="m.id" :value="m.id">{{ m.name }} · {{ m.price }}</option>
+        </select>
+        <span class="block text-xs text-muted">{{ AI_MODELS.find((m) => m.id === current)?.hint }}</span>
+      </label>
       <p v-if="modelError" class="text-danger" role="alert">{{ modelError }}</p>
     </section>
 

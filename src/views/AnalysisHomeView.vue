@@ -69,7 +69,9 @@ const missingRefs = computed(() => used.value.filter((k) => !store.references(k)
         <p class="eyebrow">Na telefonie, bez wysyłania wideo</p>
         <h1 class="page-title">Analiza ruchu</h1>
       </div>
-      <RouterLink to="/analiza/progi" class="icon-btn" aria-label="Progi i dokładność licznika"><Icon name="filter" class="size-5" /></RouterLink>
+      <RouterLink to="/analiza/progi" class="icon-btn !h-auto flex-col py-1" aria-label="Progi i dokładność licznika">
+        <Icon name="filter" class="size-5" /><span class="mt-0.5 block text-[10px] leading-none font-semibold text-muted">Progi</span>
+      </RouterLink>
     </header>
 
     <div class="space-y-6 px-4">
@@ -83,11 +85,6 @@ const missingRefs = computed(() => used.value.filter((k) => !store.references(k)
           pokażą, czym klienci się od niego różnią.
         </span>
       </p>
-
-      <section class="space-y-2">
-        <h2 class="text-xl font-bold">Porównanie z wzorcem</h2>
-        <MetricHeatmap :groups="groupsFor(used)" :sections="sections" empty-text="Brak nagrań. Zacznij od przysiadu – nagraj wzorzec, potem klientów." />
-      </section>
 
       <section class="space-y-2">
         <h2 class="text-xl font-bold">Ostatnie nagrania</h2>
@@ -106,6 +103,11 @@ const missingRefs = computed(() => used.value.filter((k) => !store.references(k)
           </div>
           <Icon name="chevron" class="size-5 shrink-0 text-subtle" />
         </RouterLink>
+      </section>
+
+      <section class="space-y-2">
+        <h2 class="text-xl font-bold">Porównanie z wzorcem</h2>
+        <MetricHeatmap :groups="groupsFor(used)" :sections="sections" empty-text="Brak nagrań. Zacznij od przysiadu – nagraj wzorzec, potem klientów." />
       </section>
     </div>
 
