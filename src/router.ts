@@ -37,6 +37,8 @@ const router = createRouter({
     { path: '/silownie/:id', name: 'gym-equipment', component: () => import('@/views/GymEquipmentView.vue'), props: true, meta: { trainer: true } },
     { path: '/wyzwania', name: 'challenges', component: () => import('@/views/ChallengesView.vue'), meta: { trainer: true } },
     { path: '/p/:token', name: 'shared-plan', component: () => import('@/views/SharedPlanView.vue'), props: true, meta: { public: true } },
+    { path: '/badania', name: 'studies', component: () => import('@/views/StudiesView.vue'), meta: { trainer: true } },
+    { path: '/badania/:id', name: 'study', component: () => import('@/views/StudyView.vue'), props: true, meta: { trainer: true } },
     { path: '/postepy', name: 'my-progress', component: () => import('@/views/MyProgressView.vue') },
     { path: '/terminy', name: 'my-sessions', component: () => import('@/views/MySessionsView.vue') },
     // Publiczny formularz dla nowych klientów – bez logowania.

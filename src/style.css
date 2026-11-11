@@ -31,6 +31,11 @@
   /* Kolor serii na wykresach – zwalidowany skryptem dataviz (kontrast >=3:1, pasmo jasności) w obu motywach. */
   --chart-1: #ea580c;
   --chart-grid: #e7e4df;
+  /* serie wykresów (kolejne terminy badań) – paleta sprawdzona walidatorem dataviz */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
   /* Rozbieżna skala porównania ze wzorcem: niebieski (niżej) – szary środek – czerwony (wyżej); zwalidowana skryptem dataviz. */
   --div-neg: #2a5bd7;
   --div-pos: #c8342e;
@@ -61,6 +66,10 @@
   --scrim: rgb(0 0 0 / 0.7);
   --chart-1: #ea580c;
   --chart-grid: #252a31;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
   --div-neg: #4c7ef0;
   --div-pos: #e0524b;
   --div-mid: #2a2f37;

@@ -51,6 +51,7 @@ const TOOLS = computed(() => [
   { to: '/asystent', icon: 'star', label: 'Asystent', sub: 'pytania o klientów' },
   { to: '/analiza', icon: 'video', label: 'Analiza ruchu', sub: 'nagraj ćwiczenie' },
   { to: '/cwiczenia', icon: 'dumbbell', label: 'Ćwiczenia', sub: `${ex.all.length} w bazie` },
+  { to: '/badania', icon: 'trend', label: 'Badania', sub: 'testy CMJ, SJ…' },
   { to: '/wyzwania', icon: 'trophy', label: 'Wyzwania', sub: 'dla grup dzieci' },
   { to: '/grafik/raport', icon: 'chart', label: 'Raport', sub: 'miesięczny' },
 ])

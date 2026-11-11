@@ -7,6 +7,7 @@ import ClientKid from '@/components/ClientKid.vue'
 import RescheduleSheet from '@/components/RescheduleSheet.vue'
 import ClientAttendance from '@/components/ClientAttendance.vue'
 import ClientViewSettings from '@/components/ClientViewSettings.vue'
+import ClientStudies from '@/components/ClientStudies.vue'
 import { offers as rescheduleOffers } from '@/lib/reschedule'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
@@ -171,6 +172,7 @@ async function newPlan() {
       </section>
 
       <ClientAttendance :key="openSession ?? 'att'" :client-id="c.id" />
+      <ClientStudies :client-id="c.id" />
 
       <section>
         <div class="mb-2 flex items-center justify-between">
