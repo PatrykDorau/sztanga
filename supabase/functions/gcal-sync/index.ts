@@ -177,6 +177,8 @@ async function pull(db: SupabaseClient, token: string, cal: CalRow, gyms: Gym[],
       .from('google_calendars')
       .update({ sync_token: nextSyncToken, import_page_token: null, ...(done ? { sync_window_end: win.max } : {}) })
       .eq('calendar_id', calendarId)
+    // Koniec pełnego importu: z aplikacji znika to, co jest dalej niż okno (wróci, gdy okno do tego dojdzie).
+    if (done && win.max) await db.rpc('google_trim_beyond', { cal: calendarId, until: win.max })
   }
   return { processed, partial: false }
 }
