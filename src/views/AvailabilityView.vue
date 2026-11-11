@@ -152,7 +152,7 @@ const fmtDay = (d: string) => new Date(d + 'T12:00').toLocaleDateString('pl-PL',
           <label class="block">
             <span class="label">Twój telefon (dla klientów)</span>
             <input v-model="s.trainer_phone" type="tel" inputmode="tel" class="input" placeholder="np. 600 100 200" />
-            <span class="mt-1 block text-xs text-muted">Odwołania i przełożenia są tylko telefoniczne – klient zobaczy przy swoich sesjach „Zadzwoń”.</span>
+            <span class="mt-1 block text-xs text-muted">Odwołania i przełożenia tylko SMS-em – klient zobaczy przy swoich sesjach „Napisz SMS” z Twoim numerem.</span>
           </label>
           <label class="flex min-h-11 items-center gap-3 rounded-xl bg-surface-2 px-3">
             <input v-model="s.show_availability" type="checkbox" class="size-5 accent-primary" />

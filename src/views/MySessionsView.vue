@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Terminy klienta: nadchodzące sesje (odwołania i przełożenia tylko telefonicznie), prośba o wolny termin – gdy trenerka pokazuje godziny.
+// Terminy klienta: nadchodzące sesje (odwołania i przełożenia tylko SMS-em), prośba o wolny termin – gdy trenerka pokazuje godziny.
 import { computed, onMounted, ref, watch } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { useScheduleStore } from '@/stores/schedule'
@@ -28,9 +28,9 @@ const weekdayOf = (iso: string) => new Date(iso).toLocaleDateString('pl-PL', { w
 const multiGym = computed(() => new Set(slots.value.map((x) => x.gym_id)).size > 1)
 const picked = ref<string | null>(null)
 const busy = ref(false)
-// Odwołania i przełożenia tylko telefonicznie; prośby o termin – tylko gdy trenerka pokazuje wolne godziny.
+// Odwołania i przełożenia tylko SMS-em; prośby o termin – tylko gdy trenerka pokazuje wolne godziny.
 const phone = computed(() => schedule.settings?.trainer_phone?.trim() || '')
-const telHref = computed(() => 'tel:' + phone.value.replace(/[^+d]/g, ''))
+const smsHref = computed(() => 'sms:' + phone.value.replace(/[^+\d]/g, ''))
 const canBook = computed(() => !!schedule.settings?.show_availability)
 
 onMounted(async () => {
@@ -125,7 +125,7 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
         <div v-else-if="!upcoming.length" class="card p-6 text-center">
           <p class="font-semibold">Brak zaplanowanych sesji</p>
           <button v-if="canBook" class="btn-primary mt-3" @click="tab = 'book'">Poproś o termin</button>
-          <a v-else-if="phone" :href="telHref" class="btn-primary mt-3"><Icon name="bell" class="size-4" />Zadzwoń: {{ phone }}</a>
+          <a v-else-if="phone" :href="smsHref" class="btn-primary mt-3"><Icon name="bell" class="size-4" />Napisz SMS: {{ phone }}</a>
         </div>
         <ul class="space-y-2">
           <li v-for="s in upcoming" :key="s.id" class="card p-4">
@@ -143,7 +143,7 @@ const joinWaitlist = () => run(() => schedule.joinWaitlist(myClientId.value!, da
 
         <p v-if="upcoming.length" class="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-sm">
           <Icon name="alert" class="mt-0.5 size-4 shrink-0 text-muted" />
-          <span>Odwołanie albo przełożenie treningu – tylko telefonicznie<template v-if="phone">: <a :href="telHref" class="font-semibold text-primary-fg underline underline-offset-4">{{ phone }}</a></template>.</span>
+          <span>Odwołanie albo przełożenie treningu – tylko SMS-em<template v-if="phone">: <a :href="smsHref" class="font-semibold text-primary-fg underline underline-offset-4">napisz SMS na {{ phone }}</a></template>.</span>
         </p>
 
         <section v-if="past.length">

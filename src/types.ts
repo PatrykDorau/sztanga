@@ -150,7 +150,7 @@ export interface BookingSettings {
   cancel_limit_hours: number
   booking_horizon_days: number
   require_approval: boolean
-  trainer_phone: string | null // odwołania i przełożenia tylko telefonicznie
+  trainer_phone: string | null // odwołania i przełożenia tylko SMS-em
   show_availability: boolean // czy klienci widzą wolne godziny i mogą prosić o termin
 }
 
