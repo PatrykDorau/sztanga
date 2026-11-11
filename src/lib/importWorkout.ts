@@ -44,11 +44,15 @@ export async function parseWorkout(input: { text?: string; image?: { media_type:
 }
 
 /** Najlepsze dopasowanie z bazy (etykiety trenerki mają pierwszeństwo) albo null, gdy nic sensownego. */
-export function matchExercise(name: string, all: Exercise[], favorites: Set<string>) {
-  const list = searchExercises(name, all, favorites)
-  const best = list[0]
-  if (!best) return null
-  return exerciseScore(name, best, favorites) >= 4 ? best : null
+export function matchExercise(name: string, all: Exercise[], favorites: Set<string>): Exercise | null {
+  // „Biceps + triceps” to dwa ćwiczenia – trenerka wybiera sama (nie zgadujemy jednego).
+  if (/\s\+\s|\soraz\s/.test(name)) return null
+  const one = (q: string) => {
+    const best = searchExercises(q, all, favorites)[0]
+    return best && exerciseScore(q, best, favorites) >= 4 ? best : null
+  }
+  // „Ergometr wioślarski/bieżnia/rower” – do wyboru; bierzemy pierwszą pasującą wersję.
+  return one(name) ?? name.split('/').map((p) => p.trim()).filter((p) => p.length > 2).map(one).find(Boolean) ?? null
 }
 
 // ----- Dyktowanie (Web Speech API – w przeglądarce, za darmo, po polsku) -----

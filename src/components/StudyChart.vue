@@ -32,7 +32,7 @@ const pct = (v: number | null) => (v == null ? 0 : (v / max.value) * 100)
     </ul>
 
     <!-- oś: podziałka u góry -->
-    <div class="grid grid-cols-[6.5rem_1fr] gap-2 text-[11px] text-muted tabular-nums">
+    <div class="grid grid-cols-[8rem_1fr] gap-2 text-[11px] text-muted tabular-nums">
       <span />
       <div class="relative h-4">
         <span v-for="(t, i) in ticks" :key="i" class="absolute -translate-x-1/2" :class="i === 0 ? 'translate-x-0' : i === ticks.length - 1 ? '-translate-x-full' : ''" :style="{ left: `${(t / max) * 100}%` }">{{ fmt(t, t < 10 ? 1 : 0) }}</span>
@@ -44,13 +44,13 @@ const pct = (v: number | null) => (v == null ? 0 : (v / max.value) * 100)
         v-for="r in rows"
         :key="r.id"
         type="button"
-        class="grid w-full grid-cols-[6.5rem_1fr] items-center gap-2 rounded-lg py-1 text-left"
+        class="grid w-full grid-cols-[8rem_1fr] items-center gap-2 rounded-lg py-1 text-left"
         :class="picked === r.id ? 'bg-surface-2' : ''"
         :aria-expanded="picked === r.id"
         @click="picked = picked === r.id ? null : r.id"
       >
         <span class="min-w-0">
-          <span class="block truncate text-sm font-semibold">{{ r.name }}</span>
+          <span class="line-clamp-2 block text-sm leading-tight font-semibold">{{ r.name }}</span>
           <span v-if="r.sub" class="block truncate text-[11px] text-muted">{{ r.sub }}</span>
         </span>
         <span class="relative block">
@@ -68,7 +68,7 @@ const pct = (v: number | null) => (v == null ? 0 : (v / max.value) * 100)
       </button>
     </div>
 
-    <div v-if="average?.some((v) => v != null)" class="grid grid-cols-[6.5rem_1fr] items-center gap-2 border-t border-line pt-2">
+    <div v-if="average?.some((v) => v != null)" class="grid grid-cols-[8rem_1fr] items-center gap-2 border-t border-line pt-2">
       <span class="text-sm font-bold">Średnia</span>
       <span class="flex flex-col gap-[2px]">
         <span v-for="(v, i) in average" :key="i" class="h-2 rounded-r" :style="{ width: `${pct(v)}%`, background: COLORS[i] }" :title="`${series[i]?.label}: ${fmt(v, 2)} ${unit}`" />

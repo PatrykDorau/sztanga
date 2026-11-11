@@ -144,8 +144,9 @@ export function parsePaste(text: string, tests: StudyTest[]) {
     if (!name || isNum(name) || /^(nazwisko|imi|zawodni|średnia|srednia)/i.test(name)) continue
     let i = 1
     let position: string | null = null
-    if (cells[1] && !isNum(cells[1]) && !/^x$/i.test(cells[1])) {
-      position = cells[1]
+    // Kolumna pozycji: tekst w 2. kolumnie albo pusta 2. kolumna, gdy kolumn starcza na pozycję + wszystkie testy.
+    if ((cells[1] && !isNum(cells[1]) && !/^x$/i.test(cells[1])) || (cells[1] === '' && cells.length >= tests.length + 2)) {
+      position = cells[1] || null
       i = 2
     }
     const vals: Record<string, number> = {}

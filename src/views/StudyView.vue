@@ -180,11 +180,15 @@ const chartAvg = computed(() => chartSessions.value.map((se) => average(s.value!
 // ----- Porównanie -----
 const cmpA = ref<string | null>(null)
 const cmpB = ref<string | null>(null)
-watch(s, (v) => {
-  if (!v) return
-  cmpA.value ??= v.sessions[0]?.id ?? null
-  cmpB.value ??= v.sessions.at(-1)?.id ?? null
-})
+// Domyślnie pierwszy i ostatni termin; po dodaniu terminu „Do” przechodzi na najnowszy.
+watch(
+  () => s.value?.sessions.map((x) => x.id).join(),
+  () => {
+    const ses = s.value?.sessions ?? []
+    if (!ses.some((x) => x.id === cmpA.value)) cmpA.value = ses[0]?.id ?? null
+    if (!ses.some((x) => x.id === cmpB.value) || cmpB.value === cmpA.value) cmpB.value = ses.at(-1)?.id ?? null
+  },
+)
 const cmpTest = ref<string | null>(null)
 watch(s, (v) => v && !cmpTest.value && (cmpTest.value = v.tests[0]?.key ?? null))
 const testDef = computed(() => s.value?.tests.find((t) => t.key === cmpTest.value))
@@ -406,7 +410,7 @@ const removeStudy = () =>
         </template>
       </template>
 
-      <button class="btn-ghost w-full text-sm text-danger" :disabled="busy" @click="removeStudy"><Icon name="trash" class="size-4" />Usuń badanie</button>
+      <button v-if="tab === 'results'" class="mx-auto flex items-center gap-1 pt-4 text-sm text-muted underline-offset-2 hover:text-danger hover:underline" :disabled="busy" @click="removeStudy"><Icon name="trash" class="size-4" />Usuń całe badanie</button>
     </div>
   </main>
   <main v-else class="px-4 pt-10 text-center text-muted">{{ error || 'Ładowanie…' }}</main>
