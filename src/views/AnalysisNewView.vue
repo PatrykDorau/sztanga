@@ -121,11 +121,17 @@ const result = ref<AnalysisResult | null>(null)
 let abort: AbortController | null = null
 
 const label = ref('')
+// „Kto ćwiczy” wpisany ręcznie (osoba spoza listy klientów).
+const OTHER = '__other'
+const subjectName = ref('')
+const personKey = (a: { client_id: string | null; subject_name?: string | null }) => a.client_id ?? (a.subject_name ? 'n:' + a.subject_name.trim().toLowerCase() : '')
+const myKey = computed(() => (clientId.value === OTHER ? (subjectName.value.trim() ? 'n:' + subjectName.value.trim().toLowerCase() : '?') : clientId.value))
+const knownNames = computed(() => [...new Set(store.list.map((a) => a.subject_name?.trim()).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, 'pl')))
 const loadKg = ref<number | null>(null)
 // Inne nagrania tej osoby z tym ćwiczeniem: ciężar i najszybsze powtórzenie (profil obciążenie–prędkość).
 const lvHistory = computed(() =>
   store.list
-    .filter((a) => a.exercise_key === ex.value && (a.client_id ?? '') === clientId.value && a.load_kg != null)
+    .filter((a) => a.exercise_key === ex.value && personKey(a) === myKey.value && a.load_kg != null)
     .map((a) => ({ load: Number(a.load_kg), v: Math.max(0, ...a.reps.map((r) => r.metrics.mcv ?? 0)) }))
     .filter((p) => p.v > 0),
 )
@@ -231,7 +237,8 @@ async function save() {
     const video = keepVideo.value && file.value ? await compressVideo(file.value).catch(() => file.value!) : undefined
     const row = await store.create(
       {
-        client_id: clientId.value || null,
+        client_id: clientId.value && clientId.value !== OTHER ? clientId.value : null,
+        subject_name: clientId.value === OTHER ? subjectName.value.trim().slice(0, 120) || null : null,
         exercise_key: ex.value,
         exercise_id: exerciseId.value,
         session_id: route.query.session ? String(route.query.session) : null,
@@ -284,8 +291,20 @@ const signalLabel = computed(() => SIGNAL_LABEL[profile.value.signal])
           <label class="label" for="cl">Kto ćwiczy</label>
           <select id="cl" v-model="clientId" class="input" :disabled="stage !== 'pick'" @change="isRef = !clientId">
             <option value="">Ja (trenerka) – np. wzorzec</option>
+            <option :value="OTHER">Ktoś inny – wpiszę imię…</option>
             <option v-for="c in clients.all.filter((x) => !x.archived)" :key="c.id" :value="c.id">{{ c.full_name }}</option>
           </select>
+          <input
+            v-if="clientId === OTHER"
+            v-model="subjectName"
+            class="input mt-2"
+            list="subject-names"
+            maxlength="120"
+            placeholder="np. Marek (trening próbny)"
+            aria-label="Imię osoby, która ćwiczy"
+            :disabled="stage !== 'pick'"
+          />
+          <datalist id="subject-names"><option v-for="n in knownNames" :key="n" :value="n" /></datalist>
         </div>
         <div class="space-y-2">
           <label class="label" for="exq">Ćwiczenie z bazy <span class="font-normal text-muted">(opcjonalnie)</span></label>

@@ -21,7 +21,7 @@ onMounted(async () => {
   }
 })
 
-const who = (a: AnalysisRow) => (a.client_id ? (clients.byId(a.client_id)?.full_name ?? 'Klient') : (a.label ?? 'Trenerka'))
+const who = (a: AnalysisRow) => (a.client_id ? (clients.byId(a.client_id)?.full_name ?? 'Klient') : (a.subject_name ?? a.label ?? 'Trenerka'))
 const used = computed<ExerciseKey[]>(() => {
   const k = EXERCISE_KEYS.filter((e) => store.list.some((a) => a.exercise_key === e))
   return k.length ? k : ['squat']
@@ -34,9 +34,9 @@ const sections = computed(() => {
     for (const a of rows) m.set(key(a), [...(m.get(key(a)) ?? []), a])
     return [...m.entries()]
   }
-  const refRows: HeatRow[] = byPerson(store.list.filter((a) => a.is_reference), (a) => a.client_id ?? 'trener').map(([k, list]) => ({
+  const refRows: HeatRow[] = byPerson(store.list.filter((a) => a.is_reference), (a) => a.client_id ?? (a.subject_name ? 'n:' + a.subject_name : 'trener')).map(([k, list]) => ({
     id: `ref:${k}`,
-    label: list[0].client_id ? who(list[0]) : 'Trenerka',
+    label: list[0].client_id || list[0].subject_name ? who(list[0]) : 'Trenerka',
     sub: `${list.length} ${list.length === 1 ? 'nagranie' : 'nagrania'}`,
     cells: cellsFor(list, stats.value),
   }))
@@ -51,9 +51,14 @@ const sections = computed(() => {
       }
     })
     .sort((x, y) => x.label.localeCompare(y.label, 'pl'))
+  // Osoby wpisane ręcznie (spoza klientów).
+  const otherRows: HeatRow[] = byPerson(store.list.filter((a) => !a.client_id && a.subject_name && !a.is_reference), (a) => a.subject_name!.trim())
+    .map(([name, list]) => ({ id: `n:${name}`, label: name, sub: `ostatnio ${shortDate(lastDate(list))}`, cells: cellsFor(list, stats.value) }))
+    .sort((x, y) => x.label.localeCompare(y.label, 'pl'))
   return [
     { title: 'Wzorce', rows: refRows },
     { title: 'Klienci', rows: clientRows },
+    { title: 'Inne osoby', rows: otherRows },
   ]
 })
 

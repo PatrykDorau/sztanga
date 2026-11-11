@@ -50,7 +50,7 @@ watch(() => props.id, load)
 
 const row = computed(() => store.list.find((x) => x.id === props.id) ?? a.value)
 const profile = computed(() => (a.value ? PROFILES[a.value.exercise_key] : PROFILES.squat))
-const who = computed(() => (a.value?.client_id ? (clients.byId(a.value.client_id)?.full_name ?? 'Klient') : 'Trenerka'))
+const who = computed(() => (a.value?.client_id ? (clients.byId(a.value.client_id)?.full_name ?? 'Klient') : (a.value?.subject_name ?? 'Trenerka')))
 // Pomiary liczone od nowa na zapisanych granicach powtórzeń – starsze analizy dostają też nowsze pomiary i uwagi.
 const measured = computed(() => (track.value && a.value ? remeasure(track.value, a.value.exercise_key, a.value.reps, a.value.view) : null))
 const reps = computed(() => measured.value?.reps ?? a.value?.reps ?? [])

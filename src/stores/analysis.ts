@@ -19,6 +19,7 @@ export interface StoredRep {
 export interface AnalysisRow {
   id: string
   client_id: string | null
+  subject_name?: string | null // osoba spoza klientów, wpisana ręcznie
   exercise_key: ExerciseKey
   exercise_id?: string | null // konkretne ćwiczenie z bazy (opcjonalnie)
   session_id: string | null
@@ -53,7 +54,7 @@ export interface AnalysisFull extends AnalysisRow {
   frames: StoredTrack
 }
 
-const LIST_COLS = 'id, client_id, exercise_key, exercise_id, session_id, label, recorded_at, view, fps, duration, reps, is_reference, reps_actual, notes, video_path, video_expires_at, load_kg, created_at'
+const LIST_COLS = 'id, client_id, subject_name, exercise_key, exercise_id, session_id, label, recorded_at, view, fps, duration, reps, is_reference, reps_actual, notes, video_path, video_expires_at, load_kg, created_at'
 
 function ok<T>(res: { data: T; error: unknown }): T {
   if (res.error) throw res.error
