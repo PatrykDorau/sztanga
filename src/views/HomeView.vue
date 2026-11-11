@@ -120,7 +120,7 @@ const kidsDue = computed(() =>
     }),
 )
 const LIGHT_CLS = { green: 'bg-success-soft text-success', yellow: 'bg-warn-soft text-warn-fg', red: 'bg-danger-soft text-danger', none: 'bg-surface-2 text-muted' } as const
-const report = ref<{ stalled: string[]; absent: string[]; nextWeek: number; freeSlots: number } | null>(null)
+const report = ref<{ stalled: string[]; nextWeek: number; freeSlots: number } | null>(null)
 onMounted(async () => {
   if (!auth.isTrainer) return
   try {
@@ -135,7 +135,6 @@ onMounted(async () => {
     const st = act.map((c) => ({ c, s: clientStatus(logs.filter((l) => l.client_id === c.id)) }))
     report.value = {
       stalled: st.filter((x) => x.s.trend === 'flat' || x.s.trend === 'down').map((x) => x.c.full_name),
-      absent: st.filter((x) => x.s.daysSince === null || x.s.daysSince >= 14).map((x) => x.c.full_name),
       nextWeek: next.filter((s) => ['pending', 'confirmed'].includes(s.status)).length,
       freeSlots: slots.length,
     }
@@ -234,8 +233,6 @@ onMounted(async () => {
           </div>
         </div>
         <p v-if="report.stalled.length" class="text-sm"><strong>Bez progresji od 3 tyg.:</strong> {{ report.stalled.join(', ') }}</p>
-        <p v-if="report.absent.length" class="text-sm"><strong>Dawno nie byli (14+ dni):</strong> {{ report.absent.join(', ') }}</p>
-        <p v-if="!report.stalled.length && !report.absent.length" class="text-sm text-muted">Wszyscy klienci trenują regularnie.</p>
       </section>
 
       <section class="grid grid-cols-2 gap-3">
