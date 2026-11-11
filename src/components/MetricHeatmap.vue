@@ -55,13 +55,13 @@ const hasRows = computed(() => props.sections.some((s) => s.rows.length))
         <table class="border-separate border-spacing-[3px] text-xs" @mouseleave="hover = null">
           <thead>
             <tr>
-              <th class="sticky left-0 z-10 bg-bg shadow-[-1rem_0_0_var(--bg),4px_0_0_var(--bg)]" />
+              <th class="sticky left-0 z-10 bg-bg shadow-[-1.25rem_0_0_var(--bg),4px_0_0_var(--bg)]" />
               <th v-for="g in groups" :key="g.key" :colspan="g.metrics.length" class="px-1 pb-1 text-center font-display text-sm font-bold">
                 <span class="block border-b-2 border-line-strong pb-0.5">{{ g.name }}</span>
               </th>
             </tr>
             <tr>
-              <th class="sticky left-0 z-10 bg-bg shadow-[-1rem_0_0_var(--bg),4px_0_0_var(--bg)]" />
+              <th class="sticky left-0 z-10 bg-bg shadow-[-1.25rem_0_0_var(--bg),4px_0_0_var(--bg)]" />
               <th v-for="c in cols" :key="`${c.g.key}.${c.m.key}`" class="w-16 max-w-16 min-w-16 px-0.5 pb-1 align-bottom" :title="c.m.label">
                 <span
                   class="block text-center text-[11px] leading-tight font-semibold hyphens-auto"
@@ -74,10 +74,10 @@ const hasRows = computed(() => props.sections.some((s) => s.rows.length))
           </thead>
           <tbody v-for="s in sections" :key="s.title">
             <tr v-if="s.rows.length">
-              <th :colspan="cols.length + 1" class="sticky left-0 z-10 bg-bg pt-3 pb-1 text-left text-sm font-bold">{{ s.title }}</th>
+              <th :colspan="cols.length + 1" class="pt-3 pb-1 text-left text-sm font-bold"><span class="sticky left-0">{{ s.title }}</span></th>
             </tr>
             <tr v-for="r in s.rows" :key="r.id">
-              <th class="sticky left-0 z-10 max-w-32 min-w-24 bg-bg pr-2 text-left text-sm font-semibold">
+              <th class="sticky left-0 z-10 max-w-32 min-w-24 bg-bg pr-2 text-left text-sm font-semibold shadow-[-1.25rem_0_0_var(--bg),4px_0_0_var(--bg)]">
                 <RouterLink v-if="r.to" :to="r.to" class="block truncate underline-offset-4 hover:underline">{{ r.label }}</RouterLink>
                 <span v-else class="block truncate">{{ r.label }}</span>
                 <span v-if="r.sub" class="block truncate text-[10px] font-normal text-subtle">{{ r.sub }}</span>

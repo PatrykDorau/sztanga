@@ -6,6 +6,7 @@ import { flagsFor } from '@/lib/pose/analysis'
 import { PROFILES, VIEW_LABEL, type ExerciseKey } from '@/lib/pose/profiles'
 import { cellsFor, groupsFor, refStatsByExercise, shortDate, type HeatRow } from '@/lib/pose/heat'
 import MetricHeatmap from '@/components/MetricHeatmap.vue'
+import MovementInsights from '@/components/MovementInsights.vue'
 import Icon from '@/components/Icon.vue'
 
 const props = defineProps<{ clientId: string }>()
@@ -39,6 +40,10 @@ const sections = computed(() => [
       <section class="space-y-2">
         <h2 class="text-xl font-bold">Technika na tle wzorca</h2>
         <MetricHeatmap :groups="groupsFor(used)" :sections="sections" />
+      </section>
+      <section class="space-y-2">
+        <h2 class="text-xl font-bold">Wnioski</h2>
+        <MovementInsights :rows="[{ id: clientId, label: '', cells: cellsFor(mine, stats) }]" :show-name="false" />
       </section>
       <section class="space-y-2">
         <RouterLink v-for="a in mine" :key="a.id" :to="`/analiza/${a.id}`" class="card pressable flex items-center gap-3 p-4 hover:bg-surface-2">

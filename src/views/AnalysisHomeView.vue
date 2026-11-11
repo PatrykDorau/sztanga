@@ -7,6 +7,7 @@ import { flagsFor } from '@/lib/pose/analysis'
 import { EXERCISE_KEYS, PROFILES, VIEW_LABEL, type ExerciseKey } from '@/lib/pose/profiles'
 import { cellsFor, groupsFor, lastDate, refStatsByExercise, shortDate, type HeatRow } from '@/lib/pose/heat'
 import MetricHeatmap from '@/components/MetricHeatmap.vue'
+import MovementInsights from '@/components/MovementInsights.vue'
 import Icon from '@/components/Icon.vue'
 
 const store = useAnalysisStore()
@@ -108,6 +109,11 @@ const missingRefs = computed(() => used.value.filter((k) => !store.references(k)
       <section class="space-y-2">
         <h2 class="text-xl font-bold">Porównanie z wzorcem</h2>
         <MetricHeatmap :groups="groupsFor(used)" :sections="sections" empty-text="Brak nagrań. Zacznij od przysiadu – nagraj wzorzec, potem klientów." />
+      </section>
+
+      <section v-if="sections[1].rows.length" class="space-y-2">
+        <h2 class="text-xl font-bold">Wnioski</h2>
+        <MovementInsights :rows="sections[1].rows" />
       </section>
     </div>
 

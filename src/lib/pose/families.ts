@@ -480,6 +480,35 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     props: () => ({ seat: [-0.25, 0.42, 0.5] }),
   },
 }
+// ===================== Wersja na jednej nodze =====================
+/** Ćwiczenie na jednej nodze (martwy ciąg jednonóż itp.) – rozpoznane z nazwy. */
+export function isOneLeg(e: Pick<Exercise, 'name_pl' | 'name_en'> | null | undefined) {
+  if (!e) return false
+  return /jednej nodze|jednonoz|na jedna noge|single.?leg|one.?leg|1.?leg/.test(norm(`${e.name_pl ?? ''} ${e.name_en ?? ''}`))
+}
+/** Rodziny, w których wersja jednonóż ma wolną nogę wyprostowaną w tył (przedłużenie tułowia). */
+const ONE_LEG_FAMILIES: FamilyKey[] = ['hinge']
+export const supportsOneLeg = (fam: FamilyKey) => ONE_LEG_FAMILIES.includes(fam)
+
+/** Dorysowanie wolnej nogi: w linii z tułowiem (lekko za biodrem, gdy stoi prosto), stopa nad podłogą. */
+function withFreeLeg(f: Fig): Fig {
+  const t = sub(f.hip, f.shoulder)
+  const n = lenP(t) || 1
+  const [x, y] = [t[0] / n, t[1] / n] // od barku przez biodro – przedłużenie tułowia
+  const a = (10 * Math.PI) / 180 // obrót o 10° w tył, żeby noga nie zlewała się z nogą podporową
+  const u: P = [x * Math.cos(a) + y * Math.sin(a), y * Math.cos(a) - x * Math.sin(a)]
+  const ankle2 = add(f.hip, mul(u, L.thigh + L.shin - 0.02))
+  ankle2[1] = Math.max(ankle2[1], 0.16) // stopa w powietrzu
+  const [knee2, a2] = limb(f.hip, ankle2, L.thigh, L.shin, [0, -1])
+  const toeDir: P = [-u[1], u[0]] // stopa prostopadle do nogi (stojąc: palce do przodu, w tyle: palce w dół)
+  return { ...f, knee2, ankle2: a2, heel2: add(a2, mul(toeDir, -0.05)), toe2: add(a2, mul(toeDir, 0.15)) }
+}
+/** Sylwetka do rysowania – z wolną nogą, gdy ćwiczenie jest na jednej nodze. */
+export function poseFor(fam: FamilyKey, phase: number, v: Variant, oneLeg = false): Fig {
+  const f = FAMILIES[fam].pose(phase, v)
+  return oneLeg && supportsOneLeg(fam) ? withFreeLeg(f) : f
+}
+
 export const FAMILY_KEYS = Object.keys(FAMILIES) as FamilyKey[]
 /** Rodzina dla zapisanej analizy (klucz profilu: deadlift → zawias, press → wyciskanie nad głowę…). */
 export const familyForProfile = (k: ExerciseKey): FamilyKey => FAMILY_KEYS.find((f) => FAMILIES[f].profile === k) ?? 'squat'

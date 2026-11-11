@@ -2,14 +2,14 @@
 // Miniatura ćwiczenia: zdjęcie z bazy, a gdy go brak – nieruchoma klatka wzorca ruchu (ludzik w punkcie zwrotnym).
 import { computed } from 'vue'
 import type { Exercise } from '@/types'
-import { FAMILIES, familyOf, variantOf, type Fig, type P } from '@/lib/pose/families'
+import { familyOf, isOneLeg, poseFor, variantOf, type Fig, type P } from '@/lib/pose/families'
 import Icon from './Icon.vue'
 
 const props = defineProps<{ exercise: Exercise }>()
 const fig = computed<Fig | null>(() => {
   if (props.exercise.image_url) return null
   const f = familyOf(props.exercise)
-  return f ? FAMILIES[f].pose(0.7, variantOf(props.exercise.equipment)) : null
+  return f ? poseFor(f, 0.7, variantOf(props.exercise.equipment), isOneLeg(props.exercise)) : null
 })
 const box = computed(() => {
   if (!fig.value) return ''
