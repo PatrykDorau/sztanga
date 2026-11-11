@@ -319,7 +319,9 @@ async function applyEvent(
       await db.from('sessions').insert({ ...fields, status: e.status === 'tentative' ? 'pending' : 'confirmed' })
     }
     unmirror()
-    return gym && colorId !== gym.color_id ? gym.color_id : null
+    // Przekolorowanie tylko przy innej rodzinie koloru (czerwony odcień zostaje czerwonym) albo domyślnym kolorze przy innej niż domyślna siłowni.
+    const recolor = gym && (colorId == null ? !gym.is_default : colorFamily(colorId) !== colorFamily(gym.color_id))
+    return recolor ? gym.color_id : null
   }
 
   // Nie klient: kandydat do przypisania albo prywatne "Zajęte".
