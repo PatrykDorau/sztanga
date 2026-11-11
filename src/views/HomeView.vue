@@ -10,8 +10,9 @@ import { useLiveStore } from '@/stores/live'
 import { useProgressStore } from '@/stores/progress'
 import { clientStatus } from '@/lib/analytics'
 import Icon from '@/components/Icon.vue'
-import ProgressRing from '@/components/ProgressRing.vue'
+import { familyOf } from '@/lib/pose/families'
 import InstallApp from '@/components/InstallApp.vue'
+import { myProgressAny, myView } from '@/lib/clientView'
 import SessionCard from '@/components/SessionCard.vue'
 import SessionSheet from '@/components/SessionSheet.vue'
 import TempoMetronome from '@/components/TempoMetronome.vue'
@@ -48,7 +49,8 @@ const myPlans = computed(() => (auth.isTrainer ? [] : programs.list.filter((p) =
 
 // Kafel bazy: cała biblioteka (import + własne), ile ma film, ile nagrała trenerka.
 const own = computed(() => ex.all.filter((e) => e.source === 'own'))
-const withVideo = computed(() => ex.all.filter((e) => e.video_path).length)
+// Podgląd ruchu: film, zdjęcia z importu albo animacja wzorca rodziny ruchu.
+const withMedia = computed(() => ex.all.filter((e) => e.video_path || e.image_urls?.length || e.image_url || familyOf(e)).length)
 const firstName = computed(() => (auth.profile?.full_name ?? '').split(/[\s@]/)[0])
 const initials = computed(() => (auth.profile?.full_name ?? '?').split(/[\s@]/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase())
 const today = new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -214,16 +216,26 @@ onMounted(async () => {
         </div>
       </section>
 
-      <section class="card flex items-center gap-4 p-4">
-        <ProgressRing :value="withVideo" :max="Math.max(1, ex.all.length)" :label="`${withVideo} z ${ex.all.length} ćwiczeń ma filmik`" />
-        <div class="min-w-0 flex-1">
+      <section class="card space-y-3 p-4">
+        <div class="flex items-baseline justify-between gap-3">
           <h2 class="text-xl font-bold">Baza ćwiczeń</h2>
-          <p class="text-sm text-muted">{{ ex.all.length }} ćwiczeń · {{ withVideo }} z filmikiem · {{ own.length }} własnych</p>
-          <div class="mt-3 grid grid-cols-2 gap-2">
-            <RouterLink to="/cwiczenia" class="btn-ghost">Przeglądaj</RouterLink>
-            <RouterLink to="/cwiczenia/nowe" class="btn-primary"><Icon name="plus" class="size-5" />Dodaj</RouterLink>
+          <RouterLink to="/cwiczenia" class="text-sm font-semibold text-primary-fg">Przeglądaj</RouterLink>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-xl bg-surface-2 p-3">
+            <p class="font-display text-3xl leading-none font-bold tabular-nums">{{ ex.all.length }}</p>
+            <p class="mt-1 text-xs text-muted">ćwiczeń</p>
+          </div>
+          <div class="rounded-xl bg-surface-2 p-3">
+            <p class="font-display text-3xl leading-none font-bold tabular-nums">{{ withMedia }}</p>
+            <p class="mt-1 text-xs text-muted">z animacją, filmem lub zdjęciami</p>
+          </div>
+          <div class="rounded-xl bg-surface-2 p-3">
+            <p class="font-display text-3xl leading-none font-bold tabular-nums">{{ own.length }}</p>
+            <p class="mt-1 text-xs text-muted">Twoich</p>
           </div>
         </div>
+        <RouterLink to="/cwiczenia/nowe" class="btn-primary w-full"><Icon name="plus" class="size-5" />Dodaj własne ćwiczenie</RouterLink>
       </section>
 
       <section v-if="report" class="card space-y-3 p-4">
@@ -298,7 +310,7 @@ onMounted(async () => {
       </RouterLink>
     </template>
 
-    <RouterLink v-if="!auth.isTrainer && auth.profile" to="/terminy" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
+    <RouterLink v-if="!auth.isTrainer && auth.profile && myView('sessions')" to="/terminy" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
       <div class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary"><Icon name="calendar" class="size-7" /></div>
       <div class="min-w-0 flex-1">
         <p class="eyebrow">Najbliższa sesja</p>
@@ -311,7 +323,7 @@ onMounted(async () => {
       <Icon name="chevron" class="size-5 text-subtle" />
     </RouterLink>
 
-    <section v-if="!auth.isTrainer && myPlans.length" class="space-y-2">
+    <section v-if="!auth.isTrainer && myView('plan') && myPlans.length" class="space-y-2">
       <h2 class="text-xl font-bold">Twój plan</h2>
       <RouterLink v-for="p in myPlans" :key="p.id" :to="`/plany/${p.id}/druk`" class="card pressable flex items-center justify-between gap-3 p-4 hover:bg-surface-2">
         <div class="min-w-0">
@@ -324,7 +336,16 @@ onMounted(async () => {
       </RouterLink>
     </section>
 
-    <section v-else-if="!auth.isTrainer && auth.profile" class="card p-5">
+    <RouterLink v-if="!auth.isTrainer && auth.profile && myProgressAny" to="/postepy" class="card pressable flex items-center gap-4 p-4 hover:bg-surface-2">
+      <div class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-fg"><Icon name="chart" class="size-7" /></div>
+      <div class="min-w-0 flex-1">
+        <p class="font-semibold">Moje postępy</p>
+        <p class="text-sm text-muted">Ciężary, rekordy i historia treningów</p>
+      </div>
+      <Icon name="chevron" class="size-5 text-subtle" />
+    </RouterLink>
+
+    <section v-if="!auth.isTrainer && auth.profile && myView('plan') && !myPlans.length" class="card p-5">
       <h2 class="mb-1 text-xl font-bold">Twój plan pojawi się tutaj</h2>
       <p class="text-sm text-muted">Trenerka przygotowuje plany w aplikacji. Do tego czasu możesz przejrzeć bazę ćwiczeń.</p>
     </section>

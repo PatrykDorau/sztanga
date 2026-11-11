@@ -6,6 +6,7 @@ import ClientSport from '@/components/ClientSport.vue'
 import ClientKid from '@/components/ClientKid.vue'
 import RescheduleSheet from '@/components/RescheduleSheet.vue'
 import ClientAttendance from '@/components/ClientAttendance.vue'
+import ClientViewSettings from '@/components/ClientViewSettings.vue'
 import { offers as rescheduleOffers } from '@/lib/reschedule'
 import { useClientsStore } from '@/stores/clients'
 import { useProgramsStore } from '@/stores/programs'
@@ -188,6 +189,8 @@ async function newPlan() {
           <button class="btn-ghost" @click="newPlan"><Icon name="plus" class="size-4" />Od zera</button>
         </div>
       </section>
+
+      <ClientViewSettings :client-id="c.id" />
       </template>
     </div>
 

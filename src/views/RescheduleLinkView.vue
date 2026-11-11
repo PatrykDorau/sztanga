@@ -14,12 +14,38 @@ interface Offer {
   note: string | null
   status: 'open' | 'chosen' | 'applied'
   chosen: WeeklySlot | null
+  preferred: WeeklySlot[] | null
+  backup: WeeklySlot[] | null
   gyms: Record<string, string>
 }
 const props = defineProps<{ token: string }>()
 const o = ref<Offer | null>(null)
 const state = ref<'loading' | 'ok' | 'missing'>('loading')
 const sel = ref<number | null>(null)
+// Nowa osoba: kilka terminów „najbardziej mi pasuje” (max 5) i dowolnie dużo „mogę też”.
+const pref = ref<number[]>([])
+const backup = ref<number[]>([])
+const mode = ref<'pref' | 'backup'>('pref')
+const MAX_PREF = 5
+function tap(i: number) {
+  if (!o.value?.is_new) {
+    sel.value = i
+    return
+  }
+  const inP = pref.value.indexOf(i)
+  const inB = backup.value.indexOf(i)
+  if (mode.value === 'pref') {
+    if (inP >= 0) return void pref.value.splice(inP, 1)
+    if (inB >= 0) backup.value.splice(inB, 1)
+    if (pref.value.length < MAX_PREF) pref.value.push(i)
+  } else {
+    if (inB >= 0) return void backup.value.splice(inB, 1)
+    if (inP >= 0) pref.value.splice(inP, 1)
+    backup.value.push(i)
+  }
+}
+const state2 = (i: number) => (o.value?.is_new ? (pref.value.includes(i) ? 'pref' : backup.value.includes(i) ? 'backup' : null) : sel.value === i ? 'pref' : null)
+const ready = computed(() => (o.value?.is_new ? pref.value.length > 0 : sel.value != null))
 const msg = ref('')
 const busy = ref(false)
 const error = ref('')
@@ -34,6 +60,10 @@ async function load() {
     return
   }
   o.value = data as Offer
+  // „Zmień wybór” zaczyna od poprzednich zaznaczeń.
+  const ix = (list: WeeklySlot[] | null) => (list ?? []).map((s) => o.value!.slots.findIndex((x) => slotKey(x) === slotKey(s))).filter((i) => i >= 0)
+  pref.value = ix(o.value.preferred)
+  backup.value = ix(o.value.backup)
   state.value = 'ok'
 }
 onMounted(load)
@@ -46,17 +76,13 @@ const byDay = computed(() =>
 const multiGym = computed(() => new Set((o.value?.slots ?? []).map((s) => s.gym_id)).size > 1)
 
 async function choose() {
-  if (sel.value == null) return
+  if (!ready.value || !o.value) return
   busy.value = true
   error.value = ''
-  const { data, error: e } = await supabase.rpc('choose_reschedule', {
-    link_token: props.token,
-    slot_index: sel.value,
-    p_note: msg.value.trim() || null,
-    p_name: who.value.name.trim() || null,
-    p_phone: who.value.phone.trim() || null,
-    p_email: who.value.email.trim() || null,
-  })
+  const contact = { p_note: msg.value.trim() || null, p_name: who.value.name.trim() || null, p_phone: who.value.phone.trim() || null, p_email: who.value.email.trim() || null }
+  const { data, error: e } = o.value.is_new
+    ? await supabase.rpc('choose_reschedule_multi', { link_token: props.token, pref: pref.value, backup_ix: backup.value, ...contact })
+    : await supabase.rpc('choose_reschedule', { link_token: props.token, slot_index: sel.value, ...contact })
   busy.value = false
   if (e || !data) {
     error.value = 'Nie udało się zapisać wyboru – możliwe, że trenerka już zatwierdziła zmianę. Odśwież stronę.'
@@ -88,11 +114,22 @@ async function choose() {
       </div>
       <div v-else-if="o.status === 'chosen' && o.chosen && !editing" class="card space-y-3 p-5 text-center">
         <Icon name="clock" class="mx-auto size-10 text-primary-fg" />
-        <p class="text-lg font-semibold">Wybrano: {{ slotLabel(o.chosen) }}</p>
+        <template v-if="o.preferred?.length">
+          <p class="text-lg font-semibold">Najbardziej pasuje: {{ o.preferred.map(slotLabel).join(', ') }}</p>
+          <p v-if="o.backup?.length" class="text-sm">Mogę też: {{ o.backup.map(slotLabel).join(', ') }}</p>
+        </template>
+        <p v-else class="text-lg font-semibold">Wybrano: {{ slotLabel(o.chosen) }}</p>
         <p class="text-sm text-muted">{{ o.is_new ? 'Trenerka potwierdzi termin i wpisze Cię do grafiku.' : 'Trenerka potwierdzi zmianę – do tego czasu obowiązuje stary termin.' }}</p>
         <button class="btn-ghost w-full border border-line-strong" @click="editing = true">Zmień wybór</button>
       </div>
       <form v-else class="space-y-4" @submit.prevent="choose">
+        <div v-if="o.is_new" class="space-y-2">
+          <p class="text-sm">Zaznacz terminy, które Ci pasują: najpierw te <strong>najlepsze</strong>, potem te, które <strong>też wchodzą w grę</strong>. Trenerka dobierze termin (albo kilka, jeśli trenujesz częściej).</p>
+          <div class="flex rounded-xl bg-surface-2 p-1" role="group" aria-label="Co zaznaczam">
+            <button type="button" class="min-h-10 flex-1 rounded-lg text-sm font-semibold" :class="mode === 'pref' ? 'bg-primary text-on-primary shadow' : 'text-muted'" :aria-pressed="mode === 'pref'" @click="mode = 'pref'">★ Najbardziej mi pasuje ({{ pref.length }}/{{ MAX_PREF }})</button>
+            <button type="button" class="min-h-10 flex-1 rounded-lg text-sm font-semibold" :class="mode === 'backup' ? 'bg-surface text-fg shadow' : 'text-muted'" :aria-pressed="mode === 'backup'" @click="mode = 'backup'">Mogę też ({{ backup.length }})</button>
+          </div>
+        </div>
         <fieldset v-for="d in byDay" :key="d.wd">
           <legend class="mb-1.5 font-semibold">{{ WEEKDAY_PL[d.wd] }}</legend>
           <div class="grid grid-cols-3 gap-2">
@@ -101,11 +138,12 @@ async function choose() {
               :key="slotKey(x.s)"
               type="button"
               class="min-h-12 rounded-xl border text-base font-semibold tabular-nums"
-              :class="sel === x.i ? 'border-primary bg-primary text-on-primary' : 'border-line-strong bg-surface'"
-              :aria-pressed="sel === x.i"
-              @click="sel = x.i"
+              :class="state2(x.i) === 'pref' ? 'border-primary bg-primary text-on-primary' : state2(x.i) === 'backup' ? 'border-2 border-dashed border-primary bg-primary-soft text-fg' : 'border-line-strong bg-surface'"
+              :aria-pressed="!!state2(x.i)"
+              :aria-label="`${WEEKDAY_PL[d.wd]} ${x.s.start_time}${state2(x.i) === 'pref' ? ' – najbardziej pasuje' : state2(x.i) === 'backup' ? ' – mogę też' : ''}`"
+              @click="tap(x.i)"
             >
-              {{ x.s.start_time }}<span v-if="multiGym && x.s.gym_id" class="block text-[11px] font-normal opacity-80">{{ o.gyms[x.s.gym_id] }}</span>
+              <span v-if="state2(x.i) === 'pref' && o.is_new" class="mr-1 text-xs align-top">★{{ pref.indexOf(x.i) + 1 }}</span>{{ x.s.start_time }}<span v-if="multiGym && x.s.gym_id" class="block text-[11px] font-normal opacity-80">{{ o.gyms[x.s.gym_id] }}</span>
             </button>
           </div>
         </fieldset>
@@ -117,7 +155,9 @@ async function choose() {
         </fieldset>
         <label class="block"><span class="label">Wiadomość (opcjonalnie)</span><input v-model="msg" class="input" maxlength="500" placeholder="np. od przyszłego tygodnia" /></label>
         <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
-        <button class="btn-primary w-full" :disabled="sel == null || busy || !contactOk">{{ busy ? 'Zapisywanie…' : sel == null ? 'Wybierz termin' : !contactOk ? 'Podaj imię i telefon' : `Wybieram: ${slotLabel(o.slots[sel])}` }}</button>
+        <button class="btn-primary w-full" :disabled="!ready || busy || !contactOk">
+          {{ busy ? 'Zapisywanie…' : !ready ? 'Wybierz termin' : !contactOk ? 'Podaj imię i telefon' : o.is_new ? `Wysyłam: ${pref.length} najlepsze${backup.length ? ` + ${backup.length} rezerwowe` : ''}` : `Wybieram: ${slotLabel(o.slots[sel!])}` }}
+        </button>
         <p class="text-xs text-muted">Każdy termin powtarza się co tydzień. Zmiana zacznie obowiązywać po potwierdzeniu przez trenerkę.</p>
       </form>
     </template>

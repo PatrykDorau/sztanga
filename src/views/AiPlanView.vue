@@ -173,12 +173,12 @@ async function submit(mode: 'rules' | 'ai') {
       </div>
       <div>
         <p class="label">Dostępny sprzęt</p>
-        <ChipSelect v-model="form.equipment" :options="EQUIPMENT" />
+        <ChipSelect v-model="form.equipment" :options="EQUIPMENT" custom placeholder="wybierz sprzęt" />
         <p class="mt-1 text-xs text-muted">Ćwiczenia z masą ciała są zawsze dostępne.</p>
       </div>
       <div>
         <p class="label">Ograniczenia / kontuzje</p>
-        <ChipSelect v-model="form.limitations" :options="CONTRAINDICATIONS" />
+        <ChipSelect v-model="form.limitations" :options="CONTRAINDICATIONS" custom placeholder="brak – dodaj" />
         <p class="mt-1 text-xs text-muted">Ćwiczenia z pasującym przeciwwskazaniem w ogóle nie trafią do AI.</p>
       </div>
       <div>

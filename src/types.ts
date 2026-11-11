@@ -62,6 +62,7 @@ export interface Client {
   notes: string | null
   archived: boolean
   gym_id?: string | null // siłownia, na którą zwykle przychodzi
+  client_view?: Record<string, boolean> // co klient widzi w swojej aplikacji (lib/clientView)
   created_at: string
 }
 

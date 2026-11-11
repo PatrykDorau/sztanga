@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Icon from './Icon.vue'
+import { loadMyView, myProgressAny, myView } from '@/lib/clientView'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -15,12 +16,21 @@ const TRAINER: Item[] = [
   { to: '/plany', label: 'Plany', icon: 'clipboard', match: (p) => p.startsWith('/plany') },
   { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p) => p.startsWith('/cwiczenia') },
 ]
-const CLIENT: Item[] = [
-  { to: '/', label: 'Start', icon: 'home', match: (p) => p === '/' || p.startsWith('/profil') },
-  { to: '/terminy', label: 'Terminy', icon: 'calendar', match: (p) => p.startsWith('/terminy') },
-  { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p) => p.startsWith('/cwiczenia') },
-]
-const items = computed(() => (auth.isTrainer ? TRAINER : CLIENT))
+// Klient: pozycje zależne od tego, co trenerka udostępniła (Widok klienta).
+const CLIENT = computed<Item[]>(() =>
+  [
+    { to: '/', label: 'Start', icon: 'home', match: (p: string) => p === '/' || p.startsWith('/profil') },
+    myView('sessions') && { to: '/terminy', label: 'Terminy', icon: 'calendar', match: (p: string) => p.startsWith('/terminy') },
+    myProgressAny.value && { to: '/postepy', label: 'Postępy', icon: 'chart', match: (p: string) => p.startsWith('/postepy') },
+    myView('exercises') && { to: '/cwiczenia', label: 'Ćwiczenia', icon: 'dumbbell', match: (p: string) => p.startsWith('/cwiczenia') },
+  ].filter(Boolean) as Item[],
+)
+watch(
+  () => auth.profile?.id,
+  (id) => id && !auth.isTrainer && loadMyView(true),
+  { immediate: true },
+)
+const items = computed(() => (auth.isTrainer ? TRAINER : CLIENT.value))
 const path = computed(() => route.path)
 </script>
 

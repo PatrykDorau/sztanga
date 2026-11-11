@@ -191,7 +191,7 @@ async function submit() {
       </section>
       <section>
         <p class="label">Przeciwwskazania</p>
-        <ChipSelect v-model="form.contraindications" :options="CONTRAINDICATIONS" />
+        <ChipSelect v-model="form.contraindications" :options="CONTRAINDICATIONS" custom placeholder="brak – dodaj" />
       </section>
       <section>
         <label class="label" for="cues">Wskazówki techniczne</label>
