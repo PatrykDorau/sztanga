@@ -312,12 +312,12 @@ export async function loadRuleData() {
 }
 
 /** Zapis szkicu (status draft) – tymi samymi tabelami co kreator. */
-export async function savePlanDraft(plan: PlanDraft, clientId: string | null): Promise<string> {
+export async function savePlanDraft(plan: PlanDraft, clientId: string | null, kind: 'plan' | 'single' = 'plan'): Promise<string> {
   const ok = <T>(r: { data: T; error: unknown }) => {
     if (r.error) throw r.error
     return r.data
   }
-  const prog = ok(await supabase.from('programs').insert({ name: plan.name, description: plan.description, client_id: clientId, is_template: !clientId, status: 'draft' }).select('id').single()) as { id: string }
+  const prog = ok(await supabase.from('programs').insert({ name: plan.name, description: plan.description, client_id: clientId, is_template: !clientId, status: 'draft', kind }).select('id').single()) as { id: string }
   try {
     for (const [wi, w] of plan.weeks.entries()) {
       const wk = ok(await supabase.from('program_weeks').insert({ program_id: prog.id, position: wi, phase: w.phase, notes: w.notes }).select('id').single()) as { id: string }

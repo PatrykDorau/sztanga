@@ -57,7 +57,7 @@ const today = new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'nu
 
 const activeClients = computed(() => clients.all.filter((c) => !c.archived))
 const withoutPlan = computed(
-  () => activeClients.value.filter((c) => !programs.list.some((p) => p.client_id === c.id && p.status === 'active')).length,
+  () => activeClients.value.filter((c) => !programs.list.some((p) => p.client_id === c.id && p.status === 'active' && p.kind !== 'single')).length,
 )
 const templates = computed(() => programs.list.filter((p) => p.is_template).length)
 

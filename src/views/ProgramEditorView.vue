@@ -170,7 +170,8 @@ const removeProgram = () =>
         <span class="flex-1">{{ aiNote === 'rules' ? 'Szkic z generatora (reguły)' : 'Szkic ułożony przez AI' }} z Twojej bazy ćwiczeń – przejrzyj dawki i kolejność, zanim aktywujesz plan.<template v-if="aiNote !== '1' && aiNote !== 'rules'"> {{ aiNote }}</template></span>
         <button type="button" class="icon-btn -my-2 -mr-2" aria-label="Zamknij" @click="aiNote = ''"><Icon name="x" class="size-4" /></button>
       </p>
-      <nav class="mt-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none]" aria-label="Tygodnie">
+      <p v-if="p.kind === 'single'" class="mt-2 px-4 text-sm text-muted">Pojedynczy trening – przypiszesz go do sesji w grafiku (karta sesji → „Trening”).</p>
+      <nav v-else class="mt-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none]" aria-label="Tygodnie">
         <button
           v-for="(w, i) in p.program_weeks"
           :key="w.id"
@@ -214,14 +215,14 @@ const removeProgram = () =>
           <button v-if="p.is_template" type="button" class="btn-ghost" @click="assigning = true">Przypisz klientowi</button>
           <button v-else type="button" class="btn-ghost" :disabled="busy" @click="saveAsTemplate">Zapisz jako szablon</button>
           <button type="button" class="btn-ghost" :disabled="busy" @click="duplicate">Duplikuj</button>
-          <button type="button" class="btn-danger col-span-2" :disabled="busy" @click="removeProgram"><Icon name="trash" class="size-4" />Usuń plan</button>
+          <button type="button" class="btn-danger col-span-2" :disabled="busy" @click="removeProgram"><Icon name="trash" class="size-4" />{{ p.kind === 'single' ? 'Usuń trening' : 'Usuń plan' }}</button>
         </div>
       </form>
 
       <div v-if="p.description && !showSettings" class="text-sm text-muted">{{ p.description }}</div>
 
       <template v-if="week">
-        <div>
+        <div v-if="p.kind !== 'single'">
           <p class="label">Faza tygodnia {{ weekIdx + 1 }}</p>
           <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
             <button
@@ -241,9 +242,9 @@ const removeProgram = () =>
           <WorkoutCard v-for="wo in week.workouts" :key="wo.id" :workout="wo" :limitations="limitations" :allowed="gymAllowed" :gym-name="useCalendarStore().gymById(client?.gym_id)?.name" />
         </div>
 
-        <button class="btn-ghost w-full" :disabled="busy" @click="act(() => programs.addWorkout(week!.id))"><Icon name="plus" class="size-4" />Dodaj trening</button>
+        <button v-if="p.kind !== 'single'" class="btn-ghost w-full" :disabled="busy" @click="act(() => programs.addWorkout(week!.id))"><Icon name="plus" class="size-4" />Dodaj trening</button>
 
-        <section class="card space-y-2 p-4">
+        <section v-if="p.kind !== 'single'" class="card space-y-2 p-4">
           <p class="text-sm font-semibold">Kolejny tydzień</p>
           <button class="btn-primary w-full" :disabled="busy" @click="duplicateWeek(true)"><Icon name="up" class="size-4" />Kopiuj z progresją</button>
           <p class="text-xs text-muted">Ćwiczenia z regułą progresji dostaną wyższy ciężar lub więcej powtórzeń – sprawdź i popraw przed udostępnieniem.</p>

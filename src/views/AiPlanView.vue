@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { supabase } from '@/lib/supabase'
 // Generator planów AI: formularz → Claude układa szkic wyłącznie z ćwiczeń z bazy trenerki →
 // szkic otwiera się w kreatorze (status "szkic" – klient nic nie widzi, dopóki trenerka nie aktywuje).
 import { computed, onMounted, reactive, ref, watch } from 'vue'
@@ -32,6 +33,7 @@ const form = reactive({
   split: 'auto' as SplitType,
   gym_id: '' as string,
   structure: true, // schemat trenerki: przygotowanie ruchowe, aktywacja, pary, finisher
+  single: route.query.single === '1', // jeden trening zamiast całego planu
 })
 const cal = useCalendarStore()
 const exStore = useExercisesStore()
@@ -70,8 +72,8 @@ function request(): PlanRequest {
     client_id: form.client_id || null,
     goal: form.goal.trim(),
     level: (form.level[0] ?? 'beginner') as PlanRequest['level'],
-    days: form.days,
-    weeks: form.weeks,
+    days: form.single ? 1 : form.days,
+    weeks: form.single ? 1 : form.weeks,
     minutes: form.minutes || null,
     equipment: form.equipment,
     limitations: form.limitations,
@@ -98,6 +100,7 @@ async function submit(mode: 'rules' | 'ai') {
     if (mode === 'ai') {
       const r = await generatePlan(request())
       id = r.program_id
+      if (form.single) await supabase.from('programs').update({ kind: 'single' }).eq('id', id)
       if (r.warnings.length) note = r.warnings.join(' ')
     } else {
       const { exercises, usage, favorites } = await loadRuleData()
@@ -106,7 +109,8 @@ async function submit(mode: 'rules' | 'ai') {
         favorites,
         structure: form.structure,
       })
-      id = await savePlanDraft(plan, form.client_id || null)
+      if (form.single) plan.name = plan.weeks[0]?.workouts[0]?.name.replace(/^Trening A – /, 'Trening – ') ?? 'Trening'
+      id = await savePlanDraft(plan, form.client_id || null, form.single ? 'single' : 'plan')
       note = 'rules'
     }
     await programs.loadList(true).catch(() => null)
@@ -162,12 +166,16 @@ async function submit(mode: 'rules' | 'ai') {
         <p class="label">Poziom</p>
         <ChipSelect v-model="form.level" :options="LEVELS" single />
       </div>
-      <div class="grid grid-cols-3 gap-3">
-        <div>
+      <div class="flex rounded-xl bg-surface-2 p-1" role="group" aria-label="Co generujemy">
+        <button type="button" class="min-h-10 flex-1 rounded-lg text-sm font-semibold" :class="!form.single ? 'bg-surface shadow' : 'text-muted'" :aria-pressed="!form.single" :disabled="!!busy" @click="form.single = false">Cały plan</button>
+        <button type="button" class="min-h-10 flex-1 rounded-lg text-sm font-semibold" :class="form.single ? 'bg-surface shadow' : 'text-muted'" :aria-pressed="form.single" :disabled="!!busy" @click="form.single = true">Pojedynczy trening</button>
+      </div>
+      <div class="grid gap-3" :class="form.single ? 'grid-cols-1' : 'grid-cols-3'">
+        <div v-if="!form.single">
           <label class="label" for="d">Treningi / tydz.</label>
           <input id="d" v-model.number="form.days" type="number" min="1" max="6" class="input" :disabled="!!busy" />
         </div>
-        <div>
+        <div v-if="!form.single">
           <label class="label" for="w">Tygodnie</label>
           <input id="w" v-model.number="form.weeks" type="number" min="1" max="8" class="input" :disabled="!!busy" />
         </div>

@@ -26,23 +26,33 @@ const error = ref('')
 const confirmCancel = ref(false)
 const reason = ref('')
 
+// Pojedyncze treningi: klienta i gotowce (bez klienta) – do przypisania jednej sesji.
+const singles = ref<ProgramTree[]>([])
 onMounted(async () => {
-  const p = programs.list.find((x) => x.client_id === s.value?.client_id && x.status === 'active')
+  if (!programs.listLoaded) await programs.loadList().catch(() => null)
+  const p = programs.list.find((x) => x.client_id === s.value?.client_id && x.status === 'active' && x.kind !== 'single')
   if (p) plan.value = JSON.parse(JSON.stringify(await programs.open(p.id)))
+  const ids = programs.list.filter((x) => x.kind === 'single' && (x.client_id === s.value?.client_id || x.is_template)).map((x) => x.id)
+  for (const id of ids) singles.value.push(JSON.parse(JSON.stringify(await programs.open(id))) as ProgramTree)
 })
+const singleWorkouts = computed(() => singles.value.flatMap((pr) => pr.program_weeks.flatMap((w) => w.workouts.map((wo) => ({ wo, owner: pr })))))
 
 const workoutName = computed(() => {
   for (const [i, w] of (plan.value?.program_weeks ?? []).entries()) {
     const wo = w.workouts.find((x) => x.id === s.value?.workout_id)
     if (wo) return `Tydzień ${i + 1} · ${wo.name}`
   }
-  return null
+  const single = singleWorkouts.value.find((x) => x.wo.id === s.value?.workout_id)
+  return single ? `Pojedynczy trening · ${single.wo.name}` : null
 })
 // Start sesji na żywo – z przypisanym treningiem z planu (dawki z planu) albo pusta.
 const live = useLiveStore()
 const router = useRouter()
 function startLive() {
-  const workout = plan.value?.program_weeks.flatMap((w) => w.workouts).find((w) => w.id === s.value!.workout_id) ?? null
+  const workout =
+    plan.value?.program_weeks.flatMap((w) => w.workouts).find((w) => w.id === s.value!.workout_id) ??
+    singleWorkouts.value.find((x) => x.wo.id === s.value!.workout_id)?.wo ??
+    null
   const id = live.start({ client_id: s.value!.client_id, session_id: s.value!.id, workout })
   router.push(`/sesja/${id}`)
 }
@@ -121,17 +131,22 @@ const remove = () => (armedDelete.value ? run(() => schedule.removeSession(props
       </div>
       <button v-if="!isOpen && s.status !== 'pending'" class="btn-ghost w-full" :disabled="busy" @click="setStatus('confirmed')">Przywróć jako potwierdzoną</button>
 
-      <div v-if="plan">
-        <label class="label" for="ss-w">Trening z planu</label>
+      <div v-if="plan || singleWorkouts.length">
+        <label class="label" for="ss-w">Trening</label>
         <select id="ss-w" class="input" :value="s.workout_id ?? ''" :disabled="busy" @change="setWorkout(($event.target as HTMLSelectElement).value)">
           <option value="">Bez przypisanego treningu</option>
-          <optgroup v-for="(w, i) in plan.program_weeks" :key="w.id" :label="`Tydzień ${i + 1}`">
-            <option v-for="wo in w.workouts" :key="wo.id" :value="wo.id">{{ wo.name }}</option>
+          <template v-if="plan">
+            <optgroup v-for="(w, i) in plan.program_weeks" :key="w.id" :label="`Plan – tydzień ${i + 1}`">
+              <option v-for="wo in w.workouts" :key="wo.id" :value="wo.id">{{ wo.name }}</option>
+            </optgroup>
+          </template>
+          <optgroup v-if="singleWorkouts.length" label="Pojedyncze treningi">
+            <option v-for="x in singleWorkouts" :key="x.wo.id" :value="x.wo.id">{{ x.wo.name }}{{ x.owner.client_id ? '' : ' (gotowiec)' }}</option>
           </optgroup>
         </select>
         <p v-if="workoutName" class="mt-1 text-xs text-muted">{{ workoutName }}</p>
       </div>
-      <p v-else class="text-sm text-muted">Klient nie ma aktywnego planu – trening przypiszesz po aktywacji planu.</p>
+      <p v-else class="text-sm text-muted">Klient nie ma aktywnego planu ani pojedynczego treningu – utworzysz go w Plany → Pojedyncze treningi.</p>
 
       <div>
         <label class="label" for="ss-n">Notatka</label>

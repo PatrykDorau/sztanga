@@ -40,6 +40,7 @@ const L = { shin: 0.45, thigh: 0.45, trunk: 0.55, arm: 0.3, fore: 0.27, neck: 0.
 /** Sylwetka do narysowania. Z boku: jedna strona (+ druga noga przy wykroku). Z przodu: obie strony. */
 export interface Fig {
   view: 'side' | 'front'
+  armSide?: boolean // ramię pracuje w bok – na rysunku z boku kąt łokcia jest spłaszczony
   head: P
   shoulder: P
   elbow: P
@@ -66,20 +67,23 @@ const mul = (a: P, k: number): P => [a[0] * k, a[1] * k]
 const lenP = (a: P) => Math.hypot(a[0], a[1])
 const dir = (deg: number): P => [Math.sin((deg * Math.PI) / 180), Math.cos((deg * Math.PI) / 180)]
 
-/** Dwa odcinki od a do celu c; zgięcie po stronie wskazanej przez hint. Za daleko = wyprostowane w stronę celu. */
-function ik(a: P, c: P, l1: number, l2: number, hint: P): P {
+/**
+ * Dwa odcinki od a w stronę celu c; zgięcie po stronie wskazanej przez hint. Zwraca staw środkowy i koniec kończyny.
+ * Cel poza zasięgiem = kończyna prosta w jego stronę (koniec nie „dociąga się” do celu – długości zawsze się zgadzają).
+ */
+function limb(a: P, c: P, l1: number, l2: number, hint: P): [P, P] {
   const v = sub(c, a)
   const raw = lenP(v) || 1e-6
   const u: P = [v[0] / raw, v[1] / raw]
-  // Prawie pełna długość = kończyna prosta (inaczej 1 cm różnicy daje kilkanaście stopni ugięcia).
-  if (raw >= (l1 + l2) * 0.975) return add(a, mul(u, l1))
-  const d = Math.max(Math.abs(l1 - l2) + 1e-6, Math.min(raw, l1 + l2 - 1e-6))
+  if (raw >= l1 + l2 - 1e-6) return [add(a, mul(u, l1)), add(a, mul(u, l1 + l2))]
+  const d = Math.max(Math.abs(l1 - l2) + 1e-6, raw)
   const x = (l1 * l1 - l2 * l2 + d * d) / (2 * d)
   const h = Math.sqrt(Math.max(0, l1 * l1 - x * x))
   const n: P = [-u[1], u[0]]
   const s = n[0] * hint[0] + n[1] * hint[1] >= 0 ? 1 : -1
-  return add(add(a, mul(u, x)), mul(n, h * s))
+  return [add(add(a, mul(u, x)), mul(n, h * s)), c]
 }
+const ik = (a: P, c: P, l1: number, l2: number, hint: P) => limb(a, c, l1, l2, hint)[0]
 
 /** Ustawienie z boku – liczby, żeby dało się płynnie przechodzić między pozycjami. */
 interface SideKey {
@@ -91,8 +95,11 @@ interface SideKey {
   wrist?: P // dłoń w miejscu stałym (drążek, podłoga)
   wristRel?: P // dłoń względem barku
   kneeHint: P
+  kneeHint2?: P // druga noga, gdy zgina się inaczej (półklęk: przednie kolano w górę, tylne w dół)
   elbowHint: P
   toeFloor?: number // 1 = palce na podłodze (wspięcia)
+  /** Ramię odwiedzone w bok (sztanga na plecach, podciąganie, ściąganie) – rysunek z boku spłaszcza ruch w płaszczyźnie czołowej. */
+  armSide?: number
 }
 interface FrontKey {
   hipY: number
@@ -105,18 +112,18 @@ function sideFig(k: SideKey): Fig {
   const shoulder = k.shoulder ?? add(k.hip, mul(dir(k.trunk ?? 0), L.trunk))
   const up = sub(shoulder, k.hip)
   const head = add(shoulder, mul(up, L.neck / (lenP(up) || 1)))
-  const knee = ik(k.hip, k.ankle, L.thigh, L.shin, k.kneeHint)
-  const wrist = k.wrist ?? add(shoulder, k.wristRel ?? [0, -0.56])
-  const elbow = ik(shoulder, wrist, L.arm, L.fore, k.elbowHint)
+  const [knee, ankle] = limb(k.hip, k.ankle, L.thigh, L.shin, k.kneeHint)
+  const [elbow, wrist] = limb(shoulder, k.wrist ?? add(shoulder, k.wristRel ?? [0, -0.56]), L.arm, L.fore, k.elbowHint)
   const foot = (a: P): [P, P] => (k.toeFloor ? [[a[0] - 0.05, a[1] - 0.07], [a[0] + 0.15, 0.01]] : [[a[0] - 0.05, a[1] - 0.07], [a[0] + 0.15, a[1] - 0.07]])
-  const [heel, toe] = foot(k.ankle)
-  const f: Fig = { view: 'side', head, shoulder, elbow, wrist, hip: k.hip, knee, ankle: k.ankle, heel, toe }
+  const [heel, toe] = foot(ankle)
+  const f: Fig = { view: 'side', head, shoulder, elbow, wrist, hip: k.hip, knee, ankle, heel, toe, armSide: !!k.armSide }
   if (k.ankle2) {
-    f.knee2 = ik(k.hip, k.ankle2, L.thigh, L.shin, k.kneeHint)
-    f.ankle2 = k.ankle2
+    const [knee2, ankle2] = limb(k.hip, k.ankle2, L.thigh, L.shin, k.kneeHint2 ?? k.kneeHint)
+    f.knee2 = knee2
+    f.ankle2 = ankle2
     ;[f.heel2, f.toe2] = [
-      [k.ankle2[0] - 0.05, k.ankle2[1] - 0.06],
-      [k.ankle2[0] + 0.13, Math.max(0.01, k.ankle2[1] - 0.11)],
+      [ankle2[0] - 0.05, ankle2[1] - 0.06],
+      [ankle2[0] + 0.13, Math.max(0.01, ankle2[1] - 0.11)],
     ]
   }
   return f
@@ -125,9 +132,8 @@ function sideFig(k: SideKey): Fig {
 function frontFig(k: FrontKey): Fig {
   const shoulder: P = [0.19, k.shoulderY]
   const hip: P = [0.11, k.hipY]
-  const ankle: P = [0.14, 0.08]
-  const wrist = k.wristR
-  const elbow = ik(shoulder, wrist, L.arm, L.fore, k.elbowHint)
+  const ankle: P = [0.14, k.hipY - Math.sqrt(0.81 - 0.0009)] // noga prosta
+  const [elbow, wrist] = limb(shoulder, k.wristR, L.arm, L.fore, k.elbowHint)
   const knee = ik(hip, ankle, L.thigh, L.shin, [1, 0])
   const m = (p: P): P => [-p[0], p[1]]
   return {
@@ -227,9 +233,9 @@ const A0: P = [0, 0.08] // kostka stojąc
 const STAND = { ankle: A0, kneeHint: [1, 0] as P }
 
 // Ręce zależnie od sprzętu przy ruchach nóg
-const legArms = (v: Variant): Pick<SideKey, 'wristRel' | 'elbowHint'> =>
+const legArms = (v: Variant): Pick<SideKey, 'wristRel' | 'elbowHint' | 'armSide'> =>
   v === 'barbell'
-    ? { wristRel: [-0.08, 0.02], elbowHint: [-0.3, -1] } // sztanga na plecach
+    ? { wristRel: [-0.2, 0.0], elbowHint: [-0.3, -1], armSide: 1 } // sztanga na plecach (łokcie w dół i w bok)
     : v === 'kettlebell' || v === 'dumbbell'
       ? { wristRel: [0.2, -0.14], elbowHint: [0, -1] } // goblet / hantel przy klatce
       : v === 'body'
@@ -243,7 +249,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     name: 'Przysiad',
     profile: 'squat',
     view: 'side',
-    pose: (f, v) => side({ ...STAND, hip: [-0.02, 0.97], trunk: 2, ...legArms(v) }, { ...STAND, hip: [-0.25, 0.66], trunk: 40, ...legArms(v) })(f),
+    pose: (f, v) => side({ ...STAND, hip: [-0.02, 0.985], trunk: 2, ...legArms(v) }, { ...STAND, hip: [-0.25, 0.66], trunk: 40, ...legArms(v) })(f),
   },
   lunge: {
     key: 'lunge',
@@ -263,7 +269,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     name: 'Zawias biodrowy (martwy ciąg)',
     profile: 'deadlift',
     view: 'side',
-    pose: (f) => side({ ...STAND, hip: [-0.03, 0.97], trunk: 2, wristRel: [0, -0.56], elbowHint: [-1, 0] }, { ...STAND, hip: [-0.3, 0.84], trunk: 72, wristRel: [0, -0.56], elbowHint: [-1, 0] })(f),
+    pose: (f) => side({ ...STAND, hip: [-0.03, 0.985], trunk: 2, wristRel: [0, -0.56], elbowHint: [-1, 0] }, { ...STAND, hip: [-0.4, 0.82], trunk: 70, wristRel: [0, -0.57], elbowHint: [-1, 0] })(f),
   },
   hip_thrust: {
     key: 'hip_thrust',
@@ -272,8 +278,8 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     view: 'side',
     pose: (f) =>
       side(
-        { hip: [0.05, 0.52], shoulder: [-0.48, 0.47], ankle: [0.3, 0.08], kneeHint: [0, 1], wristRel: [0.5, 0.14], elbowHint: [0, 1] },
-        { hip: [-0.12, 0.2], shoulder: [-0.48, 0.47], ankle: [0.3, 0.08], kneeHint: [0, 1], wristRel: [0.34, -0.16], elbowHint: [0, 1] },
+        { hip: [0.05, 0.52], shoulder: [-0.48, 0.47], ankle: [0.3, 0.08], kneeHint: [0, 1], wristRel: [0.45, 0.12], elbowHint: [0, -1] },
+        { hip: [-0.12, 0.2], shoulder: [-0.48, 0.47], ankle: [0.3, 0.08], kneeHint: [0, 1], wristRel: [0.34, -0.12], elbowHint: [0, -1] },
       )(f),
     props: () => ({ bench: [-0.8, -0.3, 0.42] }),
   },
@@ -296,7 +302,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     name: 'Wyciskanie nad głowę',
     profile: 'press',
     view: 'front',
-    pose: (f) => side({ ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.04, 0.56], elbowHint: [0.5, -1] }, { ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.1, 0.04], elbowHint: [0.5, -1] })(f),
+    pose: (f) => side({ ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [0.04, 0.56], elbowHint: [0.5, -1] }, { ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [0.2, 0.1], elbowHint: [0.5, -1] })(f),
   },
   landmine_press: {
     key: 'landmine_press',
@@ -307,8 +313,8 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     // Start: półklęk (tylne kolano przy podłodze), koniec sztangi przy barku. Ruch: wstanie i wyciśnięcie wzdłuż sztangi.
     pose: (f) =>
       side(
-        { hip: [-0.05, 0.55], trunk: 4, ankle: [0.38, 0.08], ankle2: [-0.62, 0.1], kneeHint: [0.3, -1], wristRel: [0.14, -0.06], elbowHint: [0.2, -1] },
-        { hip: [-0.02, 0.95], trunk: 6, ankle: [0.38, 0.08], ankle2: [-0.32, 0.1], kneeHint: [1, 0], wristRel: [0.42, 0.36], elbowHint: [0.2, -1] },
+        { hip: [-0.05, 0.55], trunk: 4, ankle: [0.4, 0.08], ankle2: [-0.6, 0.1], kneeHint: [1, 1], kneeHint2: [0.3, -1], wristRel: [0.18, -0.04], elbowHint: [0.2, -1] },
+        { hip: [-0.02, 0.93], trunk: 6, ankle: [0.3, 0.08], ankle2: [-0.3, 0.12], kneeHint: [1, 0], kneeHint2: [1, 0], wristRel: [0.42, 0.36], elbowHint: [0.2, -1] },
       )(f),
     props: () => ({ lever: [1.55, 0.04] }),
   },
@@ -331,8 +337,8 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     effortTo1: true,
     pose: (f) =>
       side(
-        { hip: [0, 1.14], shoulder: [0, 1.69], ankle: [0.03, 0.26], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0.5, -1] },
-        { hip: [-0.04, 1.47], shoulder: [-0.03, 2.02], ankle: [0.02, 0.59], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0.5, -1] },
+        { hip: [0, 1.14], shoulder: [0, 1.69], ankle: [0.02, 0.235], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0.5, -1], armSide: 1 },
+        { hip: [-0.04, 1.47], shoulder: [-0.03, 2.02], ankle: [0.0, 0.565], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0.5, -1], armSide: 1 },
       )(f),
     props: () => ({ bar: [-0.3, 0.35, 2.25] }),
   },
@@ -344,8 +350,8 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     effortTo1: true,
     pose: (f) =>
       side(
-        { hip: [0, 0.55], trunk: -8, ankle: [0.45, 0.08], kneeHint: [1, 1], wristRel: [0.03, 0.565], elbowHint: [-0.3, -1] },
-        { hip: [0, 0.55], trunk: -8, ankle: [0.45, 0.08], kneeHint: [1, 1], wristRel: [0.08, 0.15], elbowHint: [-0.3, -1] },
+        { hip: [0, 0.55], trunk: -8, ankle: [0.45, 0.08], kneeHint: [1, 1], wristRel: [0.03, 0.565], elbowHint: [-0.3, -1], armSide: 1 },
+        { hip: [0, 0.55], trunk: -8, ankle: [0.45, 0.08], kneeHint: [1, 1], wristRel: [0.08, 0.15], elbowHint: [-0.3, -1], armSide: 1 },
       )(f),
     props: () => ({ seat: [-0.25, 0.2, 0.5], pulley: [0, 2.3] }),
   },
@@ -373,7 +379,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     profile: 'curl',
     view: 'side',
     effortTo1: true,
-    pose: (f) => side({ ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.04, -0.56], elbowHint: [-0.2, -1] }, { ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.14, -0.07], elbowHint: [-0.2, -1] })(f),
+    pose: (f) => side({ ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [0.04, -0.56], elbowHint: [-0.2, -1] }, { ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [0.14, -0.07], elbowHint: [-0.2, -1] })(f),
     props: (v) => (v === 'cable' ? { pulley: [0.45, 0.15] } : {}),
   },
   triceps: {
@@ -383,8 +389,8 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     view: 'side',
     pose: (f, v) =>
       v === 'cable' || v === 'machine' || v === 'band'
-        ? side({ ...STAND, hip: [0, 0.97], trunk: 8, wristRel: [0.06, -0.56], elbowHint: [-0.2, -1] }, { ...STAND, hip: [0, 0.97], trunk: 8, wristRel: [0.22, -0.18], elbowHint: [-0.2, -1] })(f)
-        : side({ ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.03, 0.56], elbowHint: [0.3, 1] }, { ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [-0.12, 0.18], elbowHint: [0.3, 1] })(f),
+        ? side({ ...STAND, hip: [0, 0.985], trunk: 8, wristRel: [0.06, -0.56], elbowHint: [-0.2, -1] }, { ...STAND, hip: [0, 0.985], trunk: 8, wristRel: [0.22, -0.18], elbowHint: [-0.2, -1] })(f)
+        : side({ ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [0.03, 0.56], elbowHint: [0.3, 1] }, { ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [-0.12, 0.18], elbowHint: [0.3, 1] })(f),
     props: (v) => (v === 'cable' || v === 'machine' || v === 'band' ? { pulley: [0.35, 2.2] } : {}),
   },
   lateral_raise: {
@@ -401,7 +407,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     profile: 'front_raise',
     view: 'side',
     effortTo1: true,
-    pose: (f) => side({ ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.03, -0.56], elbowHint: [0, -1] }, { ...STAND, hip: [0, 0.97], trunk: 0, wristRel: [0.56, 0.02], elbowHint: [0, -1] })(f),
+    pose: (f) => side({ ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [0.03, -0.56], elbowHint: [0, -1] }, { ...STAND, hip: [0, 0.985], trunk: 0, wristRel: [0.56, 0.02], elbowHint: [0, -1] })(f),
   },
   fly: {
     key: 'fly',
@@ -421,7 +427,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     view: 'side',
     effortTo1: true,
     pose: (f) =>
-      side({ ankle: [0, 0.08], hip: [0, 0.97], trunk: 0, kneeHint: [1, 0], toeFloor: 1, ...hangArms }, { ankle: [0, 0.17], hip: [0, 1.06], trunk: 0, kneeHint: [1, 0], toeFloor: 1, ...hangArms })(f),
+      side({ ankle: [0, 0.08], hip: [0, 0.985], trunk: 0, kneeHint: [1, 0], toeFloor: 1, ...hangArms }, { ankle: [0, 0.17], hip: [0, 1.075], trunk: 0, kneeHint: [1, 0], toeFloor: 1, ...hangArms })(f),
   },
   crunch: {
     key: 'crunch',
@@ -443,8 +449,8 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     effortTo1: true,
     pose: (f) =>
       side(
-        { hip: [0, 1.14], shoulder: [0, 1.69], ankle: [0.03, 0.26], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0, -1] },
-        { hip: [0, 1.14], shoulder: [0, 1.69], ankle: [0.88, 1.1], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0, -1] },
+        { hip: [0, 1.14], shoulder: [0, 1.69], ankle: [0.02, 0.235], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0, -1] },
+        { hip: [0, 1.14], shoulder: [0, 1.69], ankle: [0.9, 1.12], wrist: [0.02, 2.25], kneeHint: [1, 0], elbowHint: [0, -1] },
       )(f),
     props: () => ({ bar: [-0.3, 0.35, 2.25] }),
   },
@@ -455,7 +461,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     view: 'side',
     pose: (f) =>
       side(
-        { hip: [0, 0.55], trunk: -5, ankle: [0.88, 0.62], kneeHint: [1, 1], wristRel: [0.2, -0.45], elbowHint: [0, -1] },
+        { hip: [0, 0.55], trunk: -5, ankle: [0.9, 0.6], kneeHint: [1, 1], wristRel: [0.2, -0.45], elbowHint: [0, -1] },
         { hip: [0, 0.55], trunk: -5, ankle: [0.47, 0.11], kneeHint: [1, 1], wristRel: [0.2, -0.45], elbowHint: [0, -1] },
       )(f),
     props: () => ({ seat: [-0.25, 0.42, 0.5] }),
@@ -468,7 +474,7 @@ export const FAMILIES: Record<FamilyKey, Family> = {
     effortTo1: true,
     pose: (f) =>
       side(
-        { hip: [0, 0.55], trunk: -5, ankle: [0.88, 0.55], kneeHint: [1, 1], wristRel: [0.2, -0.45], elbowHint: [0, -1] },
+        { hip: [0, 0.55], trunk: -5, ankle: [0.9, 0.55], kneeHint: [1, 1], wristRel: [0.2, -0.45], elbowHint: [0, -1] },
         { hip: [0, 0.55], trunk: -5, ankle: [0.32, 0.14], kneeHint: [1, 1], wristRel: [0.2, -0.45], elbowHint: [0, -1] },
       )(f),
     props: () => ({ seat: [-0.25, 0.42, 0.5] }),

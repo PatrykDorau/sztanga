@@ -120,14 +120,19 @@ export const useExercisesStore = defineStore('exercises', () => {
     relations.value.filter((r) => r.kind === 'progression' && r.from_exercise === id).map((r) => r.to_exercise)
   const regressionsOf = (id: string) =>
     relations.value.filter((r) => r.kind === 'progression' && r.to_exercise === id).map((r) => r.from_exercise)
-  // Alternatywy są zapisane w obie strony – bez powtórzeń.
-  const alternativesOf = (id: string) => [
-    ...new Set(
-      relations.value
-        .filter((r) => r.kind === 'alternative' && (r.from_exercise === id || r.to_exercise === id))
-        .map((r) => (r.from_exercise === id ? r.to_exercise : r.from_exercise)),
-    ),
-  ]
+  // Alternatywy są zapisane w obie strony – bez powtórzeń i bez ćwiczeń, które już są regresją/progresją
+  // (para ćwiczeń ma jedno znaczenie: łatwiejsze/trudniejsze albo zamiennik).
+  const alternativesOf = (id: string) => {
+    const chained = new Set([...progressionsOf(id), ...regressionsOf(id)])
+    return [
+      ...new Set(
+        relations.value
+          .filter((r) => r.kind === 'alternative' && (r.from_exercise === id || r.to_exercise === id))
+          .map((r) => (r.from_exercise === id ? r.to_exercise : r.from_exercise))
+          .filter((x) => !chained.has(x)),
+      ),
+    ]
+  }
 
   /** Pełny łańcuch od najłatwiejszej regresji do najtrudniejszej progresji (po pierwszej gałęzi). */
   function chainOf(id: string): string[] {
@@ -155,6 +160,8 @@ export const useExercisesStore = defineStore('exercises', () => {
 
   /** Dodaje powiązanie. Dla "regresji" zapisujemy odwrócony wiersz progresji. */
   async function link(id: string, otherId: string, type: 'regression' | RelationKind) {
+    // Jedno powiązanie na parę: nowe zastępuje poprzednie (np. alternatywa → progresja).
+    if (relations.value.some((r) => (r.from_exercise === id && r.to_exercise === otherId) || (r.from_exercise === otherId && r.to_exercise === id))) await unlink(id, otherId)
     const row: ExerciseRelation =
       type === 'regression'
         ? { from_exercise: otherId, to_exercise: id, kind: 'progression' }
