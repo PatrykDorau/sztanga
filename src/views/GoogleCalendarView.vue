@@ -2,7 +2,7 @@
 // Google Calendar trenerki: połączenie, wybór kalendarza, siłownie (kod + kolor wydarzenia), wydarzenia do przypisania.
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useCalendarStore } from '@/stores/calendar'
+import { useCalendarStore, type CancelledEvent } from '@/stores/calendar'
 import { useClientsStore } from '@/stores/clients'
 import { GCAL_COLORS } from '@/lib/vocab'
 import { dayLabel, hm } from '@/lib/dates'
@@ -19,6 +19,7 @@ const info = ref(route.query.polaczono ? 'Kalendarz połączony – trwa pierwsz
 const busy = ref(false)
 const calendarList = ref<{ id: string; name: string; primary: boolean; color: string }[]>([])
 const todo = ref<CalendarBlock[]>([])
+const cancelled = ref<CancelledEvent[]>([])
 
 if (route.query.blad) error.value = `Nie udało się połączyć z Google (${route.query.blad}). Spróbuj jeszcze raz.`
 
@@ -38,6 +39,7 @@ async function refresh() {
   await Promise.all([cal.loadStatus(), cal.loadGyms(), clients.load()])
   if (cal.status?.connected) {
     todo.value = await cal.unmatched()
+    cancelled.value = await cal.cancelledEvents()
     calendarList.value = await cal.calendars().catch(() => [])
   }
 }
@@ -75,6 +77,21 @@ function createClient(title: string) {
   cal.pendingAlias = title
   router.push('/klienci/nowy')
 }
+
+// ===== Odwołane w kalendarzu – decyzja o usunięciu z Google =====
+const decide = (ids: string[], action: 'delete' | 'keep') =>
+  run(async () => {
+    await cal.decideCancelled(ids, action)
+    cancelled.value = await cal.cancelledEvents()
+  })
+function deleteAll() {
+  if (!confirm(`Usunąć z Google Calendar wszystkie odwołane (${cancelled.value.length})? Terminy zarezerwowane z „Free” wrócą jako Free.`)) return
+  decide(
+    cancelled.value.map((c) => c.gcal_event_id),
+    'delete',
+  )
+}
+const when = (c: CancelledEvent) => (c.starts_at ? `${dayLabel(new Date(c.starts_at))} ${hm(c.starts_at)}` : 'bez daty')
 
 const lastSync = computed(() =>
   cal.status?.last_sync_at ? new Date(cal.status.last_sync_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : 'jeszcze nie',
@@ -121,11 +138,38 @@ const lastSync = computed(() =>
           <ul class="space-y-1 text-sm text-muted">
             <li>• Treningi z kalendarza („Imię Nazwisko (BW)”) pojawią się w grafiku.</li>
             <li>• Wydarzenia „Free” to wolne terminy do rezerwacji dla klientów.</li>
-            <li>• Sesje dodane lub odwołane w aplikacji od razu zmieniają kalendarz.</li>
+            <li>• Sesje dodane w aplikacji trafiają do kalendarza z dopiskiem „Dodane z aplikacji Trener”.</li>
+            <li>• Odwołane w aplikacji nie znikają od razu – w kalendarzu dostają „ODWOŁANE”, a usuwasz je tutaj.</li>
             <li>• Prywatne wydarzenia blokują godziny, klienci nie widzą ich treści.</li>
           </ul>
           <button class="btn-primary w-full" :disabled="busy" @click="run(() => cal.connect())"><Icon name="calendar" class="size-5" />Połącz z Google</button>
         </template>
+      </section>
+
+      <!-- Odwołane w kalendarzu -->
+      <section v-if="cal.status?.connected">
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <h2 class="text-xl font-bold">Odwołane w kalendarzu <span v-if="cancelled.length" class="text-primary-fg">({{ cancelled.length }})</span></h2>
+          <button v-if="cancelled.length > 1" class="btn-ghost !min-h-9 text-sm text-danger" :disabled="busy" @click="deleteAll">Usuń wszystkie</button>
+        </div>
+        <p class="mb-3 text-sm text-muted">
+          Sesje odwołane albo usunięte w aplikacji zostają w Google jako „ODWOŁANE · …” (grafitowe, nie blokują czasu). Zdecyduj, czy usunąć je z kalendarza.
+        </p>
+        <p v-if="!cancelled.length" class="card p-4 text-sm text-muted">Brak odwołanych do przejrzenia.</p>
+        <ul class="space-y-2">
+          <li v-for="c in cancelled" :key="c.gcal_event_id" class="card flex flex-wrap items-center gap-3 p-4">
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold">{{ c.title || 'Wydarzenie' }}</p>
+              <p class="text-sm text-muted">
+                {{ when(c) }} · {{ c.reason === 'deleted' ? 'usunięta w aplikacji' : 'odwołana w aplikacji' }}{{ c.restore_free ? ' · po usunięciu wraca jako Free' : '' }}
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn-ghost !min-h-10 text-sm" :disabled="busy" @click="decide([c.gcal_event_id], 'keep')">Zostaw</button>
+              <button class="btn-primary !min-h-10 text-sm" :disabled="busy" @click="decide([c.gcal_event_id], 'delete')">{{ c.restore_free ? 'Przywróć Free' : 'Usuń z Google' }}</button>
+            </div>
+          </li>
+        </ul>
       </section>
 
       <!-- Do przypisania -->

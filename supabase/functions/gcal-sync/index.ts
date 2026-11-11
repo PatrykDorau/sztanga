@@ -30,6 +30,11 @@ interface GEvent {
 }
 
 const PAST_DAYS = 60 // pierwszy import: od 60 dni wstecz (historia sesji do dashboardu)
+// Odwołane w aplikacji: wydarzenie zostaje w Google z tym dopiskiem, grafitowe, „dostępny” – usuwa je trenerka z panelu.
+const CANCELLED_PREFIX = 'ODWOŁANE · '
+const CANCELLED_COLOR = '8' // grafit
+const FROM_APP = 'Dodane z aplikacji Trener'
+const isCancelledTitle = (t: string) => /^odwo[łl]ane\b/i.test(t.trim())
 
 // ===================== Autoryzacja wywołania =====================
 async function authorize(req: Request, db: SupabaseClient): Promise<'internal' | 'google' | 'trainer' | null> {
@@ -151,6 +156,13 @@ async function applyEvent(db: SupabaseClient, e: GEvent, gyms: Gym[], clients: C
   const colorId = e.colorId ? Number(e.colorId) : null
   const gym = gymFor(title, colorId, gyms)
 
+  // Oznaczone jako odwołane (przez aplikację albo ręcznie) – nie blokuje grafiku i nie tworzy sesji.
+  if (isCancelledTitle(title)) {
+    await cancelLinked('Odwołane w Google Calendar')
+    await db.from('calendar_events').delete().eq('gcal_event_id', e.id)
+    return null
+  }
+
   // "Pokaż jako: dostępny" (domyślne dla całodniowych) – nie blokuje grafiku.
   if (e.transparency === 'transparent' && !isFree(title)) {
     await cancelLinked('Zmienione w Google Calendar')
@@ -226,15 +238,57 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
   const now = () => new Date().toISOString()
   let n = 0
 
-  // 1) Sesje usunięte w aplikacji
+  const gone = (e: unknown) => e instanceof GoogleApiError && [404, 410].includes(e.status)
+  /** Oznacz wydarzenie jako odwołane (bez usuwania) i dopisz je do listy w panelu. */
+  const markCancelled = async (eventId: string, info: { title?: string | null; starts?: string; ends?: string; sessionId?: string | null; restoreFree: boolean; reason: 'cancelled' | 'deleted' }) => {
+    const path = `${base}/${encodeURIComponent(eventId)}`
+    let ev: GEvent | null = null
+    try {
+      ev = await gapi<GEvent>(token, path)
+    } catch (e) {
+      if (gone(e)) return // już nie ma w Google
+      throw e
+    }
+    if (ev.status === 'cancelled') return
+    const old = (ev.summary ?? info.title ?? '').trim()
+    const title = isCancelledTitle(old) ? old : `${CANCELLED_PREFIX}${old}`
+    await gapi(token, path, {
+      method: 'PATCH',
+      body: JSON.stringify({ summary: title, colorId: CANCELLED_COLOR, transparency: 'transparent', status: 'confirmed', extendedProperties: { private: { trenerSessionId: '' } } }),
+    })
+    await db.from('gcal_cancelled').upsert({
+      gcal_event_id: eventId,
+      title: isCancelledTitle(old) ? old.replace(/^odwo[łl]ane\s*·?\s*/i, '') : old,
+      starts_at: ev.start?.dateTime ?? info.starts ?? null,
+      ends_at: ev.end?.dateTime ?? info.ends ?? null,
+      session_id: info.sessionId ?? null,
+      restore_free: info.restoreFree,
+      reason: info.reason,
+      action: null,
+    })
+    await db.from('calendar_events').delete().eq('gcal_event_id', eventId)
+  }
+
+  // 0) Decyzje z panelu „Odwołane w kalendarzu”: usuń z Google (albo przywróć „Free”) / zostaw.
+  const { data: decided } = await db.from('gcal_cancelled').select('gcal_event_id, restore_free, action').not('action', 'is', null)
+  for (const d of decided ?? []) {
+    if (d.action === 'delete') {
+      const path = `${base}/${encodeURIComponent(d.gcal_event_id)}`
+      try {
+        if (d.restore_free) await gapi(token, path, { method: 'PATCH', body: JSON.stringify({ summary: 'Free', status: 'confirmed', colorId: null, transparency: 'opaque' }) })
+        else await gapi(token, path, { method: 'DELETE' })
+      } catch (e) {
+        if (!gone(e)) throw e
+      }
+    }
+    await db.from('gcal_cancelled').delete().eq('gcal_event_id', d.gcal_event_id)
+    n++
+  }
+
+  // 1) Sesje usunięte w aplikacji – oznaczamy, nie usuwamy.
   const { data: dels } = await db.from('gcal_deletions').select('gcal_event_id, restore_free')
   for (const d of dels ?? []) {
-    try {
-      if (d.restore_free) await gapi(token, `${base}/${encodeURIComponent(d.gcal_event_id)}`, { method: 'PATCH', body: JSON.stringify({ summary: 'Free', status: 'confirmed' }) })
-      else await gapi(token, `${base}/${encodeURIComponent(d.gcal_event_id)}`, { method: 'DELETE' })
-    } catch (e) {
-      if (!(e instanceof GoogleApiError && [404, 410].includes(e.status))) throw e
-    }
+    await markCancelled(d.gcal_event_id, { restoreFree: d.restore_free, reason: 'deleted' })
     await db.from('gcal_deletions').delete().eq('gcal_event_id', d.gcal_event_id)
     n++
   }
@@ -255,6 +309,7 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
       end: { dateTime: s.ends_at, timeZone: TZ },
       colorId: gym ? String(gym.color_id) : undefined,
       status: s.status === 'pending' ? 'tentative' : 'confirmed',
+      description: FROM_APP,
       extendedProperties: { private: { trenerSessionId: s.id } },
     }
     const done = (patch: Record<string, unknown> = {}) =>
@@ -262,18 +317,9 @@ async function push(db: SupabaseClient, token: string, calendarId: string, gyms:
 
     try {
       if (s.status === 'cancelled') {
+        // Odwołana w aplikacji – w Google zostaje jako „ODWOŁANE · …” do decyzji trenerki (panel).
         if (s.gcal_event_id) {
-          const path = `${base}/${encodeURIComponent(s.gcal_event_id)}`
-          try {
-            if (s.from_free_event) {
-              // Termin wraca jako wolny – tak jak przed rezerwacją.
-              await gapi(token, path, { method: 'PATCH', body: JSON.stringify({ summary: 'Free', status: 'confirmed', extendedProperties: { private: { trenerSessionId: '' } } }) })
-            } else {
-              await gapi(token, path, { method: 'DELETE' })
-            }
-          } catch (e) {
-            if (!(e instanceof GoogleApiError && [404, 410].includes(e.status))) throw e
-          }
+          await markCancelled(s.gcal_event_id, { title: body.summary, starts: s.starts_at, ends: s.ends_at, sessionId: s.id, restoreFree: !!s.from_free_event, reason: 'cancelled' })
         }
         await done({ gcal_event_id: null })
       } else if (s.gcal_event_id) {

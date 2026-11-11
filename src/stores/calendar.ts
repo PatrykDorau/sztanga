@@ -11,6 +11,16 @@ function ok<T>(res: { data: T; error: unknown }): T {
   return res.data
 }
 
+export interface CancelledEvent {
+  gcal_event_id: string
+  title: string | null
+  starts_at: string | null
+  ends_at: string | null
+  restore_free: boolean
+  reason: 'cancelled' | 'deleted' | null
+  action: null
+}
+
 /** Klucz aliasu tytułu wydarzenia (jak w gcal-sync). */
 export const aliasKey = (title: string) => titleNorm(splitTitle(title).base)
 
@@ -68,6 +78,19 @@ export const useCalendarStore = defineStore('calendar', () => {
     ) as CalendarBlock[]
   }
 
+  /** Wydarzenia oznaczone w Google jako „ODWOŁANE · …” – czekają na decyzję trenerki. */
+  async function cancelledEvents() {
+    return ok(
+      await supabase.from('gcal_cancelled').select('gcal_event_id, title, starts_at, ends_at, restore_free, reason, action').is('action', null).order('starts_at', { ascending: true }),
+    ) as CancelledEvent[]
+  }
+  /** Decyzja: usuń z Google (albo przywróć „Free”) / zostaw w kalendarzu jako odwołane. Wykonuje się przy synchronizacji. */
+  async function decideCancelled(ids: string[], action: 'delete' | 'keep') {
+    if (!ids.length) return
+    ok(await supabase.from('gcal_cancelled').update({ action }).in('gcal_event_id', ids))
+    await syncNow()
+  }
+
   async function connect() {
     const { data, error } = await supabase.functions.invoke('gcal-auth', { body: { return_to: window.location.origin } })
     if (error) throw new Error((await error.context?.json?.().catch(() => null))?.error ?? error.message)
@@ -108,5 +131,5 @@ export const useCalendarStore = defineStore('calendar', () => {
     await syncNow()
   }
 
-  return { pendingAlias, gyms, status, blocks, syncing, defaultGym, gymById, loadGyms, saveGym, removeGym, loadStatus, loadBlocks, unmatched, connect, syncNow, calendars, setCalendar, disconnect, assign }
+  return { pendingAlias, gyms, status, blocks, syncing, defaultGym, gymById, loadGyms, saveGym, removeGym, loadStatus, loadBlocks, unmatched, cancelledEvents, decideCancelled, connect, syncNow, calendars, setCalendar, disconnect, assign }
 })
