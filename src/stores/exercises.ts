@@ -4,7 +4,7 @@ import { MEDIA_BUCKET, supabase } from '@/lib/supabase'
 import type { Exercise, ExerciseInput, ExerciseRelation, RelationKind } from '@/types'
 
 const COLUMNS =
-  'id, name_pl, name_en, muscle_groups, equipment, movement_pattern, level, contraindications, cues, video_path, image_url, primary_muscles, secondary_muscles, description, mechanic, force, image_urls, attribution, search_terms, tags, cues_lang, source, external_id, created_at, updated_at'
+  'id, name_pl, name_en, muscle_groups, equipment, movement_pattern, level, contraindications, cues, video_path, image_url, primary_muscles, secondary_muscles, description, mechanic, force, image_urls, attribution, search_terms, tags, cues_lang, movement_family, source, external_id, created_at, updated_at'
 
 export const useExercisesStore = defineStore('exercises', () => {
   const all = ref<Exercise[]>([])
@@ -67,6 +67,14 @@ export const useExercisesStore = defineStore('exercises', () => {
     if (error) throw error
     const e = all.value.find((x) => x.id === id)
     if (e) all.value.splice(all.value.indexOf(e), 1, { ...e, tags: clean })
+  }
+
+  /** Wzorzec ruchu ustawiony ręcznie (null = automatycznie z nazwy, 'none' = bez wzorca). */
+  async function setFamily(id: string, family: string | null) {
+    const { error } = await supabase.from('exercises').update({ movement_family: family }).eq('id', id)
+    if (error) throw error
+    const e = all.value.find((x) => x.id === id)
+    if (e) all.value.splice(all.value.indexOf(e), 1, { ...e, movement_family: family })
   }
 
   async function remove(id: string) {
@@ -169,6 +177,7 @@ export const useExercisesStore = defineStore('exercises', () => {
 
   return {
     setTags,
+    setFamily,
     all, favorites, relations, loaded, loading,
     load, byId, save, remove, uploadVideo, videoUrl, toggleFavorite,
     progressionsOf, regressionsOf, alternativesOf, chainOf, link, unlink,

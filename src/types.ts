@@ -30,13 +30,14 @@ export interface Exercise {
   search_terms?: string | null // frazy potoczne do wyszukiwania
   tags?: string[] // własne etykiety trenerki (wyświetlane obok nazwy, przeszukiwane)
   cues_lang?: 'pl' | 'en' | null // język wskazówek technicznych
+  movement_family?: string | null // wzorzec ruchu ustawiony ręcznie ('none' = bez wzorca); null = automatycznie z nazwy
   source: string
   external_id: string | null
   created_at: string
   updated_at: string
 }
 
-export type ExerciseInput = Omit<Exercise, 'id' | 'created_at' | 'updated_at' | 'source' | 'external_id' | 'image_urls' | 'attribution' | 'mechanic' | 'force' | 'search_terms'>
+export type ExerciseInput = Omit<Exercise, 'id' | 'created_at' | 'updated_at' | 'source' | 'external_id' | 'image_urls' | 'attribution' | 'mechanic' | 'force' | 'search_terms' | 'movement_family'>
 
 export interface ExerciseRelation {
   from_exercise: string

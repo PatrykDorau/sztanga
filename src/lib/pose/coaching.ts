@@ -83,7 +83,18 @@ const backFrame = (c: Ctx) => argIn(c.s.torsoRatio, c.worst.start, c.worst.end, 
 const BACK_OBS = (c: Ctx, where: string) =>
   `Odcinek bark–biodro skraca się o ${r0(c.value)}% względem pozycji wyprostowanej (granica ${r0(c.limit)}%) – tak wygląda zaokrąglenie pleców ${where}. Model nie widzi kręgosłupa: potwierdź na nagraniu.`
 
-const ENTRIES: Record<ExerciseKey, Record<string, Entry>> = {
+/** Uwaga dla ogólnych profili rodzin ruchu: niepełny zakres stawu sygnałowego. */
+const RANGE_ENTRY: Entry = {
+  title: 'Niepełny zakres ruchu',
+  joints: [],
+  strong: 20,
+  obs: (c) => `Zakres ruchu w powtórzeniu to ${r0(c.value)} (granica ${r0(c.limit)}) – wyraźnie mniej niż we wzorcu tego ruchu.`,
+  cue: 'Pełny ruch: od pełnego wyprostu do pełnego zgięcia, bez skracania drogi.',
+  fix: 'Mniejszy ciężar albo wolniejsze tempo; zakres ważniejszy niż kilogramy.',
+  ok: 'Pełny zakres ruchu',
+}
+
+const ENTRIES: Partial<Record<ExerciseKey, Record<string, Entry>>> = {
   squat: {
     valgus: {
       title: 'Dynamiczne koślawienie kolan',
@@ -313,7 +324,7 @@ export function coach(tr: Track, ex: ExerciseKey, res: { reps: Rep[]; series: Se
   if (!reps.length) return { headline: 'Nie wykryto powtórzeń – nie ma czego oceniać.', findings, good, notes: [] }
 
   for (const f of profile.flags) {
-    const e = ENTRIES[ex][f.key]
+    const e = ENTRIES[ex]?.[f.key] ?? (f.key === 'range' ? RANGE_ENTRY : undefined)
     if (!e) continue
     const limit = thresholdFor(th, ex, f)
     const vals = reps.map((r) => r.metrics[f.metric])
